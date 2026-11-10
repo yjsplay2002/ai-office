@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ai-office",
+  "description": "AI office: a PM and persona subagents that run a one-person business through board/ TODOs.",
+  "owner": {
+    "name": "ai-office contributors"
+  },
+  "plugins": [
+    {
+      "name": "ai-office",
+      "description": "Interview-driven setup of a PM + persona team, board/ TODO queue and local dashboard.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

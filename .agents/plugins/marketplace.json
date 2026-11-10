@@ -1,0 +1,20 @@
+{
+  "name": "ai-office",
+  "interface": {
+    "displayName": "AI Office"
+  },
+  "plugins": [
+    {
+      "name": "ai-office",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

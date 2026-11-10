@@ -1,0 +1,313 @@
+// AI 오피스 서버: node tools/office.mjs [--replay tools/fixtures/demo-run.jsonl] [--port 4747]
+// 대시보드 지시 → `claude -p` (구독) → stream-json → SSE → 3D 오피스.
+import http from 'node:http';
+import { spawn, execFile } from 'node:child_process';
+import { readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, existsSync, mkdirSync, openSync, readSync, closeSync, rmSync, createReadStream } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { parseTodos, answerTodo, uploadPlan } from './todos.mjs';
+import { usage } from './usage.mjs';
+import { mediaFile, byteRange } from './files.mjs';
+import { telegramConfig, createTelegram } from './telegram.mjs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '..');
+const board = path.join(root, 'board');
+const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : null; };
+const replay = arg('--replay');
+const port = Number(arg('--port') || 4747);
+
+const runs = new Map();   // run id -> { pid, poll } (or replay { timer }). Several run at once.
+// Each claude run is a detached process writing to .office-runs/<id>.jsonl, so this server can restart
+// without killing or blocking it: on boot it re-attaches to every run still listed there.
+const runDir = path.join(root, '.office-runs');
+mkdirSync(runDir, { recursive: true });
+let nextRun = 1;
+let history = [];        // raw lines since the office was last idle, replayed to new viewers
+const clients = new Set();
+
+function broadcast(obj) {
+  const line = JSON.stringify({ _t: Date.now(), ...obj });   // _t = when it happened, so replayed history keeps real times
+  history.push(line);
+  for (const res of clients) res.write(`data: ${line}\n\n`);
+}
+const office = (o) => broadcast({ type: '_office', ...o });
+const busy = () => runs.size > 0;
+
+// Every instruction / TODO answer starts its own PM run immediately — no queue.
+function startRun(prompt) {
+  if (!busy()) history = [];
+  const id = nextRun++;
+  if (replay) {
+    const send = (obj) => broadcast({ ...obj, _run: id });
+    runs.set(id, null);
+    send({ type: '_office', state: 'running', runs: runs.size, prompt });
+    const lines = readFileSync(path.resolve(root, replay), 'utf8').split('\n').filter(Boolean);
+    let i = 0;
+    const tick = () => {
+      if (!runs.has(id)) return;
+      if (i >= lines.length) { runs.delete(id); return send({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, ended: true }); }
+      send(JSON.parse(lines[i++]));
+      runs.set(id, { timer: setTimeout(tick, 700) });
+    };
+    return tick();
+  }
+  // Prompt goes through stdin so Korean text and quotes never touch the shell.
+  const base = path.join(runDir, String(id));
+  const out = openSync(base + '.jsonl', 'a'), err = openSync(base + '.err', 'a');
+  const shell = !claudeExe && process.platform === 'win32', q = (a) => (shell ? `"${a}"` : a);   // cmd needs the quotes
+  // 토큰·안전: 개인 MCP 커넥터(메일·슬랙·드라이브 등)와 전역 스킬은 bypassPermissions 실행에 싣지 않는다.
+  // 그래서 대시보드에서 도는 브라우저 담당은 CLI 브라우저 도구(Bash)를 써야 한다.
+  const child = spawn(claudeExe || 'claude', ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'bypassPermissions',
+    '--allowedTools', q('WebSearch,WebFetch,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*)'),
+    // Telegram plugin tools are blocked: the office reaches its owner only through its own bot (tools/tg-send.mjs).
+    '--disallowedTools', q('mcp__plugin_telegram_telegram')],
+    { cwd: root, shell, detached: true, windowsHide: true, stdio: ['pipe', out, err], env: { ...process.env, OFFICE_RUN: '1' } });
+  closeSync(out); closeSync(err);
+  child.on('error', () => {});   // a spawn failure shows up as an already-dead pid below
+  child.stdin.end(prompt);
+  child.unref();
+  const meta = { id, pid: child.pid, prompt, t: Date.now() };
+  writeFileSync(base + '.json', JSON.stringify(meta));
+  attach(meta);
+}
+
+// The npm claude.cmd shim drops its output when detached on Windows, so run the real exe when it can be found.
+const claudeExe = process.platform !== 'win32' ? null : (process.env.PATH || '').split(path.delimiter)
+  .map((d) => path.join(d, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')).find((p) => existsSync(p)) || null;
+const RUN_FILES = ['.json', '.jsonl', '.err', '.jsonl.t', '.err.t'];
+const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+
+// Follow a run's output files until its process is gone, then finish it and delete the files.
+// shortcut: liveness is by pid only; a pid reused while the server was down would look alive until it exits.
+function attach({ id, pid, prompt, t: started }) {
+  const base = path.join(runDir, String(id));
+  const send = (obj) => broadcast({ ...obj, _run: id });
+  // 중간 보고: PM이 팀원을 부르고 돌려받을 때마다 텔레그램에 무음으로 알린다. LLM을 안 써서 토큰이 들지 않는다.
+  const calls = new Map();
+  const progress = (obj, ts) => {
+    if (obj.parent_tool_use_id) return;   // 팀원 안쪽 도구 호출은 생략
+    for (const c of obj.message?.content || []) {
+      if (obj.type === 'assistant' && c.type === 'tool_use' && (c.name === 'Agent' || c.name === 'Task')) {
+        const who = agents().find((a) => a.name === c.input?.subagent_type)?.title || c.input?.subagent_type || '임시 지원';
+        if (!c.input?.run_in_background) calls.set(c.id, { who, ts });
+        tg?.progress(`▶️ ${who} 시작 — ${c.input?.description || ''}`);
+      }
+      if (obj.type === 'user' && c.type === 'tool_result' && calls.has(c.tool_use_id)) {
+        const { who, ts: t0 } = calls.get(c.tool_use_id); calls.delete(c.tool_use_id);
+        tg?.progress(`☑️ ${who} 끝 (${Math.max(1, Math.round((ts - t0) / 60000))}분)`);
+      }
+    }
+  };
+  // <file>.t keeps one timestamp per line, so a restarted server replays lines with the time they were first seen.
+  const tails = ['.jsonl', '.err'].map((ext) => ({ file: base + ext, err: ext === '.err', pos: 0, buf: Buffer.alloc(0), k: 0,
+    times: existsSync(base + ext + '.t') ? readFileSync(base + ext + '.t', 'utf8').split(/\s+/).filter(Boolean).map(Number) : [] }));
+  const pump = () => {
+    for (const t of tails) {
+      if (!existsSync(t.file)) continue;
+      const size = statSync(t.file).size;
+      if (size <= t.pos) continue;
+      const fd = openSync(t.file, 'r'), chunk = Buffer.alloc(size - t.pos);
+      readSync(fd, chunk, 0, chunk.length, t.pos); closeSync(fd);
+      t.pos = size;
+      t.buf = Buffer.concat([t.buf, chunk]);
+      let n;
+      while ((n = t.buf.indexOf(10)) >= 0) {   // split on bytes so a UTF-8 char is never cut in half
+        const l = t.buf.subarray(0, n).toString('utf8').trim(); t.buf = t.buf.subarray(n + 1);
+        if (!l) continue;
+        let ts = t.times[t.k++];
+        const fresh = ts == null;   // first time this line is seen (not a re-read after a restart)
+        if (fresh) { ts = Date.now(); t.times.push(ts); appendFileSync(t.file + '.t', `${ts}\n`); }
+        if (t.err) { send({ type: '_office', log: l, _t: ts }); continue; }
+        let obj;
+        try { obj = JSON.parse(l); } catch { send({ type: '_office', log: l, _t: ts }); continue; }
+        send({ ...obj, _t: ts });
+        if (fresh) progress(obj, ts);
+        if (fresh && obj.type === 'result') tg?.notify(`${obj.is_error ? '⚠️ 최종 보고 (오류)' : '✅ 최종 보고'}\n${String(obj.result || '').trim().slice(0, 600)}`);
+      }
+    }
+  };
+  runs.set(id, { pid });
+  send({ type: '_office', state: 'running', runs: runs.size, prompt, _t: started });
+  const poll = setInterval(() => {
+    const live = alive(pid);   // checked before reading, so everything written before exit is read
+    pump();
+    if (live) return;
+    clearInterval(poll);
+    if (!runs.has(id)) return;
+    runs.delete(id);
+    send({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, ended: true });
+    for (const ext of RUN_FILES) rmSync(base + ext, { force: true });
+  }, 500);
+  runs.get(id).poll = poll;
+}
+
+function cancel() {
+  for (const [id, c] of runs) {
+    if (!c) continue;
+    if (c.timer) { clearTimeout(c.timer); continue; }
+    clearInterval(c.poll);
+    if (process.platform === 'win32') execFile('taskkill', ['/pid', String(c.pid), '/T', '/F']); // shell:true needs a tree kill
+    else try { process.kill(-c.pid); } catch {}   // detached: kill the whole group
+    for (const ext of RUN_FILES) rmSync(path.join(runDir, id + ext), { force: true });
+  }
+  const n = runs.size; runs.clear();
+  office({ state: 'idle', runs: 0, log: `취소됨 — 작업 ${n}건 모두 중단` });
+}
+
+function agents() {
+  const dir = path.join(root, '.claude', 'agents');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => {
+    const fm = (readFileSync(path.join(dir, f), 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1] || '';
+    const get = (k) => (fm.match(new RegExp(`^${k}:\\s*(.*)$`, 'm')) || [])[1]?.trim() || '';
+    return { name: get('name') || f.replace(/\.md$/, ''), title: get('description').split('.')[0], model: get('model'), effort: get('effort') };
+  });
+}
+
+function listBoard(dir = board) {
+  return readdirSync(dir).flatMap((f) => {
+    const p = path.join(dir, f);
+    if (statSync(p).isDirectory()) return listBoard(p);
+    return [{ path: path.relative(root, p).replace(/\\/g, '/'), mtime: statSync(p).mtimeMs }];
+  }).sort((a, b) => b.mtime - a.mtime);
+}
+
+const todosFile = path.join(board, 'todos.md');
+const todos = () => (existsSync(todosFile) ? parseTodos(readFileSync(todosFile, 'utf8')) : []);
+
+function checkUploads(dir, files) {
+  const ups = uploadPlan(dir, files);
+  if (ups.reduce((n, u) => n + u.buf.length, 0) > 50e6) throw new Error('첨부는 합쳐서 50MB까지');
+  return ups;
+}
+const saveUploads = (ups) => { for (const u of ups) { mkdirSync(path.dirname(path.join(root, u.rel)), { recursive: true }); writeFileSync(path.join(root, u.rel), u.buf); } };
+
+function submitTodo(id, answer, note, files) {
+  const today = new Date().toISOString().slice(0, 10);
+  const ups = checkUploads(`T${id}`, files);
+  if (ups.length) note = [note?.trim(), `첨부: ${ups.map((u) => u.rel).join(', ')}`].filter(Boolean).join(' — ');
+  const r = answerTodo(readFileSync(todosFile, 'utf8'), id, answer || '', note, today);
+  saveUploads(ups);
+  writeFileSync(todosFile, r.text);
+  const title = r.todo.desc.split('\n')[0];
+  if (r.todo.type === '결정' || r.todo.type === '승인') appendFileSync(path.join(board, 'decisions.md'), `${today} — T${id} ${title} — ${r.full} (대시보드)\n`);
+  office({ log: `TODO T${id} 처리: ${r.full}` });
+  // 토큰(11-06 점검): 답이 몰려 오면 PM 세션 하나로 묶는다. 마지막 답 뒤 60초 동안 새 답이 없으면 시작.
+  // shortcut: 대기 중 서버가 재시작되면 묶음이 사라진다(답 자체는 todos.md에 저장됨). 자주 생기면 runDir에 대기 목록을 저장.
+  pendingAnswers.push(`- T${id} [${r.todo.type} · ${r.todo.by}] ${title} → ${r.full}`);
+  clearTimeout(answerTimer);
+  answerTimer = setTimeout(flushAnswers, ANSWER_BATCH_MS);
+  return r.full;
+}
+
+const ANSWER_BATCH_MS = 60e3;
+let pendingAnswers = [], answerTimer = null;
+function flushAnswers() {
+  const list = pendingAnswers; pendingAnswers = [];
+  if (!list.length) return;
+  startRun(`대표가 TODO에 답했습니다:\n${list.join('\n')}\n\n` +
+    'board/todos.md와 근거 파일을 확인하고, 이 답들을 반영해 남은 작업을 이어서 진행해. 서로 관계없는 답은 팀원을 동시에 불러 처리해. 대표가 할 일이 새로 생기면 todos.md에 형식대로 추가해.');
+}
+
+// A new CEO instruction (dashboard or Telegram). files = [{ name, data(base64) }].
+function startInstruction(prompt, files = []) {
+  if (!prompt?.trim()) throw new Error('지시가 비어 있음');
+  const ups = checkUploads(`run-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`, files);
+  saveUploads(ups);
+  startRun(prompt.trim() + (ups.length ? `\n\n대표 첨부 파일: ${ups.map((u) => u.rel).join(', ')}` : ''));
+}
+
+// Only files inside board/ are ever served.
+function safeBoard(rel) {
+  const p = path.resolve(root, rel);
+  return p.startsWith(board + path.sep) && existsSync(p) ? p : null;
+}
+
+const json = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
+const body = (req) => new Promise((ok) => { let s = ''; req.on('data', (d) => (s += d)); req.on('end', () => { try { ok(JSON.parse(s || '{}')); } catch { ok({}); } }); });
+
+// ---------- 대표 텔레그램: 알림 + 답장·지시·첨부 (tools/telegram.mjs) ----------
+const officeUrl = process.env.OFFICE_URL || `http://127.0.0.1:${port}`;
+const tgCfg = replay ? null : telegramConfig(root);
+const tg = tgCfg && createTelegram({
+  cfg: tgCfg, url: officeUrl, runDir, todos: () => todos().filter((t) => !t.done),
+  status: () => (runs.size ? `작업 ${runs.size}건 진행 중` : '진행 중인 작업 없음') + ` · 열린 TODO ${todos().filter((t) => !t.done).length}건\n${officeUrl}`,
+  onRun: (prompt, files) => startInstruction(`${prompt}\n\n(텔레그램으로 받은 지시)`, files),
+  onAnswer: (id, answer, note, files) => submitTodo(id, answer, note, files),
+  onCancel: () => { const n = runs.size; cancel(); return n; },
+});
+// New open TODOs (by id) since the server started. Existing ones at boot are not re-announced.
+let seenTodos = null;
+function checkTodos() {
+  let open;
+  try { open = todos().filter((t) => !t.done); } catch { return; }
+  const fresh = seenTodos ? open.filter((t) => !seenTodos.has(t.id)) : [];
+  seenTodos = new Set([...(seenTodos || []), ...open.map((t) => t.id)]);
+  for (const t of fresh) tg?.notifyTodo(t);
+}
+checkTodos();
+setInterval(checkTodos, 5000);
+console.log(tg ? '텔레그램: 오피스 봇으로 알림 + 답장·지시 받기' : '텔레그램: 꺼짐 (.office-telegram.env에 오피스 전용 봇 토큰 필요)');
+
+// Re-attach to runs that kept going while this server was down (finished ones are read to the end, then closed).
+for (const f of readdirSync(runDir).filter((f) => f.endsWith('.json'))) {
+  try { const meta = JSON.parse(readFileSync(path.join(runDir, f), 'utf8')); nextRun = Math.max(nextRun, meta.id + 1); attach(meta); } catch {}
+}
+
+http.createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  const p = url.pathname;
+  try {
+    if (p === '/' || p === '/map.mjs') {
+      res.writeHead(200, { 'content-type': p === '/' ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8' });
+      return res.end(readFileSync(path.join(here, p === '/' ? 'office.html' : 'map.mjs')));
+    }
+    if (p === '/api/events') {
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+      res.write(`data: ${JSON.stringify({ type: '_office', history: history.length, state: busy() ? 'running' : 'idle', runs: runs.size })}\n\n`);
+      for (const l of history) res.write(`data: ${JSON.stringify({ ...JSON.parse(l), _history: true })}\n\n`);
+      clients.add(res);
+      return req.on('close', () => clients.delete(res));
+    }
+    if (p === '/api/usage') return json(res, 200, usage(root));
+    if (p === '/api/agents') return json(res, 200, agents());
+    if (p === '/api/board') return json(res, 200, { files: listBoard(), todos: todos(), runs: runs.size });
+    if (p === '/api/file') {
+      const f = safeBoard(url.searchParams.get('path') || '');
+      if (!f) return json(res, 404, { error: 'not found' });
+      const img = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' }[path.extname(f).toLowerCase()];
+      res.writeHead(200, { 'content-type': img || 'text/plain; charset=utf-8' });
+      return res.end(readFileSync(f));
+    }
+    if (p.startsWith('/files/')) {   // 결과물 미리보기 (tools/files.mjs가 허용한 것만)
+      let rel; try { rel = decodeURIComponent(p.slice(7)); } catch { return json(res, 400, { error: 'bad path' }); }
+      const m = mediaFile(root, rel);
+      if (!m) return json(res, 404, { error: 'not found' });
+      const size = statSync(m.file).size, range = byteRange(req.headers.range, size);
+      const h = { 'content-type': m.type, 'x-content-type-options': 'nosniff', 'accept-ranges': 'bytes', 'cache-control': 'no-cache' };
+      // HTML·SVG scripts run in an opaque origin, so they cannot read the dashboard API as this origin.
+      if (/html|svg/.test(m.type)) h['content-security-policy'] = 'sandbox allow-scripts';
+      if (range === false) { res.writeHead(416, { 'content-range': `bytes */${size}` }); return res.end(); }
+      res.writeHead(range ? 206 : 200, { ...h, 'content-length': range ? range.end - range.start + 1 : size, ...(range && { 'content-range': `bytes ${range.start}-${range.end}/${size}` }) });
+      return req.method === 'HEAD' ? res.end() : createReadStream(m.file, range || {}).pipe(res);
+    }
+    // Sandboxed /files/ pages and other sites send cross-site requests; only the dashboard itself may POST.
+    if (req.method === 'POST' && (req.headers['sec-fetch-site'] || 'same-origin') !== 'same-origin') return json(res, 403, { error: 'forbidden' });
+    if (req.method === 'POST' && p === '/api/run') {
+      const { prompt, files } = await body(req);
+      try { startInstruction(prompt, Array.isArray(files) ? files : []); } catch (err) { return json(res, 400, { error: err.message }); }
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && p === '/api/cancel') { cancel(); return json(res, 200, { ok: true }); }
+    if (req.method === 'POST' && p === '/api/todo') {
+      const { id, answer, note, files } = await body(req);
+      try { submitTodo(Number(id), String(answer ?? ''), String(note ?? ''), Array.isArray(files) ? files : []); } catch (err) { return json(res, 400, { error: err.message }); }
+      return json(res, 200, { ok: true });
+    }
+    json(res, 404, { error: 'not found' });
+  } catch (err) {
+    json(res, 500, { error: err.message });
+  }
+}).listen(port, '127.0.0.1', () => console.log(`AI 오피스: http://127.0.0.1:${port}${replay ? '  (리플레이 모드)' : ''}`));

@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 오피스</title>
+<style>
+  :root { --bg:#dfe9f2; --panel:rgba(22,27,38,.92); --line:rgba(255,255,255,.09); --text:#e9edf4; --dim:#9aa4b5; --accent:#ffb547; --ok:#4cc38a; --bad:#ef6a6a; }
+  * { box-sizing:border-box; }
+  body { margin:0; height:100vh; overflow:hidden; background:var(--bg); font:14px/1.45 "Pretendard","Malgun Gothic",system-ui,sans-serif; color:var(--text); display:flex; }
+  #stage { position:relative; flex:1; min-width:0; }
+  #stage canvas { display:block; }
+  #labels { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+  .tag { position:absolute; transform:translate(-50%,-100%); text-align:center; white-space:nowrap; }
+  .tag b { display:inline-block; background:rgba(22,27,38,.85); color:#fff; padding:2px 8px; border-radius:6px; font-size:12px; }
+  .tag i { display:block; max-width:170px; margin-left:auto; margin-right:auto; overflow:hidden; text-overflow:ellipsis; font-style:normal; font-size:11px; color:#26303f; margin-top:2px; text-shadow:0 1px 0 rgba(255,255,255,.7); }
+  .tag .bubble { display:none; margin:0 auto 4px; max-width:220px; overflow:hidden; text-overflow:ellipsis; background:#fff; color:#1b2230; padding:4px 9px; border-radius:10px; font-size:12px; box-shadow:0 2px 6px rgba(0,0,0,.18); }
+  .tag .bubble.on { display:block; }
+  #bell { font:inherit; font-size:12px; font-weight:500; padding:3px 9px; border-radius:10px; border:1px solid rgba(38,48,63,.25); background:rgba(255,255,255,.75); color:#26303f; cursor:pointer; vertical-align:2px; }
+  #bell.on { background:#26303f; color:#ffb547; border-color:#26303f; }
+  .tag.rest b { font-size:11px; padding:1px 6px; background:rgba(22,27,38,.7); }
+  .tag.rest i { display:none; }
+  #hud { position:absolute; left:16px; top:14px; color:#1b2230; }
+  #hud h1 { margin:0 0 6px; font-size:18px; }
+  .gauge { display:flex; align-items:center; gap:6px; font-size:12px; margin-top:3px; }
+  .gauge div { width:120px; height:8px; background:rgba(0,0,0,.12); border-radius:4px; overflow:hidden; }
+  .gauge span { display:block; height:100%; width:0; background:#3a7bd5; transition:width .4s; }
+  #state { display:inline-block; padding:2px 8px; border-radius:10px; background:#9aa4b5; color:#fff; font-size:12px; }
+  #state.running { background:var(--accent); color:#1b2230; }
+  aside { width:380px; flex:none; background:var(--panel); border-left:1px solid var(--line); display:flex; flex-direction:column; overflow-y:auto; }
+  section { padding:14px 16px; border-bottom:1px solid var(--line); }
+  section h2 { margin:0 0 8px; font-size:13px; color:var(--dim); font-weight:600; display:flex; justify-content:space-between; }
+  textarea { width:100%; height:84px; resize:vertical; background:#0f131b; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit; }
+  button { font:inherit; border:0; border-radius:7px; padding:7px 12px; cursor:pointer; background:#2c3546; color:var(--text); }
+  button.primary { background:var(--accent); color:#1b2230; font-weight:700; }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:8px; margin-top:8px; }
+  .list { margin:0; padding:0; list-style:none; max-height:200px; overflow:auto; }
+  .list li { padding:6px 0; border-bottom:1px dashed var(--line); font-size:13px; }
+  .list li:last-child { border:0; }
+  .list a { color:#8ec5ff; cursor:pointer; text-decoration:none; }
+  .list a .dir { color:var(--dim); font-size:11px; margin-right:2px; }
+  .list .meta { color:var(--dim); font-size:11px; }
+  .more { display:none; }
+  #todos { max-height:42vh; overflow:auto; display:flex; flex-direction:column; gap:10px; }
+  .todo { background:#0f131b; border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:8px; padding:10px 12px; }
+  .todo .hd { display:flex; gap:6px; align-items:center; font-size:11px; color:var(--dim); margin-bottom:4px; }
+  .todo .ty { background:var(--accent); color:#1b2230; border-radius:4px; padding:0 6px; font-weight:700; }
+  .todo .ty.입력 { background:#8ec5ff; } .todo .ty.실행 { background:#c9a7ff; } .todo .ty.승인 { background:var(--ok); }
+  .todo .desc { white-space:pre-wrap; font-size:13px; }
+  .todo .refs { margin-top:6px; font-size:12px; overflow-wrap:anywhere; } .todo .refs a { color:#8ec5ff; cursor:pointer; margin-right:6px; }
+  .todo .opts { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .todo .opts button.sel { background:var(--accent); color:#1b2230; font-weight:700; }
+  .todo textarea { height:56px; margin-top:8px; }
+  .todo input { width:100%; margin-top:8px; background:#161b25; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; font-size:12px; }
+  .todo .ft { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+  .todo .files { margin-top:8px; font-size:12px; color:var(--dim); }
+  .todo .files label { color:#8ec5ff; cursor:pointer; }
+  .todo .files input { display:none; }
+  #runfiles { margin-top:6px; font-size:12px; color:var(--dim); } #runfiles label { color:#8ec5ff; cursor:pointer; } #runfiles input { display:none; }
+  .drop { outline:2px dashed var(--accent); outline-offset:2px; }
+  .todo .err { color:var(--bad); font-size:12px; }
+  #usage { width:100%; border-collapse:collapse; font-size:12px; }
+  #usage th { color:var(--dim); font-weight:500; text-align:right; padding:2px 4px; }
+  #usage td { text-align:right; padding:4px; border-top:1px dashed var(--line); font-variant-numeric:tabular-nums; }
+  #usage th:first-child, #usage td:first-child { text-align:left; }
+  #usage small { display:block; color:var(--dim); font-size:10px; }
+  /* 대화 내역: 누가 / 무엇을. 도구 사용은 한 줄로 눌러 둔다 */
+  #chat { flex:1 0 300px; min-height:300px; display:flex; flex-direction:column; border-bottom:0; padding-bottom:0; }
+  #chat h2 { align-items:center; }
+  #chat h2 button { padding:2px 8px; font-size:12px; background:transparent; color:#8ec5ff; }
+  #log { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:2px; padding-bottom:14px; overscroll-behavior:contain; }
+  #log .empty { color:var(--dim); font-size:12px; }
+  .msg { display:grid; grid-template-columns:auto 1fr; column-gap:8px; padding:6px 0; font-size:13px; line-height:1.55; }
+  .msg time { grid-row:span 2; color:var(--dim); font:11px/1.9 ui-monospace,Consolas,monospace; font-variant-numeric:tabular-nums; }
+  .msg b { font-size:12px; font-weight:600; color:var(--dim); }
+  .msg p { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .msg.ceo p { background:#2a2418; border:1px solid rgba(255,181,71,.28); border-radius:4px 10px 10px 10px; padding:6px 10px; margin-top:2px; }
+  .msg.ceo b { color:var(--accent); }
+  .msg.pm b, .msg.go b { color:#8ec5ff; }
+  .msg.done b { color:var(--ok); }
+  .msg.tool { padding:1px 0; font-size:12px; color:var(--dim); }
+  .msg.tool b { display:none; }
+  .msg.tool p { grid-row:span 2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .msg.sys p { color:var(--dim); font-size:12px; }
+  .msg.bad p { color:var(--bad); }
+  .msg a { color:#8ec5ff; cursor:pointer; }
+  .msg code { font:.9em ui-monospace,Consolas,monospace; color:#d6dce6; background:rgba(255,255,255,.07); border-radius:3px; padding:0 .3em; }
+  .msg strong { color:#fff; }
+  /* 대화 내역 크게 보기 = 전체 화면 */
+  #chat.full { position:fixed; inset:0; z-index:8; background:#161b25; padding:max(14px, env(safe-area-inset-top)) max(16px, calc((100vw - 760px) / 2)) 0; }
+  #chat.full #log { max-height:none; }
+  #chat.full .msg { font-size:15px; } #chat.full .msg.tool { font-size:13px; }
+  #viewer { position:fixed; inset:0; background:rgba(10,13,20,.6); display:none; align-items:center; justify-content:center; z-index:9; }
+  #viewer.on { display:flex; }
+  #viewer article { width:min(820px,94vw); max-height:88vh; display:flex; flex-direction:column; background:#fbfaf6; color:#1b2230; border-radius:6px; box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; }
+  #viewer header { display:flex; gap:12px; justify-content:space-between; align-items:center; padding:10px 12px 10px 20px; border-bottom:1px solid #e4e0d6; font-weight:700; }
+  #vtitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
+  #vtitle small { display:block; font-weight:400; color:#6b6457; font-size:11px; }
+  #vbody { overflow:auto; padding:22px clamp(18px,5vw,44px) 40px; overscroll-behavior:contain; }
+  /* 읽기용 본문 */
+  .doc { max-width:68ch; margin:0 auto; font:16px/1.75 "Pretendard","Malgun Gothic",system-ui,sans-serif; word-break:keep-all; overflow-wrap:anywhere; }
+  .doc > :first-child { margin-top:0; }
+  .doc h1 { font-size:1.45em; line-height:1.35; margin:0 0 .8em; text-wrap:balance; }
+  .doc h2 { font-size:1.2em; line-height:1.4; margin:2em 0 .6em; padding-bottom:.3em; border-bottom:1px solid #e4e0d6; }
+  .doc h3 { font-size:1.05em; margin:1.6em 0 .4em; }
+  .doc h4 { font-size:1em; margin:1.3em 0 .3em; color:#4a4438; }
+  .doc p { margin:.7em 0; }
+  .doc ul, .doc ol { margin:.6em 0; padding-left:1.3em; }
+  .doc li { margin:.25em 0; }
+  .doc li > ul, .doc li > ol { margin:.2em 0; }
+  .doc strong { font-weight:700; color:#11161f; }
+  .doc code { font:.86em/1.5 ui-monospace,Consolas,monospace; background:#efebe1; border-radius:4px; padding:.1em .35em; overflow-wrap:anywhere; }
+  .doc pre { background:#1d222c; color:#e9edf4; border-radius:6px; padding:12px 14px; overflow:auto; font:13px/1.55 ui-monospace,Consolas,monospace; }
+  .doc pre code { background:none; padding:0; color:inherit; }
+  .doc blockquote { margin:1em 0; padding:.2em 0 .2em 1em; border-left:1px solid #c9c1b0; color:#4a4438; }
+  .doc hr { border:0; border-top:1px solid #e4e0d6; margin:2em 0; }
+  .doc a { color:#1f5fbf; }
+  .doc img { max-width:100%; height:auto; border-radius:4px; }
+  .doc .tbl { overflow-x:auto; margin:1em 0; }
+  .doc table { border-collapse:collapse; font-size:14px; line-height:1.55; min-width:100%; }
+  .doc th, .doc td { border:1px solid #e4e0d6; padding:7px 10px; text-align:left; vertical-align:top; min-width:7em; }
+  .doc th { background:#f2eee4; font-weight:600; }
+  .doc.plain { white-space:pre-wrap; font:13px/1.6 ui-monospace,Consolas,monospace; max-width:none; }
+  /* 휴대폰: 오피스 위, 패널 아래로 쌓고 패널만 스크롤 */
+  @media (max-width: 760px) {
+    /* 페이지 하나만 스크롤한다. 안쪽 스크롤 상자가 터치를 삼켜 패널이 잘려 보이던 문제 */
+    body { display:block; height:auto; min-height:100svh; overflow:visible; background:#161b25; }
+    body:has(#chat.full), body:has(#viewer.on) { overflow:hidden; }
+    #stage { height:40svh; }
+    aside { width:auto; border-left:0; border-top:1px solid var(--line); overflow:visible; padding-bottom:env(safe-area-inset-bottom); }
+    section:has(#todos) { order:-1; }
+    #todos, .list { max-height:none; overflow:visible; }
+    .list:not(.open) li:nth-child(n+9) { display:none; }
+    .more { display:block; width:100%; margin-top:8px; background:transparent; border:1px solid var(--line); color:#8ec5ff; font-size:13px; }
+    .more[hidden] { display:none; }
+    #chat { flex:none; min-height:0; }
+    #log { flex:none; height:70svh; overscroll-behavior:auto; }
+    #chat.full #log { height:auto; overscroll-behavior:contain; }
+    textarea, .todo input { font-size:16px; }
+    .list li { padding:0; }
+    .list a { display:block; padding:11px 0; }
+    .list .meta { display:none; }
+    #viewer { align-items:stretch; }
+    #viewer article { width:100%; max-height:none; border-radius:0; }
+    #viewer header { padding:max(8px, env(safe-area-inset-top)) 8px 8px 16px; }
+    #vbody { flex:1; padding:18px 18px calc(40px + env(safe-area-inset-bottom)); }
+    .doc { font-size:16.5px; }
+    #hud h1 { font-size:15px; }
+    .tag b { font-size:11px; }
+    .tag i { display:none; }
+    button { padding:9px 14px; }
+  }
+  #viewer header button { background:#e4e0d6; color:#1b2230; min-height:40px; flex:none; }
+  button:focus-visible, a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  /* 결과물 미리보기: 본문 속 저장소 경로(이미지·동영상·HTML) */
+  .media img { display:block; max-width:min(100%,260px); max-height:160px; margin:4px 0; border-radius:4px; cursor:zoom-in; background:#0003; }
+  .media video { display:block; max-width:100%; max-height:260px; margin:4px 0; border-radius:4px; background:#000; }
+  .media button { font-size:12px; padding:1px 8px; margin-left:4px; }
+  .media.missing :is(img,video,button) { display:none; }
+  .doc .media img { max-width:100%; max-height:360px; }
+  #zoom { width:min(96vw,1400px); max-width:none; max-height:96vh; padding:8px; border:0; border-radius:8px; background:#11151d; color:var(--text); }
+  #zoom::backdrop { background:rgba(0,0,0,.8); }
+  #zoom header { display:flex; gap:12px; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:13px; }
+  #zoom a { color:#8ec5ff; }
+  #zoom img { display:block; max-width:100%; max-height:84vh; margin:auto; cursor:zoom-out; }
+  #zoom iframe { display:block; width:100%; height:84vh; border:0; background:#fff; border-radius:4px; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
+</head>
+<body>
+<div id="stage">
+  <div id="labels"></div>
+  <div id="hud">
+    <h1>AI 오피스 <span id="state">대기</span> <button id="bell" title="TODO·보고 알림 소리 / 브라우저 알림">🔔 알림 켜기</button></h1>
+    <div class="gauge">5시간 <div><span id="g5"></span></div> <em id="t5">–</em></div>
+    <div class="gauge">7일&nbsp;&nbsp;&nbsp; <div><span id="g7"></span></div> <em id="t7">–</em></div>
+  </div>
+</div>
+<aside>
+  <section>
+    <h2>지시하기 <span>Ctrl+Enter</span></h2>
+    <textarea id="prompt" placeholder="예) 경쟁 서비스를 research에게 조사시키고, plan이 가격 선택지를 만들어 줘"></textarea>
+    <div id="runfiles"><label>📎 파일 첨부 (끌어다 놓아도 됨)<input type="file" multiple id="runpick"></label> <span id="runnames"></span></div>
+    <div class="row"><button class="primary" id="send">지시하기</button><button id="cancel" disabled>취소</button></div>
+  </section>
+  <section><h2>대표 TODO <span id="ntodo">0</span></h2><div id="todos"><div class="meta">할 일 없음</div></div></section>
+  <section><h2>직원별 토큰 <span title="입력+캐시 읽기+출력. 아래 작은 숫자는 출력">출력은 작은 숫자</span></h2><table id="usage"><tr><td class="meta">집계 중…</td></tr></table></section>
+  <section><h2>보고함 <span id="nrep">0</span></h2><ul class="list" id="reports"><li class="meta">아직 보고 없음</li></ul><button class="more" data-l="reports" hidden></button></section>
+  <section><h2>문서 (board/) <span id="ndocs">0</span></h2><ul class="list" id="docs"></ul><button class="more" data-l="docs" hidden></button></section>
+  <section id="chat"><h2>대화 내역 <button id="chatfull">크게 보기</button></h2><div id="log" aria-live="polite"><div class="empty">지시를 보내면 PM과 직원들의 대화가 여기에 쌓입니다.</div></div></section>
+</aside>
+<div id="viewer" role="dialog" aria-modal="true" aria-labelledby="vtitle"><article><header><span id="vtitle"></span><button id="vclose">닫기</button></header><div id="vbody"></div></article></div>
+<dialog id="zoom" aria-labelledby="ztitle"><header><a id="ztitle" target="_blank" rel="noopener"></a><button id="zclose">닫기</button></header><div id="zbody"></div></dialog>
+
+<script type="module">
+import * as THREE from 'three';
+import { createMapper } from '/map.mjs';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// kind: ceo | pm | go | tool | done | sys | bad. who = 말한 사람. Keeps the last 400 lines.
+let evTime = null;   // time of the server event being handled right now (history replays keep their real time)
+const hhmm = (t) => { const d = new Date(t), now = new Date(); return (d.toDateString() === now.toDateString() ? '' : `${d.getMonth() + 1}/${d.getDate()} `) + d.toTimeString().slice(0, 5); };
+function log(text, kind = 'sys', who = '', report = null) {
+  const el = $('log');
+  const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  el.querySelector('.empty')?.remove();
+  const m = document.createElement('div');
+  m.className = 'msg ' + kind;
+  m.dataset.raw = text.trim().slice(0, 60);
+  m.innerHTML = `<time>${hhmm(evTime ?? Date.now())}</time><b>${esc(who)}</b><p>${inline(text, kind !== 'tool')}${report != null ? ` <a data-r="${report}">전체 보기</a>` : ''}</p>`;
+  el.append(m);
+  while (el.children.length > 400) el.firstElementChild.remove();
+  if (stick) el.scrollTop = el.scrollHeight;
+}
+
+// ---------- scene ----------
+const stage = $('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#dfe9f2');
+const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 200);
+scene.add(new THREE.HemisphereLight('#ffffff', '#b8a993', 1.1));
+const sun = new THREE.DirectionalLight('#fff4e0', 1.6);
+sun.position.set(8, 16, 10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+scene.add(sun);
+
+const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.85, ...extra });
+const mesh = (geo, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; return o; };
+const box = (w, h, d, m, x, y, z) => mesh(new THREE.BoxGeometry(w, h, d), m, x, y, z);
+
+const COLORS = ['#4c8bf5', '#9b6cf0', '#1fb28a', '#f08a3c', '#e5577a', '#2bb3c9', '#c2a12b', '#6d8a3a'];
+const SKIN = ['#f1c9a5', '#e0b08a', '#c98f68', '#f5d7bd'];
+
+function character(color, i) {
+  const g = new THREE.Group();
+  const cloth = mat(color), dark = mat('#2d3442'), skin = mat(SKIN[i % SKIN.length]);
+  const limb = (w, h, m, x, y) => { const p = new THREE.Group(); p.position.set(x, y, 0); p.add(box(w, h, w + 0.02, m, 0, -h / 2, 0)); g.add(p); return p; };
+  const legL = limb(0.17, 0.55, dark, -0.13, 0.55), legR = limb(0.17, 0.55, dark, 0.13, 0.55);
+  g.add(mesh(new THREE.CylinderGeometry(0.34, 0.42, 0.8, 7), cloth, 0, 0.95, 0));
+  const armL = limb(0.13, 0.55, cloth, -0.44, 1.3), armR = limb(0.13, 0.55, cloth, 0.44, 1.3);
+  const head = mesh(new THREE.IcosahedronGeometry(0.3, 0), skin, 0, 1.68, 0);
+  const hair = mesh(new THREE.IcosahedronGeometry(0.32, 0), mat(['#2a1d14', '#4a2f1d', '#151515', '#7a4b26'][i % 4]), 0, 1.8, -0.04);
+  hair.scale.set(1, 0.6, 1);
+  g.add(head, hair);
+  const paper = box(0.36, 0.02, 0.46, mat('#fbfaf3'), 0, 1.05, 0.48);
+  paper.visible = false;
+  g.add(paper);
+  const mug = box(0.13, 0.15, 0.13, mat('#f4efe6'), 0, -0.56, 0.1);   // 휴게실 커피
+  mug.visible = false;
+  armR.add(mug);
+  return { g, legL, legR, armL, armR, head, paper, mug };
+}
+
+function station(isBoss, k = 0) {
+  const s = new THREE.Group();
+  const wood = mat(isBoss ? '#6e4426' : '#e3d3b8'), metal = mat('#59606d'), seat = mat(isBoss ? '#2a2018' : '#3b4252');
+  const w = isBoss ? 2.3 : 1.7;
+  s.add(box(w, 0.08, 0.9, wood, 0, 0.8, 0.95));
+  if (isBoss) s.add(box(w - 0.1, 0.7, 0.06, wood, 0, 0.42, 1.36));     // 대표 책상 앞판
+  else for (const x of [-1, 1]) s.add(box(0.06, 0.78, 0.84, mat('#c9cdd3'), x * (w / 2 - 0.05), 0.39, 0.95));   // 판 다리
+  s.add(box(w + 0.1, 0.5, 0.05, mat(isBoss ? '#5a3a22' : '#7d8da1'), 0, 1.1, 1.43));   // 파티션
+  s.add(box(0.55, 0.08, 0.52, seat, 0, 0.47, 0.02));                   // chair seat
+  s.add(box(0.52, isBoss ? 0.95 : 0.62, 0.08, seat, 0, isBoss ? 0.98 : 0.82, -0.24));   // chair back (대표는 하이백)
+  s.add(box(0.07, 0.4, 0.07, metal, 0, 0.24, 0.02));
+  for (let i = 0; i < 5; i++) {                                         // 5발 바퀴 받침
+    const leg = box(0.32, 0.04, 0.06, metal, 0, 0.05, 0); leg.position.set(Math.cos(i * 1.257) * 0.16, 0.05, 0.02 + Math.sin(i * 1.257) * 0.16); leg.rotation.y = -i * 1.257; s.add(leg);
+  }
+  s.add(box(0.5, 0.025, 0.15, mat('#2d3442'), 0, 0.855, 0.72));         // keyboard
+  s.add(box(0.07, 0.03, 0.11, mat('#2d3442'), 0.36, 0.855, 0.72));      // mouse
+  const side = k % 2 ? -1 : 1, x0 = side * (w / 2 - 0.3);
+  if (k % 3 === 0) s.add(box(0.11, 0.13, 0.11, mat(['#e5577a', '#f4efe6', '#2bb3c9'][k % 3 === 0 ? (k / 3) % 3 : 0]), x0, 0.91, 0.65));   // mug
+  if (k % 3 === 1) { s.add(mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.12, 6), mat('#c96f4a'), x0, 0.9, 1.15)); s.add(mesh(new THREE.IcosahedronGeometry(0.13, 0), mat('#4f9a5a'), x0, 1.05, 1.15)); }   // 화분
+  if (k % 3 === 2) ['#4c8bf5', '#e5577a', '#c2a12b'].forEach((c, i) => s.add(box(0.26, 0.05, 0.34, mat(c), x0, 0.87 + i * 0.05, 1.1)));   // 책 더미
+  if (isBoss) {
+    s.add(mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.04, 8), metal, 0.85, 0.86, 1.15));       // 스탠드
+    s.add(box(0.03, 0.4, 0.03, metal, 0.85, 1.06, 1.15));
+    s.add(mesh(new THREE.ConeGeometry(0.15, 0.16, 8, 1, true), mat('#2f7a4f', { side: THREE.DoubleSide }), 0.85, 1.28, 1.1));
+    s.add(box(0.4, 0.09, 0.04, mat('#d9b25a'), 0.35, 0.89, 0.55));     // 명패
+  }
+  s.add(box(0.75, 0.48, 0.05, mat('#20242d'), 0, 1.15, 1.2));           // monitor
+  s.add(box(0.08, 0.2, 0.08, metal, 0, 0.92, 1.22));
+  const screen = mesh(new THREE.PlaneGeometry(0.68, 0.4), new THREE.MeshStandardMaterial({ color: '#0d1117', emissive: '#3a7bd5', emissiveIntensity: 0.15 }), 0, 1.15, 1.17);
+  screen.rotation.y = Math.PI;
+  s.add(screen);
+  if (isBoss) { s.add(box(0.6, 0.06, 0.45, mat('#d8c9a5'), -0.75, 0.87, 0.85)); }  // 결재함
+  return { s, screen };
+}
+
+// ---------- office layout ----------
+const people = new Map();   // name -> person
+const papers = [];          // clickable paper meshes
+let R = 6, RW = 7;
+
+function seatAngle(k, n) {
+  const span = (4 * Math.PI) / 3, side = Math.ceil((n - 1) / 2), step = side ? span / 2 / side : 0;
+  const order = k === 0 ? 0 : (k % 2 ? 1 : -1) * Math.ceil(k / 2);  // 0, +1, -1, +2, -2 …
+  return -Math.PI / 2 + order * step;
+}
+
+function buildOffice(list) {
+  const n = list.length;
+  R = Math.max(6, (n * 3.3) / ((4 * Math.PI) / 3));
+  RW = R + 1.0;
+  const floor = mesh(new THREE.CircleGeometry(RW + 4, 24), mat('#cfc7b8')); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+  const sc = sun.shadow.camera; sc.left = sc.bottom = -(RW + 5); sc.right = sc.top = RW + 5; sc.updateProjectionMatrix();
+  const rug = mesh(new THREE.CircleGeometry(R - 2.4, 24), mat('#8a9bb0'), 0, 0.01, 0); rug.rotation.x = -Math.PI / 2; scene.add(rug);
+  buildRoom();
+  buildLounge();
+  list.forEach((p, k) => {
+    const theta = seatAngle(k, n);
+    const { s, screen } = station(p.name === 'ceo', k);
+    const x = Math.cos(theta) * R, z = Math.sin(theta) * R;
+    s.position.set(x, 0, z);
+    s.rotation.y = Math.atan2(-x, -z);
+    scene.add(s);
+    const c = character(p.name === 'ceo' ? '#c9373f' : COLORS[k % COLORS.length], k);
+    c.g.position.copy(s.position);
+    c.g.rotation.y = s.rotation.y;
+    scene.add(c.g);
+    const tag = document.createElement('div');
+    tag.className = 'tag';
+    tag.innerHTML = `<div class="bubble"></div><b>${esc(p.title)}</b><i>${esc(p.sub)}</i>`;
+    $('labels').append(tag);
+    people.set(p.name, { ...p, theta, s, screen, c, tag, state: 'sit', status: '대기', path: [], carry: [], stack: [], queue: Promise.resolve(), bubbleUntil: 0, working: 0, pending: 0, waiters: [], seed: k * 1.7 });
+  });
+}
+
+// ---------- behaviours ----------
+const world = (p, x, y, z) => p.s.localToWorld(new THREE.Vector3(x, y, z));
+const angleOf = (v) => Math.atan2(v.z, v.x);
+const ring = (t, r = RW) => new THREE.Vector3(Math.cos(t) * r, 0, Math.sin(t) * r);
+
+function route(from, toTheta, final) {
+  const a0 = angleOf(from);
+  let d = toTheta - a0;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  const pts = [ring(a0)];
+  const steps = Math.max(1, Math.ceil(Math.abs(d) / 0.15));
+  for (let i = 1; i <= steps; i++) pts.push(ring(a0 + (d * i) / steps));
+  pts.push(final);
+  return pts;
+}
+
+const walk = (p, target) => new Promise((done) => {
+  p.state = 'walk'; p.at = 'moving';
+  p.path = route(p.c.g.position, angleOf(target), target);
+  p.arrive = done;
+});
+const visit = (p, host) => walk(p, world(host, host.name === 'ceo' ? -1.3 : 1.3, 0, 0.35));   // 상대 책상 옆 (대표는 결재함 쪽)
+const goHome = async (p) => { await walk(p, p.s.position.clone()); p.state = 'sit'; p.c.g.rotation.y = p.s.rotation.y; };
+// When someone's queued animations run out, everyone re-picks where they should be.
+const job = (p, fn) => { p.pending++; return (p.queue = p.queue.then(fn).catch((e) => log('애니메이션 오류: ' + e.message)).finally(() => { p.pending--; settleAll(); })); };
+const setStatus = (p, s) => { p.status = s; p.tag.querySelector('i').textContent = `${p.sub} · ${s}`; };
+function bubble(p, text) {
+  const b = p.tag.querySelector('.bubble');
+  b.textContent = text; b.classList.add('on');
+  p.bubbleUntil = performance.now() + 3500;
+}
+
+function newPaper(meta) {
+  const m = box(0.36, 0.02, 0.46, mat(meta.report ? '#fff1c2' : '#fbfaf3'));
+  m.userData = meta;
+  papers.push(m);
+  scene.add(m);
+  return m;
+}
+function placeStack(host) {
+  const base = host.name === 'ceo' ? [-0.75, 0.92, 0.85] : [0.55, 0.86, 0.85];
+  host.stack.forEach((m, i) => {
+    host.s.add(m);
+    m.position.set(base[0] + ((i * 37) % 5) * 0.01, base[1] + i * 0.025, base[2]);
+    m.rotation.set(0, ((i * 53) % 7) * 0.04, 0);
+  });
+}
+function carry(p, list) { p.carry = list; p.c.paper.visible = list.length > 0; list.forEach((m) => m.removeFromParent()); }
+function drop(p, host) { host.stack.push(...p.carry); placeStack(host); p.carry = []; p.c.paper.visible = false; }
+
+// ---------- 사무실 인테리어 ----------
+// Things along the back walls are built facing local +z, then stood at angle a facing the middle.
+function standAt(o, a, r, y = 0) { o.position.set(Math.cos(a) * r, y, Math.sin(a) * r); o.rotation.y = -a - Math.PI / 2; scene.add(o); return o; }
+function group(...parts) { const g = new THREE.Group(); g.add(...parts); return g; }
+function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d')); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+let clockHands = null;
+function buildRoom() {
+  const RWALL = RW + 2.7, H = 2.7, wall = mat('#eef0f2'), trim = mat('#9aa3ad');
+  // walls round the back half; the front stays open for the camera
+  const a0 = Math.PI + 0.12, a1 = 2 * Math.PI - 0.12, n = 12, da = (a1 - a0) / n;
+  for (let i = 0; i < n; i++) {
+    const a = a0 + da * (i + 0.5), len = 2 * RWALL * Math.sin(da / 2) + 0.06;
+    standAt(box(len, H, 0.2, wall), a, RWALL, H / 2);
+    standAt(box(len, 0.12, 0.24, trim), a, RWALL - 0.01, 0.06);                         // 걸레받이
+    if (i % 3 === 1 || Math.abs(a - 1.5 * Math.PI) < da) continue;                     // 벽면 몇 칸(대표 뒤 간판 자리 포함)은 비워 두고 창문
+    const win = group(box(len * 0.78, 1.3, 0.04, mat('#bfe0f5', { emissive: '#9fd0f0', emissiveIntensity: 0.35 }), 0, 0, 0),
+      box(len * 0.82, 0.07, 0.07, trim, 0, 0.66, 0), box(len * 0.82, 0.07, 0.07, trim, 0, -0.66, 0), box(0.06, 1.3, 0.07, trim, 0, 0, 0));
+    standAt(win, a, RWALL - 0.12, 1.65);
+  }
+  // company sign + clock behind the CEO
+  const sign = mesh(new THREE.PlaneGeometry(2.6, 0.62), new THREE.MeshStandardMaterial({ map: canvasTex(512, 122, (g) => {
+    g.fillStyle = '#1b2230'; g.fillRect(0, 0, 512, 122); g.fillStyle = '#ffb547'; g.font = 'bold 64px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('AI OFFICE', 256, 64);
+  }) }));
+  standAt(sign, -Math.PI / 2, RWALL - 0.12, 1.85);
+  const face = mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.05, 20), mat('#fbfaf6'), 0, 0, 0); face.rotation.x = Math.PI / 2;
+  const rim = mesh(new THREE.TorusGeometry(0.28, 0.035, 6, 20), mat('#2d3442'), 0, 0, 0);
+  const hour = box(0.035, 0.15, 0.02, mat('#1b2230'), 0, 0.07, 0.04), minute = box(0.025, 0.23, 0.02, mat('#1b2230'), 0, 0.11, 0.05);
+  const hp = group(hour), mp = group(minute); hp.position.z = mp.position.z = 0.0;
+  clockHands = { hp, mp };
+  standAt(group(face, rim, hp, mp), -Math.PI / 2 + 0.3, RWALL - 0.14, 2.05);
+  // furniture along the walls
+  const RF = RWALL - 0.55;
+  const shelf = () => { const g = group(box(1.4, 2.0, 0.42, mat('#7a5537'), 0, 1.0, 0));
+    for (let r = 0; r < 4; r++) { g.add(box(1.3, 0.04, 0.4, mat('#5e4029'), 0, 0.3 + r * 0.48, 0.02));
+      for (let b = 0; b < 7; b++) if ((b * 7 + r * 3) % 5) g.add(box(0.13, 0.3 + ((b + r) % 3) * 0.05, 0.3, mat(COLORS[(b + r * 2) % COLORS.length]), -0.55 + b * 0.17, 0.47 + r * 0.48, 0.04)); }
+    return g; };
+  const cabinet = () => { const g = group(box(0.6, 1.2, 0.6, mat('#9aa3ad'), 0, 0.6, 0));
+    for (let d = 0; d < 3; d++) g.add(box(0.5, 0.33, 0.02, mat('#b3bbc4'), 0, 0.22 + d * 0.38, 0.31), box(0.16, 0.03, 0.03, mat('#59606d'), 0, 0.3 + d * 0.38, 0.33));
+    return g; };
+  const cooler = () => group(box(0.42, 1.0, 0.42, mat('#f4f5f7'), 0, 0.5, 0), mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.42, 10), mat('#8fc9ef', { transparent: true, opacity: 0.75 }), 0, 1.22, 0),
+    box(0.08, 0.06, 0.06, mat('#4c8bf5'), -0.09, 0.78, 0.22), box(0.08, 0.06, 0.06, mat('#ef6a6a'), 0.09, 0.78, 0.22));
+  const printer = () => group(box(0.9, 0.72, 0.6, mat('#59606d'), 0, 0.36, 0), box(0.75, 0.34, 0.52, mat('#e8eaed'), 0, 0.89, 0),
+    box(0.4, 0.02, 0.3, mat('#fbfaf3'), 0, 1.07, 0.06), box(0.12, 0.04, 0.04, mat('#3a7bd5', { emissive: '#3a7bd5', emissiveIntensity: 0.6 }), 0.25, 0.95, 0.27));
+  const plant = (h = 1.6) => group(mesh(new THREE.CylinderGeometry(0.26, 0.2, 0.45, 8), mat('#f4efe6'), 0, 0.22, 0), box(0.05, h * 0.5, 0.05, mat('#7a5537'), 0, 0.45 + h * 0.25, 0),
+    mesh(new THREE.IcosahedronGeometry(0.42, 0), mat('#3f8a4e'), 0, 0.45 + h * 0.6, 0), mesh(new THREE.IcosahedronGeometry(0.32, 0), mat('#5fae68'), 0.18, 0.45 + h * 0.42, 0.1));
+  const kanban = () => { const g = group(box(2.2, 1.25, 0.05, mat('#fbfaf6'), 0, 1.55, 0), box(2.3, 0.06, 0.12, trim, 0, 0.9, 0.04));
+    ['#ffd76a', '#9fe0c0', '#ffb3c1', '#a8c8ff'].forEach((c, col) => { g.add(box(0.02, 1.1, 0.01, mat('#c9cdd3'), -1.1 + (col + 1) * 0.55, 1.55, 0.03));
+      for (let r = 0; r < 4 - col % 2; r++) g.add(box(0.36, 0.2, 0.015, mat(c), -0.82 + col * 0.55, 1.95 - r * 0.27, 0.035)); });
+    return g; };
+  const spots = [[Math.PI + 0.32, shelf()], [Math.PI + 0.55, cooler()], [Math.PI + 0.85, kanban()], [Math.PI + 1.17, plant()],
+    [2 * Math.PI - 1.17, plant()], [2 * Math.PI - 0.9, printer()], [2 * Math.PI - 0.7, cabinet()], [2 * Math.PI - 0.58, cabinet()], [2 * Math.PI - 0.32, shelf()]];
+  for (const [a, o] of spots) standAt(o, a, RF);
+  // credenza behind the CEO
+  standAt(group(box(2.2, 0.75, 0.5, mat('#6e4426'), 0, 0.38, 0), box(0.3, 0.4, 0.05, mat('#d9b25a'), -0.5, 0.95, 0), plant(0.6)), -Math.PI / 2, RF);
+  // meeting table in the middle
+  const mt = mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.07, 24), mat('#e3d3b8'), 0, 0.76, 0); mt.scale.set(1.5, 1, 0.85); scene.add(mt);
+  scene.add(mesh(new THREE.CylinderGeometry(0.12, 0.25, 0.72, 8), mat('#59606d'), 0, 0.36, 0));
+  for (let i = 0; i < 6; i++) {
+    const t = (i / 6) * Math.PI * 2 + Math.PI / 6, x = Math.cos(t) * 2.0, z = Math.sin(t) * 1.3;
+    const ch = group(box(0.46, 0.07, 0.44, mat('#3b4252'), 0, 0.47, 0), box(0.44, 0.48, 0.07, mat('#3b4252'), 0, 0.75, -0.22), box(0.06, 0.44, 0.06, mat('#59606d'), 0, 0.22, 0));
+    ch.position.set(x, 0, z); ch.rotation.y = Math.atan2(-x, -z); scene.add(ch);
+  }
+  scene.add(box(0.42, 0.02, 0.3, mat('#2d3442'), -0.5, 0.81, 0.1), box(0.36, 0.02, 0.46, mat('#fbfaf3'), 0.5, 0.805, -0.1), box(0.11, 0.13, 0.11, mat('#f4efe6'), 0.1, 0.86, 0.35));
+  const lid = box(0.42, 0.28, 0.02, mat('#2d3442'), -0.5, 0.95, -0.05); lid.rotation.x = -0.25; scene.add(lid);
+}
+
+// ---------- 휴게실 · 대기 자리 ----------
+// 일하는 중 → 자기 책상. 대표 답을 기다림 → 대표 옆. 다른 직원 결과를 기다림 → 그 직원 옆. 그 외 → 휴게실.
+const LOUNGE = [];     // { pos, rot, pose, status }
+const loungeAt = [];   // slot index -> person name
+let arcadeScreen = null;
+let askCeo = new Map();   // agent name -> first open TODO id
+let todosLoaded = false;  // first placement waits for the TODO list, so nobody detours via the lounge on load
+function buildLounge() {
+  const z0 = R - 0.9, at = (x, z) => new THREE.Vector3(x, 0, z0 + z);
+  const add = (o) => (scene.add(o), o);
+  const rug = add(box(7.2, 0.01, 3.6, mat('#b9cfa4'), 0, 0.006, z0 - 0.3)); rug.castShadow = false;
+  // sofa, facing the camera
+  const sofa = mat('#d9a441'), cushion = mat('#e8bb5c');
+  add(box(3.1, 0.3, 0.72, sofa, 0, 0.2, z0 - 0.48));
+  for (const x of [-1.0, 0, 1.0]) add(box(0.94, 0.08, 0.62, cushion, x, 0.39, z0 - 0.45));
+  add(box(3.1, 0.62, 0.2, sofa, 0, 0.62, z0 - 0.84));
+  for (const x of [-1.6, 1.6]) add(box(0.2, 0.5, 0.72, sofa, x, 0.4, z0 - 0.48));
+  for (const x of [-2.05, 2.05]) {   // side tables with a plant / cups
+    add(mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.5, 8), mat('#c79a6b'), x, 0.25, z0 - 0.45));
+  }
+  add(mesh(new THREE.ConeGeometry(0.22, 0.6, 6), mat('#4f9a5a'), -2.05, 0.8, z0 - 0.45));
+  add(box(0.1, 0.12, 0.1, mat('#f4efe6'), 2.0, 0.56, z0 - 0.4));
+  // bean bags
+  [['#e5577a', -2.65], ['#2bb3c9', 2.65]].forEach(([c, x]) => { const b = add(mesh(new THREE.IcosahedronGeometry(0.55, 1), mat(c), x, 0.28, z0 + 0.55)); b.scale.set(1, 0.55, 1); });
+  // coffee bar
+  add(box(1.3, 0.9, 0.5, mat('#7a5537'), -2.55, 0.45, z0 - 1.6));
+  add(box(0.42, 0.52, 0.36, mat('#2d3442'), -2.7, 1.16, z0 - 1.62));
+  add(box(0.08, 0.08, 0.02, mat('#ef6a6a', { emissive: '#ef6a6a', emissiveIntensity: 0.8 }), -2.6, 1.3, z0 - 1.43));
+  for (const x of [-2.25, -2.1]) add(box(0.1, 0.12, 0.1, mat('#f4efe6'), x, 0.96, z0 - 1.55));
+  // arcade cabinet
+  add(box(0.85, 1.7, 0.7, mat('#3b2a6b'), 2.55, 0.85, z0 - 1.65));
+  add(box(0.85, 0.22, 0.12, mat('#ffb547', { emissive: '#ffb547', emissiveIntensity: 0.5 }), 2.55, 1.6, z0 - 1.32));
+  add(box(0.8, 0.1, 0.35, mat('#2d3442'), 2.55, 0.98, z0 - 1.18));
+  arcadeScreen = add(mesh(new THREE.PlaneGeometry(0.62, 0.46), new THREE.MeshStandardMaterial({ color: '#0d1117', emissive: '#2bb3c9', emissiveIntensity: 0.6 }), 2.55, 1.3, z0 - 1.29));
+  // seats, in the order they fill up
+  const sofaSeat = (x) => ({ pos: at(x, -0.3), rot: 0, pose: 'sofa', status: '휴식 · 커피 한 잔' });
+  const bean = (x) => ({ pos: at(x, 0.5), rot: Math.atan2(-x, -0.4), pose: 'bean', status: '휴식 · 빈백에서 쉬는 중' });
+  // filled in an order that keeps neighbours (and their name tags) apart
+  LOUNGE.push(sofaSeat(-0.7), { pos: at(2.55, -0.72), rot: Math.PI, pose: 'arcade', status: '휴식 · 오락실 게임 중' },
+    { pos: at(-2.4, -1.0), rot: Math.PI, pose: 'brew', status: '휴식 · 커피 내리는 중' }, sofaSeat(0.7), bean(-2.65), bean(2.65), sofaSeat(-1.3), sofaSeat(1.3),
+    { pos: at(-0.5, 1.0), rot: Math.PI / 2, pose: 'mingle', status: '휴식 · 수다 중' }, { pos: at(0.5, 1.0), rot: -Math.PI / 2, pose: 'mingle', status: '휴식 · 수다 중' });
+}
+function claim(arr, name) { let i = arr.indexOf(name); if (i < 0) { i = arr.indexOf(null); if (i < 0) i = arr.length; arr[i] = name; } return i; }
+function release(name, keep) {
+  for (const arr of [loungeAt, ...[...people.values()].map((h) => h.waiters)]) {
+    const i = arr === keep ? -1 : arr.indexOf(name);
+    if (i >= 0) arr[i] = null;
+  }
+}
+function waitBy(p, host, status) {
+  const i = claim(host.waiters, p.name);
+  const x = (host.name === 'ceo' ? 1.8 : 1.3) + i * 0.3, z = 0.9 + i * 1.0;   // 책상 옆으로 줄 서기
+  const pos = world(host, x, 0, z), h = host.s.position;
+  return { key: `wait:${host.name}:${i}`, pos, rot: Math.atan2(h.x - pos.x, h.z - pos.z), pose: 'wait', status, keep: host.waiters };
+}
+function spotFor(p) {
+  const desk = { key: 'desk', pos: p.s.position.clone(), rot: p.s.rotation.y, pose: 'desk' };
+  if (p.name === 'ceo' || p.working > 0) return desk;
+  if (p.name === 'pm') {
+    const w = [...people.values()].find((q) => q !== p && q.working > 0);
+    if (w) return waitBy(p, w, `${w.title.split(' ')[0]} 결과 기다리는 중`);
+    if (document.body.dataset.running === '1') return { ...desk, status: '진행 관리' };
+  }
+  if (askCeo.has(p.name)) return waitBy(p, ceo(), `대표 답 기다리는 중 · T${askCeo.get(p.name)}`);
+  const i = claim(loungeAt, p.name);
+  const seat = LOUNGE[i] || { pos: LOUNGE[0].pos.clone().add(new THREE.Vector3(-3 + (i - LOUNGE.length) * 0.8, 0, 2.1)), rot: Math.PI, pose: 'mingle', status: '휴식 · 수다 중' };
+  return { key: `lounge:${i}`, ...seat, keep: loungeAt };
+}
+function place(p, s) {
+  p.c.g.position.copy(s.pos); p.c.g.rotation.y = s.rot;
+  p.state = s.pose === 'desk' ? 'sit' : 'pose'; p.pose = s.pose;
+}
+// Walk (or jump, on load / history replay) to wherever this person should be now.
+function settle(p, instant) {
+  if (p.pending || !todosLoaded) return;
+  const s = spotFor(p);
+  release(p.name, s.keep);
+  if (s.key === p.at) return;
+  const first = p.at === undefined;
+  p.at = s.key;
+  if (s.status) setStatus(p, s.status);
+  p.tag.classList.toggle('rest', s.key.startsWith('lounge'));   // 쉬는 중엔 이름만
+  if (instant || first || p.c.g.position.distanceTo(s.pos) < 0.05) return place(p, s);
+  job(p, async () => { await walk(p, s.pos); p.at = s.key; place(p, s); });
+}
+const settleAll = (instant) => { for (const p of people.values()) settle(p, instant); };
+
+const someone = (name) => people.get(name) || people.get('general-purpose');
+const pm = () => people.get('pm');
+const ceo = () => people.get('ceo');
+
+function onInstruction(prompt) {
+  const me = pm();
+  job(me, async () => {
+    setStatus(me, '지시 받으러 가는 중');
+    await visit(me, ceo());
+    carry(me, [newPaper({ title: '대표 지시', text: prompt })]);
+    setStatus(me, '지시 검토');
+    await goHome(me);
+    drop(me, me);
+    setStatus(me, '업무 배분 중');
+  });
+}
+
+function handle(ev) {
+  const p = ev.agent && someone(ev.agent);
+  switch (ev.kind) {
+    case 'dispatch': {
+      const me = pm();
+      log(ev.task, 'go', `PM → ${p.title}`);
+      p.working++;
+      setStatus(p, `작업: ${ev.task}`);
+      settle(p);   // 휴게실에 있었다면 책상으로 돌아감
+      job(me, async () => {
+        setStatus(me, `${p.title}에게 전달`);
+        carry(me, [newPaper({ title: `업무지시: ${ev.task}`, text: ev.task })]);
+        await visit(me, p);
+        drop(me, p);
+      });
+      break;
+    }
+    case 'tool':
+      bubble(p, `${ev.tool}${ev.detail ? ' · ' + ev.detail : ''}`);
+      log(`${p.title} · ${ev.tool} ${ev.detail || ''}`, 'tool');
+      break;
+    case 'paper':
+      job(p, async () => { p.stack.push(newPaper({ title: ev.path, path: ev.path })); placeStack(p); });
+      refreshBoard();
+      break;
+    case 'report':
+      job(p, async () => {
+        p.working = Math.max(0, p.working - 1);
+        const mine = p.stack.filter((m) => m.userData.path);
+        p.stack = p.stack.filter((m) => !m.userData.path);
+        carry(p, mine);
+        setStatus(p, mine.length ? `보고하러 가는 중 (${mine.length}건)` : '보고하러 가는 중');
+        await visit(p, ceo());
+        bubble(p, mine.length ? `${mine.length}건 가져왔습니다` : '완료했습니다');
+        drop(p, ceo());
+      });
+      log('작업 완료, 대표에게 보고', 'done', p.title);
+      break;
+    case 'say': bubble(pm(), ev.text.slice(0, 60)); log(ev.text, 'pm', 'PM'); break;
+    case 'limit': gauge('5', ev.five); gauge('7', ev.seven); break;
+    case 'result': {
+      const me = pm();
+      job(me, async () => {
+        carry(me, [newPaper({ title: '최종 보고', text: ev.text, report: true })]);
+        setStatus(me, '최종 보고하러 가는 중');
+        await visit(me, ceo());
+        bubble(me, ev.error ? '문제가 있었습니다' : '보고드립니다');
+        drop(me, ceo());
+      });
+      addReport(ev);
+      alertCeo('report', ev.error ? '최종 보고 (오류)' : '최종 보고', (ev.text || '').split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').slice(0, 120) || '');
+      refreshBoard();
+      break;
+    }
+  }
+}
+
+function gauge(k, v) {
+  if (v == null) return;
+  $('g' + k).style.width = `${Math.round(v * 100)}%`;
+  $('g' + k).style.background = v > 0.8 ? '#ef6a6a' : v > 0.5 ? '#f0a33a' : '#3a7bd5';
+  $('t' + k).textContent = `${Math.round(v * 100)}%`;
+}
+
+// ---------- animation loop ----------
+const MUG = new Set(['sofa', 'bean', 'brew', 'mingle']);
+const pulse = (x, every, len) => { const k = ((x % every) + every) % every; return k < len ? Math.sin((k / len) * Math.PI) : 0; };
+function animPose(p, t) {
+  const c = p.c, sitting = p.pose === 'sofa' || p.pose === 'bean';
+  c.legL.rotation.x = c.legR.rotation.x = sitting ? (p.pose === 'bean' ? -1.2 : -Math.PI / 2) : 0;
+  c.g.position.y = p.pose === 'sofa' ? -0.12 : p.pose === 'bean' ? -0.32 : 0;
+  c.head.rotation.x = 0; c.head.rotation.y = 0;
+  if (MUG.has(p.pose)) {   // 커피: 가끔 한 모금
+    const sip = pulse(t, 6, 1.4);
+    c.armR.rotation.x = -0.75 - sip * 1.55;
+    c.armL.rotation.x = sitting ? -0.55 : -0.1;
+    c.head.rotation.x = -sip * 0.25;
+    if (p.pose === 'mingle') { c.head.rotation.y = Math.sin(t * 0.8) * 0.25; c.armL.rotation.x = -0.4 - pulse(t, 2.6, 1) * 0.7; }
+    if (p.pose === 'brew') c.armL.rotation.x = -1.2 + Math.sin(t * 3) * 0.08;
+  } else if (p.pose === 'arcade') {   // 버튼 연타
+    c.armL.rotation.x = -1.05 + Math.sin(t * 24) * 0.14;
+    c.armR.rotation.x = -1.05 + Math.cos(t * 19) * 0.14;
+    c.head.rotation.x = 0.12 + Math.sin(t * 2) * 0.04;
+    if (arcadeScreen) arcadeScreen.material.emissiveIntensity = 0.5 + Math.abs(Math.sin(t * 7)) * 0.5;
+  } else {   // wait: 발 까딱, 두리번, 가끔 손목시계
+    c.legR.rotation.x = -Math.max(0, Math.sin(t * 7)) * 0.22;
+    c.armR.rotation.x = -0.2;
+    c.armL.rotation.x = -0.2 - pulse(t, 5, 1.2) * 1.3;
+    c.head.rotation.y = Math.sin(t * 0.6) * 0.45;
+    c.head.rotation.x = pulse(t, 5, 1.2) * 0.35;
+  }
+}
+const clock = new THREE.Clock();
+const tmp = new THREE.Vector3();
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime, now = performance.now();
+  for (const p of people.values()) {
+    const c = p.c;
+    c.mug.visible = p.state === 'pose' && MUG.has(p.pose);
+    if (p.state === 'walk') {
+      const target = p.path[0];
+      tmp.subVectors(target, c.g.position); tmp.y = 0;
+      const dist = tmp.length(), stepLen = 2.6 * dt;
+      if (dist <= stepLen) { c.g.position.copy(target); p.path.shift(); if (!p.path.length) { p.state = 'stand'; p.arrive(); } }
+      else { c.g.position.addScaledVector(tmp.normalize(), stepLen); c.g.rotation.y = Math.atan2(tmp.x, tmp.z); }
+      const sw = Math.sin(t * 9);
+      c.legL.rotation.x = sw * 0.6; c.legR.rotation.x = -sw * 0.6;
+      c.armL.rotation.x = p.carry.length ? -1.3 : -sw * 0.45;
+      c.armR.rotation.x = p.carry.length ? -1.3 : sw * 0.45;
+      c.g.position.y = Math.abs(Math.sin(t * 9)) * 0.06;
+      c.head.rotation.y = 0;
+    } else if (p.state === 'pose') {
+      animPose(p, t + p.seed);
+    } else if (p.state === 'sit') {
+      c.legL.rotation.x = c.legR.rotation.x = -Math.PI / 2;
+      c.g.position.y = -0.06;
+      const typing = p.working || (p.name === 'pm' && document.body.dataset.running === '1');
+      c.armL.rotation.x = typing ? -1.15 + Math.sin(t * 22) * 0.12 : -0.9;
+      c.armR.rotation.x = typing ? -1.15 + Math.cos(t * 22) * 0.12 : -0.9;
+      c.head.rotation.x = typing ? Math.sin(t * 3) * 0.06 : Math.sin(t * 1.2) * 0.03;
+      p.screen.material.emissiveIntensity = typing ? 0.6 + Math.sin(t * 6) * 0.15 : 0.15;
+      p.screen.material.emissive.set(typing ? COLORS[[...people.keys()].indexOf(p.name) % COLORS.length] : '#3a7bd5');
+      c.head.rotation.y = 0;
+    } else {
+      c.legL.rotation.x = c.legR.rotation.x = 0; c.g.position.y = 0;
+      c.armL.rotation.x = c.armR.rotation.x = p.carry.length ? -1.3 : 0;
+    }
+    if (p.bubbleUntil && now > p.bubbleUntil) { p.tag.querySelector('.bubble').classList.remove('on'); p.bubbleUntil = 0; }
+    tmp.copy(c.g.position); tmp.y += 2.25; tmp.project(camera);
+    p.tag.style.left = `${(tmp.x * 0.5 + 0.5) * stage.clientWidth}px`;
+    p.tag.style.top = `${(-tmp.y * 0.5 + 0.5) * stage.clientHeight}px`;
+  }
+  if (clockHands) { const d = new Date(); clockHands.mp.rotation.z = -d.getMinutes() / 60 * Math.PI * 2; clockHands.hp.rotation.z = -((d.getHours() % 12) + d.getMinutes() / 60) / 12 * Math.PI * 2; }
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+function resize() {
+  renderer.setSize(stage.clientWidth, stage.clientHeight);
+  camera.aspect = stage.clientWidth / stage.clientHeight;
+  // Fit the whole ring (plus labels) on screen for any panel width.
+  const half = THREE.MathUtils.degToRad(camera.fov / 2), reach = RW + 2.2;
+  const dist = Math.max(reach / Math.tan(Math.atan(Math.tan(half) * camera.aspect)), (reach * 0.62) / Math.tan(half));
+  const look = new THREE.Vector3(0, 0, -R * 0.32);
+  camera.position.copy(look).add(new THREE.Vector3(0, 0.64, 0.77).multiplyScalar(dist));
+  camera.lookAt(look);
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+// click a paper → open it
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+renderer.domElement.addEventListener('click', (e) => {
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(mouse, camera);
+  const hit = ray.intersectObjects(papers.filter((m) => m.parent))[0];
+  if (hit) openPaper(hit.object.userData);
+});
+renderer.domElement.addEventListener('mousemove', (e) => {
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(mouse, camera);
+  renderer.domElement.style.cursor = ray.intersectObjects(papers.filter((m) => m.parent)).length ? 'pointer' : 'default';
+});
+
+// ---------- panel ----------
+// Small markdown renderer: every line is escaped first, so board files can never inject HTML.
+function inline(s, thumbs = true) { return esc(s)
+  .replace(/`([^`]+)`/g, '<code>$1</code>')
+  .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+  .replace(MEDIA, (_, rel) => mediaEl(rel, thumbs))   // last, so it never rescans its own src/href
+  .replace(/<code>(<span class="media">.*?<\/span>)<\/code>/g, '$1'); }
+// 저장소 상대 경로(board/a/b.png 등). 앞이 / : $ 이면 URL·절대경로라 건너뛴다. 서버(/files/)가 다시 거른다.
+const MEDIA = /(?<![\p{L}\p{N}_.\/:$~@%-])((?:[\p{L}\p{N}_.@+-]+\/)+[\p{L}\p{N}_.@+-]+\.(?:png|jpe?g|gif|webp|svg|mp4|webm|html?))(?![\p{L}\p{N}_\/-])/giu;
+const fileUrl = (rel) => '/files/' + rel.split('/').map(encodeURIComponent).join('/');
+function mediaEl(rel, thumbs = true) {
+  const url = esc(fileUrl(rel)), r = esc(rel), ext = rel.split('.').pop().toLowerCase();
+  const link = `<a href="${url}" target="_blank" rel="noopener">${r}</a>`;
+  if (!thumbs) return `<span class="media">${link}</span>`;
+  if (ext === 'mp4' || ext === 'webm') return `<span class="media">${link}<video controls preload="metadata" src="${url}"></video></span>`;
+  if (ext.startsWith('htm')) return `<span class="media">${link}<button data-frame="${url}" data-title="${r}">미리보기</button></span>`;
+  return `<span class="media">${link}<img loading="lazy" alt="${r}" src="${url}" data-zoom="${url}" data-title="${r}"></span>`;
+}
+// TODO 근거·파일·QR (서버 parseTodos가 board/ 경로로 풀어 줌): .md는 문서 링크, 이미지는 썸네일
+const refsEl = (refs = []) => refs.length ? `<div class="refs">${refs.map((p) => /\.md$/i.test(p)
+  ? `<a data-p="${esc(p)}">${esc(p.split('/').pop())}</a>` : mediaEl(p)).join(' ')}</div>` : '';
+// 썸네일 → 크게, HTML 미리보기 → sandbox iframe. 문서 뷰어 위에 겹쳐 열려서 닫으면 읽던 문서로 돌아간다.
+function zoom(title, url, frame) {
+  Object.assign($('ztitle'), { href: url, textContent: title + ' — 새 탭으로 열기' });
+  $('zbody').innerHTML = frame ? `<iframe sandbox="allow-scripts" src="${esc(url)}" title="${esc(title)}"></iframe>` : `<img alt="${esc(title)}" src="${esc(url)}">`;
+  $('zoom').showModal();
+}
+document.addEventListener('click', (e) => {
+  const z = e.target.closest('[data-zoom],[data-frame]'); if (!z) return;
+  e.preventDefault(); zoom(z.dataset.title, z.dataset.zoom || z.dataset.frame, !!z.dataset.frame);
+});
+$('zclose').onclick = () => $('zoom').close();
+$('zoom').onclick = (e) => { if (e.target.id === 'zoom' || e.target.tagName === 'IMG') $('zoom').close(); };
+$('zoom').onclose = () => { $('zbody').innerHTML = ''; };
+addEventListener('error', (e) => e.target.closest?.('.media')?.classList.add('missing'), true);   // 없는 파일은 글자 링크만 남긴다
+const ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)/;
+function md(src) {
+  const L = src.replace(/\r/g, '').split('\n'), out = [];
+  const cells = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+  let i = 0;
+  while (i < L.length) {
+    const l = L[i];
+    if (/^\s*```/.test(l)) { const b = []; while (++i < L.length && !/^\s*```/.test(L[i])) b.push(L[i]); i++; out.push(`<pre><code>${esc(b.join('\n'))}</code></pre>`); continue; }
+    if (!l.trim()) { i++; continue; }
+    const h = l.match(/^(#{1,4})\s+(.*)/);
+    if (h) { out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); i++; continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(l)) { out.push('<hr>'); i++; continue; }
+    if (/^\s*\|/.test(l) && /^\s*\|?\s*:?-+/.test(L[i + 1] || '')) {
+      const head = cells(l); i += 2; const rows = [];
+      while (i < L.length && /^\s*\|/.test(L[i])) rows.push(cells(L[i++]));
+      out.push(`<div class="tbl"><table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
+      continue;
+    }
+    if (/^>/.test(l)) { const b = []; while (i < L.length && /^>/.test(L[i])) b.push(L[i++].replace(/^>\s?/, '')); out.push(`<blockquote>${md(b.join('\n'))}</blockquote>`); continue; }
+    if (ITEM.test(l)) {
+      const stack = []; // open lists by indent
+      while (i < L.length && ITEM.test(L[i])) {
+        const [, sp, mark, first] = L[i++].match(ITEM), ind = sp.length, tag = /\d/.test(mark) ? 'ol' : 'ul';
+        let text = first;
+        while (i < L.length && /^\s{2,}\S/.test(L[i]) && !ITEM.test(L[i])) text += ' ' + L[i++].trim();
+        while (stack.length > 1 && ind < stack.at(-1).ind) out.push(`</li></${stack.pop().tag}>`);
+        if (!stack.length || ind > stack.at(-1).ind) { stack.push({ ind, tag }); out.push(`<${tag}><li>`); }
+        else if (tag !== stack.at(-1).tag) { out.push(`</li></${stack.at(-1).tag}><${tag}><li>`); stack.at(-1).tag = tag; }
+        else out.push('</li><li>');
+        out.push(inline(text));
+      }
+      while (stack.length) out.push(`</li></${stack.pop().tag}>`);
+      continue;
+    }
+    const b = [l]; i++;
+    while (i < L.length && L[i].trim() && !/^(#{1,4}\s|\s*```|>|\s*\|)/.test(L[i]) && !ITEM.test(L[i])) b.push(L[i++]);
+    out.push(`<p>${b.map(inline).join('<br>')}</p>`);
+  }
+  return out.join('');
+}
+function showDoc(title, html, plain) {
+  const k = title.lastIndexOf('/');
+  $('vtitle').innerHTML = k > 0 ? `${esc(title.slice(k + 1))}<small>${esc(title.slice(0, k))}</small>` : esc(title);
+  $('vbody').innerHTML = `<div class="doc${plain ? ' plain' : ''}">${html}</div>`;
+  $('vbody').scrollTop = 0;
+  $('viewer').classList.add('on');
+  $('vclose').focus();
+}
+async function openPaper(meta) {
+  const title = (meta.title || meta.path || '').replace(/^board\//, '');
+  if (!meta.path) return showDoc(title, md(meta.text || ''));
+  const url = '/api/file?path=' + encodeURIComponent(meta.path);
+  if (/\.(png|jpe?g|gif|webp)$/i.test(meta.path)) return showDoc(title, `<img alt="${esc(title)}" src="${esc(url)}">`);
+  const r = await fetch(url);
+  const isMd = /\.md$/i.test(meta.path);
+  const text = r.ok ? await r.text() : '파일을 찾을 수 없습니다. (리플레이 모드이거나 파일이 옮겨졌을 수 있음)';
+  showDoc(title, isMd ? md(text) : esc(text), !isMd);
+}
+const closeViewer = () => $('viewer').classList.remove('on');
+$('vclose').onclick = closeViewer;
+$('viewer').onclick = (e) => { if (e.target.id === 'viewer') closeViewer(); };
+const setChatFull = (on) => { $('chat').classList.toggle('full', on); $('chatfull').textContent = on ? '닫기' : '크게 보기'; $('log').scrollTop = $('log').scrollHeight; };
+$('chatfull').onclick = () => setChatFull(!$('chat').classList.contains('full'));
+addEventListener('keydown', (e) => { if (e.key !== 'Escape' || $('zoom').open) return; if ($('viewer').classList.contains('on')) closeViewer(); else setChatFull(false); });
+$('log').onclick = (e) => { const i = e.target.dataset.r; if (i != null) openPaper(reports[i]); };
+
+const reports = [];
+function addReport(ev) {
+  reports.unshift({ title: `${hhmm(evTime ?? Date.now())} 최종 보고${ev.error ? ' (오류)' : ''}`, text: ev.text });
+  $('nrep').textContent = reports.length;
+  $('reports').innerHTML = reports.map((r, i) => `<li><a data-r="${i}">${esc(r.title)}</a><div class="meta">${esc(r.text.slice(0, 70))}</div></li>`).join(''); more('reports');
+  // reports are unshifted, so the newest is index 0. The result text usually repeats PM's last message.
+  const last = $('log').lastElementChild;
+  if (last?.classList.contains('pm') && last.dataset.raw === (ev.text || '').trim().slice(0, 60)) last.remove();
+  log((ev.text || '').split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').slice(0, 140) || '최종 보고', ev.error ? 'bad' : 'done', 'PM 최종 보고', 0);
+}
+$('reports').onclick = (e) => { const i = e.target.closest('[data-r]')?.dataset.r; if (i != null) openPaper(reports[i]); };
+
+const docName = (p) => { const r = p.replace(/^board\//, ''), k = r.lastIndexOf('/'); return (k > 0 ? `<span class="dir">${esc(r.slice(0, k))}/</span>` : '') + esc(r.slice(k + 1)); };
+async function refreshBoard() {
+  // 직원 명단은 부팅 때 한 번 그린다. 새로 채용·보류되면 다시 그린다(쓰던 글이 있으면 다음 차례로 미룬다).
+  const roster = (await (await fetch('/api/agents')).json()).map((a) => a.name).join();
+  if (roster !== agents.map((a) => a.name).join() && ![...document.querySelectorAll('textarea')].some((t) => t.value.trim())) return location.reload();
+  const { files, todos } = await (await fetch('/api/board')).json();
+  $('ndocs').textContent = files.length;
+  $('docs').innerHTML = files.map((f) => `<li><a data-p="${esc(f.path)}">${docName(f.path)}</a> <span class="meta">${new Date(f.mtime).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></li>`).join(''); more('docs');
+  renderTodos(todos.filter((t) => !t.done));
+  refreshUsage();
+}
+
+// ---------- 직원별 토큰 (세션 기록 집계) ----------
+const fmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n);
+const cell = (s) => { const all = s.in + s.cache + s.out; return all ? `<td title="입력 ${s.in.toLocaleString()} · 캐시 읽기 ${s.cache.toLocaleString()} · 출력 ${s.out.toLocaleString()}">${fmt(all)}<small>${fmt(s.out)}</small></td>` : '<td class="meta">–</td>'; };
+async function refreshUsage() {
+  try {
+    const rows = await (await fetch('/api/usage')).json();
+    $('usage').innerHTML = '<tr><th>직원</th><th>오늘</th><th>7일</th><th>누적</th></tr>' +
+      rows.map((r) => `<tr><td>${esc(r.agent)}</td>${cell(r.today)}${cell(r.week)}${cell(r.total)}</tr>`).join('');
+  } catch { /* 다음 주기에 다시 */ }
+}
+setInterval(refreshBoard, 15000);   // TODO 목록 + 토큰 (TODO 알림도 여기서 잡힘)
+
+// ---------- 대표 알림: 효과음 · 브라우저 알림 · 탭 제목 ----------
+// Browsers only allow sound after a click, so the 🔔 button is that click (and asks for notification permission).
+let actx = null, unseen = 0;
+const baseTitle = document.title;
+const bellOn = () => { try { return localStorage.getItem('office-bell') === '1'; } catch { return false; } };
+function paintBell() { const on = bellOn(); $('bell').classList.toggle('on', on); $('bell').textContent = on ? '🔔 알림 켜짐' : '🔕 알림 켜기'; }
+$('bell').onclick = async () => {
+  const on = !bellOn();
+  try { localStorage.setItem('office-bell', on ? '1' : '0'); } catch {}
+  if (on) { actx ||= new AudioContext(); actx.resume(); chime('report'); if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission(); }
+  paintBell();
+};
+paintBell();
+addEventListener('pointerdown', () => { if (bellOn()) { actx ||= new AudioContext(); actx.resume(); } }, { once: true });
+// TODO: two rising notes. Report: one soft ding.
+function chime(kind) {
+  if (!actx) return;
+  const notes = kind === 'todo' ? [[784, 0], [1175, 0.17]] : [[1047, 0], [1568, 0.05]];
+  const t0 = actx.currentTime + 0.02;
+  for (const [f, at] of notes) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t0 + at); g.gain.linearRampToValueAtTime(kind === 'todo' ? 0.22 : 0.14, t0 + at + 0.015); g.gain.exponentialRampToValueAtTime(0.001, t0 + at + 0.9);
+    o.connect(g).connect(actx.destination); o.start(t0 + at); o.stop(t0 + at + 1);
+  }
+}
+function alertCeo(kind, title, body) {
+  if (!bellOn()) return;
+  chime(kind);
+  navigator.vibrate?.(kind === 'todo' ? [120, 80, 120] : 80);
+  if (!document.hidden) return;
+  document.title = `(${++unseen}) ${kind === 'todo' ? 'TODO' : '보고'} · ${baseTitle}`;
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try { const n = new Notification(title, { body, tag: `office-${kind}-${title}` }); n.onclick = () => { focus(); n.close(); }; } catch { /* 일부 모바일은 페이지에서 직접 못 띄움 */ }
+  }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { unseen = 0; document.title = baseTitle; } });
+let knownTodos = null;   // ids already on screen; the first load never chimes
+function noticeTodos(open) {
+  if (knownTodos) for (const t of open) if (!knownTodos.has(t.id)) alertCeo('todo', `대표 TODO T${t.id} · ${t.type}`, `${t.by}: ${t.desc.split('\n')[0]}`);
+  knownTodos = new Set([...(knownTodos || []), ...open.map((t) => t.id)]);
+}
+
+// ---------- 대표 TODO ----------
+const drafts = new Map();   // id -> chosen option, kept across refreshes
+const texts = new Map();    // 'id:t' / 'id:n' -> typed text, kept across refreshes
+const picked = new Map();   // id -> File[] attached, kept across refreshes
+function renderTodos(open) {
+  $('ntodo').textContent = open.length;
+  if (people.get('ceo')) setStatus(ceo(), open.length ? `TODO ${open.length}건` : '결정·승인');
+  noticeTodos(open);
+  askCeo = new Map();
+  for (const t of open) if (!askCeo.has(t.by)) askCeo.set(t.by, t.id);
+  todosLoaded = true;
+  settleAll();
+  const box = $('todos');
+  const typing = box.contains(document.activeElement) && document.activeElement.matches('textarea,input');
+  if (typing) return;   // 입력 중에는 다시 그리지 않음
+  box.innerHTML = (open.length ? open.map((t) => {
+    const pick = drafts.get(t.id);
+    const control = t.options.length
+      ? `<div class="opts">${t.options.map((o) => `<button data-pick="${esc(o)}" class="${pick === o ? 'sel' : ''}">${esc(o)}</button>`).join('')}</div><input placeholder="메모 (선택)" value="${esc(texts.get(t.id + ':n') || '')}">`
+      : t.type === '입력' ? `<textarea placeholder="답을 입력하세요">${esc(texts.get(t.id + ':t') || '')}</textarea>` : `<input placeholder="메모 (선택) — 예: 세무사 통화 완료" value="${esc(texts.get(t.id + ':n') || '')}">`;
+    return `<div class="todo" data-id="${t.id}"><div class="hd"><span class="ty ${t.type}">${t.type}</span> T${t.id} · ${esc(t.by)}</div>
+      <div class="desc">${inline(t.desc)}</div>${refsEl(t.refs)}${control}
+      <div class="files"><label>📎 파일 첨부<input type="file" multiple data-files></label> ${(picked.get(t.id) || []).map((f) => esc(f.name)).join(', ')}</div>
+      <div class="ft"><span class="err"></span><button class="primary" data-submit>${t.type === '실행' ? '했어요' : '제출'}</button></div></div>`;
+  }).join('') : '<div class="meta">할 일 없음</div>');
+}
+const toB64 = (list) => Promise.all(list.map(async (f) => {
+  const b = new Uint8Array(await f.arrayBuffer()); let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return { name: f.name, data: btoa(s) };
+}));
+// 파일을 끌어다 놓기: el 위에 놓으면 onFiles(File[], 놓인 대상)
+function dropZone(el, onFiles) {
+  el.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); el.classList.add('drop'); } });
+  el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) el.classList.remove('drop'); });
+  el.addEventListener('drop', (e) => { el.classList.remove('drop'); if (!e.dataTransfer.files.length) return; e.preventDefault(); onFiles([...e.dataTransfer.files], e.target); });
+}
+// 놓을 곳을 빗나가도 브라우저가 파일을 열어 버리지 않게
+addEventListener('dragover', (e) => e.preventDefault());
+addEventListener('drop', (e) => e.preventDefault());
+function addTodoFiles(card, list) {
+  const id = Number(card.dataset.id);
+  picked.set(id, [...(picked.get(id) || []), ...list]);
+  card.querySelector('.files').lastChild.textContent = ' ' + picked.get(id).map((f) => f.name).join(', ');
+}
+dropZone($('todos'), (list, t) => { const card = t.closest?.('.todo'); if (card) addTodoFiles(card, list); });
+$('todos').onchange = (e) => {
+  if (e.target.dataset.files == null) return;
+  addTodoFiles(e.target.closest('.todo'), [...e.target.files]);
+};
+$('todos').oninput = (e) => {
+  if (e.target.type === 'file') return;
+  const card = e.target.closest('.todo');
+  if (card) texts.set(card.dataset.id + (e.target.tagName === 'TEXTAREA' ? ':t' : ':n'), e.target.value);
+};
+$('todos').onclick = async (e) => {
+  const card = e.target.closest('.todo'); if (!card) return;
+  const id = Number(card.dataset.id);
+  if (e.target.dataset.p) return openPaper({ path: e.target.dataset.p, title: e.target.dataset.p });
+  if (e.target.dataset.pick != null) {
+    drafts.set(id, e.target.dataset.pick);
+    card.querySelectorAll('[data-pick]').forEach((b) => b.classList.toggle('sel', b === e.target));
+    return;
+  }
+  if (e.target.dataset.submit == null) return;
+  const text = card.querySelector('textarea')?.value ?? '';
+  const note = card.querySelector('input:not([type=file])')?.value ?? '';
+  const answer = card.querySelector('[data-pick]') ? drafts.get(id) : text;
+  if (card.querySelector('[data-pick]') && !answer) return (card.querySelector('.err').textContent = '보기를 골라 주세요');
+  e.target.disabled = true;
+  const files = await toB64(picked.get(id) || []);
+  const r = await fetch('/api/todo', { method: 'POST', body: JSON.stringify({ id, answer, note, files }) });
+  if (!r.ok) { e.target.disabled = false; return (card.querySelector('.err').textContent = (await r.json()).error); }
+  drafts.delete(id); picked.delete(id); texts.delete(id + ':t'); texts.delete(id + ':n');
+  log(`T${id} 제출 → PM이 이어서 진행`, 'ceo', '대표');
+  card.remove();
+  refreshBoard();
+};
+// 휴대폰에서 긴 목록은 8개만 보이고 '더 보기'로 펼친다 (CSS가 데스크톱에선 버튼을 숨김)
+function more(id) { const l = $(id), b = l.nextElementSibling, n = l.children.length; b.hidden = n <= 8; b.textContent = l.classList.contains('open') ? '접기' : `더 보기 (${n - 8}개 더)`; }
+document.querySelectorAll('.more').forEach((b) => { b.onclick = () => { $(b.dataset.l).classList.toggle('open'); more(b.dataset.l); }; });
+$('docs').onclick = (e) => { const p = e.target.closest('[data-p]')?.dataset.p; if (p) openPaper({ path: p, title: p }); };
+
+let runFiles = [];
+function showRunFiles() { $('runnames').innerHTML = runFiles.length ? esc(runFiles.map((f) => f.name).join(', ')) + ' <a id="runclear">지우기</a>' : ''; }
+const addRunFiles = (list) => { runFiles = [...runFiles, ...list]; showRunFiles(); };
+dropZone($('prompt').closest('section'), addRunFiles);
+$('runpick').onchange = (e) => { addRunFiles([...e.target.files]); e.target.value = ''; };
+$('runnames').onclick = (e) => { if (e.target.id === 'runclear') { runFiles = []; showRunFiles(); } };
+async function send() {
+  const prompt = $('prompt').value.trim();
+  if (!prompt) return;
+  const r = await fetch('/api/run', { method: 'POST', body: JSON.stringify({ prompt, files: await toB64(runFiles) }) });
+  const j = await r.json();
+  if (!r.ok) return log('지시 실패: ' + j.error, 'bad');
+  $('prompt').value = ''; runFiles = []; showRunFiles();
+}
+$('send').onclick = send;
+$('prompt').onkeydown = (e) => { if (e.key === 'Enter' && e.ctrlKey) send(); };
+$('cancel').onclick = () => fetch('/api/cancel', { method: 'POST' });
+
+function setRunning(on, n = on ? 1 : 0, instant = false) {
+  document.body.dataset.running = on ? '1' : '';
+  if (!on) for (const p of people.values()) p.working = 0;   // 전부 끝났거나 취소됨
+  settleAll(instant);
+  $('state').textContent = on ? (n > 1 ? `작업 ${n}건 동시 진행` : '작업 중') : '대기';
+  $('state').className = on ? 'running' : '';
+  $('cancel').disabled = !on;
+}
+
+// ---------- boot ----------
+const agents = await (await fetch('/api/agents')).json();
+buildOffice([
+  { name: 'ceo', title: '대표 (나)', sub: '결정·승인' },
+  { name: 'pm', title: 'PM 「지휘」', sub: '메인 세션' },
+  ...agents.map((a) => ({ name: a.name, title: a.title || a.name, sub: [a.model, a.effort].filter(Boolean).join('·') })),
+  { name: 'general-purpose', title: '임시 지원', sub: '기타 에이전트' },
+]);
+resize();
+frame();
+refreshBoard();
+
+const feeds = new Map(); // run id -> mapper: runs interleave on one stream
+const feedOf = (id) => feeds.get(id) || feeds.set(id, createMapper()).get(id);
+const es = new EventSource('/api/events');
+es.onmessage = (m) => {
+  const e = JSON.parse(m.data);
+  evTime = e._t ?? null;
+  try { onEvent(e); } finally { evTime = null; }
+};
+function onEvent(e) {
+  if (e.type === '_office') {
+    if (e.prompt) { log(e.prompt, 'ceo', '대표 지시'); if (!e._history) onInstruction(e.prompt); }   // PM 먼저 대표에게
+    if (e.state) setRunning(e.state === 'running', e.runs, e._history);
+    if (e.ended) feeds.delete(e._run);
+    if (e.log) log(e.log);
+    if (e.ended && !e._history) refreshBoard();
+    return;
+  }
+  for (const ev of feedOf(e._run)(e)) {
+    // History: no animation replay, but the conversation is rebuilt so a reload (or the phone) sees it.
+    if (e._history) {
+      const p = ev.agent && someone(ev.agent);
+      if (ev.kind === 'limit') handle(ev);
+      else if (ev.kind === 'result') addReport(ev);
+      else if (ev.kind === 'say') log(ev.text, 'pm', 'PM');
+      else if (ev.kind === 'dispatch') { log(ev.task, 'go', `PM → ${p.title}`); p.working++; setStatus(p, `작업: ${ev.task}`); settleAll(true); }
+      else if (ev.kind === 'tool') log(`${p.title} · ${ev.tool} ${ev.detail || ''}`, 'tool');
+      else if (ev.kind === 'report') { log('작업 완료, 대표에게 보고', 'done', p.title); p.working = Math.max(0, p.working - 1); settleAll(true); }
+      continue;
+    }
+    handle(ev);
+  }
+};
+es.onerror = () => log('서버 연결 끊김 — 재연결 시도 중', 'bad');
+</script>
+</body>
+</html>

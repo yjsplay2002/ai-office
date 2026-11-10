@@ -1,0 +1,22 @@
+{
+  "name": "ai-office",
+  "version": "0.1.0",
+  "description": "AI office for a one-person business: a PM main session, persona subagents, a board/ of TODOs and decisions, and a local 3D dashboard.",
+  "author": {
+    "name": "ai-office contributors"
+  },
+  "license": "MIT",
+  "keywords": ["agents", "pm", "todo", "solo-business"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AI Office",
+    "shortDescription": "Set up a PM + persona team with a board/ TODO queue",
+    "longDescription": "Interviews you about your business, proposes a team of personas with per-role delegation levels and models, then scaffolds CLAUDE.md/AGENTS.md, persona files, board/ and an optional local dashboard.",
+    "developerName": "ai-office contributors",
+    "category": "Productivity",
+    "capabilities": ["Instructions"],
+    "defaultPrompt": [
+      "Set up an AI office in this project."
+    ]
+  }
+}
