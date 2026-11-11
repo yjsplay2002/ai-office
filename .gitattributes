@@ -1,0 +1,2 @@
+# 템플릿 치환이 LF 기준이라 Windows(autocrlf) 체크아웃에서도 LF로 둔다.
+* text=auto eol=lf
