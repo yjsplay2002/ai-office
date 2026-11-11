@@ -1,6 +1,7 @@
 // AI 오피스 서버: node tools/office.mjs [--replay tools/fixtures/demo-run.jsonl] [--port 4747]
 // 대시보드 지시 → `claude -p` (구독) → stream-json → SSE → 3D 오피스.
 import http from 'node:http';
+import net from 'node:net';
 import { spawn, execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, existsSync, mkdirSync, openSync, readSync, closeSync, rmSync, createReadStream } from 'node:fs';
 import path from 'node:path';
@@ -16,7 +17,13 @@ const root = path.resolve(here, '..');
 const board = path.join(root, 'board');
 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : null; };
 const replay = arg('--replay');
-const port = Number(arg('--port') || 4747);
+// 한 PC에 팀(프로젝트)이 여럿일 수 있어, --port가 없으면 4747부터 비어 있는 포트를 쓴다.
+const port = arg('--port') ? Number(arg('--port')) : await freePort(4747);
+// shortcut: 확인과 실제 listen 사이에 다른 프로세스가 끼어들 수 있음, 그때는 아래 listen 오류로 종료되니 다시 실행.
+async function freePort(p) {
+  while (!(await new Promise((ok) => { const s = net.createServer().once('error', () => ok(false)).listen(p, '127.0.0.1', () => s.close(() => ok(true))); }))) p++;
+  return p;
+}
 
 const runs = new Map();   // run id -> { pid, poll } (or replay { timer }). Several run at once.
 // Each claude run is a detached process writing to .office-runs/<id>.jsonl, so this server can restart
@@ -262,7 +269,10 @@ http.createServer(async (req, res) => {
   try {
     if (p === '/' || p === '/map.mjs') {
       res.writeHead(200, { 'content-type': p === '/' ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8' });
-      return res.end(readFileSync(path.join(here, p === '/' ? 'office.html' : 'map.mjs')));
+      if (p !== '/') return res.end(readFileSync(path.join(here, 'map.mjs')));
+      // 탭 제목에 프로젝트 폴더 이름을 넣어 여러 팀 대시보드를 구분한다.
+      const team = path.basename(root).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+      return res.end(readFileSync(path.join(here, 'office.html'), 'utf8').replace('<title>AI 오피스</title>', `<title>AI 오피스 · ${team}</title>`));
     }
     if (p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
@@ -310,4 +320,5 @@ http.createServer(async (req, res) => {
   } catch (err) {
     json(res, 500, { error: err.message });
   }
-}).listen(port, '127.0.0.1', () => console.log(`AI 오피스: http://127.0.0.1:${port}${replay ? '  (리플레이 모드)' : ''}`));
+}).on('error', (e) => { console.error(e.code === 'EADDRINUSE' ? `${port}번 포트는 이미 사용 중입니다. --port로 다른 번호를 주세요.` : e); process.exit(1); })
+  .listen(port, '127.0.0.1', () => console.log(`AI 오피스: http://127.0.0.1:${port}${replay ? '  (리플레이 모드)' : ''}`));
