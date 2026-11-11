@@ -81,7 +81,8 @@ export function createHistory(max = 200) {
       if (ev.kind === 'report' && k) { k.state = ev.ok ? '완료' : '실패'; push(k, [t, 'report', ev.summary || k.state]); }
       if (ev.kind === 'result' && k) { k.state = ev.error ? '실패' : '완료'; push(k, [t, 'report', line(ev.text) || '최종 보고']); }
     },
-    latest(agent) { let best = null; for (const k of tasks.values()) if (k.agent === agent && (!best || k.start >= best.start)) best = k; return best; },
+    // The card to show for a person: a running one first (runs overlap), else the newest.
+    latest(agent) { let best = null; for (const k of tasks.values()) if (k.agent === agent && (!best || ((k.state === '진행 중') - (best.state === '진행 중') || (k.start >= best.start ? 1 : -1)) > 0)) best = k; return best; },
   };
 }
 

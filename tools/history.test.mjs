@@ -59,4 +59,10 @@ const h2 = createHistory(), f2 = createMapper();
 for (const ev of f2(lines[12])) h2.feed(ev, 1, 2);
 h2.end(2);
 assert.equal(h2.latest('general-purpose').state, '보고 없이 끝남');
+// Overlapping runs: a newer run that already finished must not hide the one still going.
+const h3 = createHistory();
+h3.run(1, '긴 작업', 1); h3.run(2, '짧은 답', 2); h3.feed({ kind: 'result', text: '끝' }, 3, 2);
+assert.equal(h3.latest('pm').title, '긴 작업');
+h3.end(1);
+assert.equal(h3.latest('pm').title, '짧은 답');
 console.log('history ok:', pick('report').length, 'reports,', h.tasks.size, 'cards');
