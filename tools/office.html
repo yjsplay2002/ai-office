@@ -257,7 +257,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { createMapper, createHistory } from '/map.mjs';
+import { createMapper, createHistory, motionOf, instructionMotion, todoMotion, gridPath } from '/map.mjs';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -292,7 +292,7 @@ scene.background = new THREE.Color('#e6ecc8'); scene.fog = new THREE.Fog('#e6ecc
 const agents = await (await fetch('/api/agents')).json();
 const ROSTER = [{ name: 'pm', title: 'PM 「지휘」', sub: '메인 세션' }, ...agents.map((a) => ({ name: a.name, title: a.title || a.name, sub: [a.model, a.effort].filter(Boolean).join('·') }))];
 const ALIAS = { research: 'scout' };   // 플러그인 기본 팀의 research = 시안의 조사 스카우트
-const SPOT = { pm: [-2.3, -3.6, .7], scout: [-6.7, -2.1, .95, 'map'], plan: [-5.0, -6.3, .35, 'board'], dev: [-3.9, 2.3, 1.05, 'dual'], console: [-1.0, 6.7, 1.15, 'triple'], bm: [3.6, 6.9, -.8, 'ledger'], design: [6.3, 2.1, -.95, 'tablet'] };   // [x, z, 회전, 책상 종류]
+const SPOT = { ceo: [-0.9, -7.0, .1, 'ceo'], pm: [-2.3, -3.6, .7], scout: [-6.7, -2.1, .95, 'map'], plan: [-5.0, -6.3, .35, 'board'], dev: [-3.9, 2.3, 1.05, 'dual'], console: [-1.0, 6.7, 1.15, 'triple'], bm: [3.6, 6.9, -.8, 'ledger'], design: [6.3, 2.1, -.95, 'tablet'] };   // [x, z, 회전, 책상 종류]
 const EXTRA = [[2.2, -7.0, -.1], [6.0, -5.6, -.82], [6.5, 5.0, -1.25], [-6.3, 3.7, 1.3]];
 const SOFA = [4, 2, 6, 0, 8, 3, 5, 1, 7];   // 소파 9칸을 가운데부터
 const roleOf = (name) => ALIAS[name] || name;
@@ -305,9 +305,12 @@ function seatFor(name, boot) {
   if (boot && extraNext < EXTRA.length) return EXTRA[extraNext++];   // 빈 책상 자리는 부팅 때만(근처 화분을 미리 치운다)
   return { sofa: SOFA[sofaNext++ % SOFA.length] };
 }
-for (const p of ROSTER) seatOf.set(p.name, seatFor(p.name, true));
+const CEO = { name: 'ceo', title: '대표 (나)', sub: '결정·승인' };   // 대표 책상은 뒤쪽 가운데, 카메라를 보고 앉는다
+for (const p of [CEO, ...ROSTER]) seatOf.set(p.name, seatFor(p.name, true));
 const desks = [...seatOf.values()].filter(Array.isArray);
 const blocked = (x, z, r = 1.9) => desks.some(([a, b]) => Math.hypot(a - x, b - z) < r);   // 책상 자리와 겹치는 화분·화단·등은 놓지 않는다
+// 사람이 걸을 때 돌아가야 하는 것들(원: x, z, 반지름). 바닥을 0.4m 칸으로 나눠 길을 찾는다(map.mjs gridPath)
+const blocks = [], block = (x, z, r) => blocks.push({ x, z, r });
 // 고정 난수(새로고침해도 배치가 같도록)
 let _seed=7;const rnd=(a=1,b)=>{_seed=(_seed*16807)%2147483647;const u=_seed/2147483647;return b===undefined?u*a:a+u*(b-a)};
 const WOOD='#cf9d66',WOOD2='#a8743f',WOOD3='#8a5c33',MOSS='#6f9a4a',MOSS2='#5c8a3e',CREAM='#efe6d3',CREAM2='#e2d6bd',DARK='#2f3a33',INK='#2a2622',PI=Math.PI;
@@ -383,12 +386,12 @@ const plants={
  monstera(g,s){pot(g,s,'#b5533c');for(let i=0;i<7;i++){const a=i*.9,rr=rnd(.3,.55)*s,h=rnd(.8,1.35)*s;limb(g,[0,.4*s,0],[Math.cos(a)*rr,h,Math.sin(a)*rr],.02*s,.014*s,'#4f8a3a',4);P(g,G.cyl(.24*s,.24*s,.02,6),i%2?'#4f8a3a':'#5fa046',Math.cos(a)*rr*1.25,h+.03,Math.sin(a)*rr*1.25,rnd(-.5,.5),a,.5,[1,1,.75])}},
  ficus(g,s){pot(g,s,'#f4efe2');limb(g,[0,.4*s,0],[.05,1.5*s,0],.05*s,.035*s,BARK,5);for(let i=0;i<5;i++)P(g,G.ico(rnd(.28,.42)*s),i%2?'#6fa344':'#8bb84e',rnd(-.3,.3)*s,(1.5+rnd(.5))*s,rnd(-.3,.3)*s,rnd(3),rnd(3),0)},
  fern(g,s){pot(g,s,WOOD2);for(let i=0;i<11;i++){const a=i*.58;P(g,G.cone(.07*s,.85*s,4),i%2?'#4f8a3a':'#6a9c45',Math.cos(a)*.28*s,.62*s,Math.sin(a)*.28*s,Math.sin(a)*.95,0,-Math.cos(a)*.95,[1,1,.4])}}};
-const plant=(kind,x,z,s=1,y=0)=>{if(blocked(x,z))return;const g=at(x,y,z,rnd(6));world.add(g);plants[kind](g,s)};
+const plant=(kind,x,z,s=1,y=0)=>{if(blocked(x,z))return;block(x,z,.4*s);const g=at(x,y,z,rnd(6));world.add(g);plants[kind](g,s)};
 plant('monstera',-8.2,-4.1,1.2);plant('snake',-3.0,-7.7,1.1);plant('ficus',-1.2,-8.6,1.5);plant('fern',1.4,-8.9,1.2);plant('snake',7.6,-4.6,1.2);plant('monstera',8.6,2.6,1.1);plant('ficus',-8.6,2.4,1.3);plant('fern',-5.0,6.4,1);plant('snake',6.6,6.2,.9);
 // ── 이끼 화단: 둔덕, 이끼 낀 바위, 고사리, 풀, 흰 꽃 ──
 function rock(g,x,z,s){P(g,G.ico(.42*s),'#9a9a8e',x,.2*s,z,rnd(3),rnd(3),0,[1.3,.7,1]);P(g,G.ico(.3*s),MOSS2,x-.05*s,.42*s,z,0,rnd(3),0,[1.25,.3,1]);P(g,G.ico(.14*s),'#8a8a80',x+.5*s,.08,z+.2*s,rnd(3),0,0)}
 function fernClump(x,z,s){const g=new THREE.Group();for(let i=0;i<9;i++){const a=i*.7+rnd(.3);P(g,G.cone(.07*s,rnd(.6,1)*s,4),i%2?'#4f8a3a':'#6a9c45',Math.cos(a)*.22*s,.38*s,Math.sin(a)*.22*s,Math.sin(a)*.85,0,-Math.cos(a)*.85,[1,1,.4])}const b=bake(g);b.position.set(x,.05,z);b.userData.p=x;scene.add(b);sways.push(b)}
-function bed(x,z,s=1){if(blocked(x,z))return;const g=at(x,0,z);world.add(g);for(let i=0;i<7;i++)P(g,G.ico(rnd(.55,.95)*s,1),[MOSS,MOSS2,'#7fa857'][i%3],rnd(-1.3,1.3)*s,.03,rnd(-1.1,1.1)*s,0,rnd(3),0,[1,.3,1]);
+function bed(x,z,s=1){if(blocked(x,z))return;block(x,z,1.3*s+.1);const g=at(x,0,z);world.add(g);for(let i=0;i<7;i++)P(g,G.ico(rnd(.55,.95)*s,1),[MOSS,MOSS2,'#7fa857'][i%3],rnd(-1.3,1.3)*s,.03,rnd(-1.1,1.1)*s,0,rnd(3),0,[1,.3,1]);
   rock(g,rnd(-.8,.8)*s,rnd(-.6,.6)*s,s);rock(g,rnd(-1.2,1.2)*s,rnd(-.9,.9)*s,s*.7);
   for(let i=0;i<14;i++)P(g,G.cone(.03,rnd(.25,.45),3),'#86a85f',rnd(-1.3,1.3)*s,.25,rnd(-1.1,1.1)*s,rnd(-.3,.3),0,rnd(-.3,.3));for(let i=0;i<6;i++)P(g,G.ico(.05),'#f4efe2',rnd(-1.2,1.2)*s,.27,rnd(-1,1)*s);
   for(let i=0;i<3;i++)fernClump(x+rnd(-1.1,1.1)*s,z+rnd(-.9,.9)*s,s)}
@@ -406,7 +409,7 @@ bed(T[0]+.2,T[1],1.3);bed(-6.7,4.8,1);bed(7.2,4.7,.9);bed(-8.2,-.9,.6);
 const lampM=new THREE.MeshStandardMaterial({color:'#fff3d6',emissive:'#ffd08a',emissiveIntensity:1.05,roughness:1,flatShading:true});
 const shadeLamp=(g,x,y,z,rad,sy=.85)=>{P(g,new THREE.SphereGeometry(rad,8,5),lampM,x,y,z,0,0,0,[1,sy,1]);P(g,G.cyl(rad*.4,rad*.4,.04,8),WOOD3,x,y+rad*sy*.93,z);P(g,G.cyl(rad*.4,rad*.4,.04,8),WOOD3,x,y-rad*sy*.93,z)};
 for(const th of[.75,1.6,2.45,3.3]){const x=T[0]+Math.cos(th)*4.65,z=T[1]+Math.sin(th)*4.65;shadeLamp(world,x,3.25,z,.3);P(world,G.cyl(.012,.012,.75,4),DARK,x,3.9,z)}
-function floorLamp(x,z,light){if(blocked(x,z))return;for(let k=0;k<3;k++)limb(world,[x+Math.cos(k*2.1)*.32,0,z+Math.sin(k*2.1)*.32],[x,1.45,z],.022,.022,WOOD3,4);shadeLamp(world,x,1.72,z,.34,.95);if(light){const p=new THREE.PointLight('#ffd08a',7,7,1.6);p.position.set(x,1.7,z);scene.add(p)}}
+function floorLamp(x,z,light){if(blocked(x,z))return;block(x,z,.45);for(let k=0;k<3;k++)limb(world,[x+Math.cos(k*2.1)*.32,0,z+Math.sin(k*2.1)*.32],[x,1.45,z],.022,.022,WOOD3,4);shadeLamp(world,x,1.72,z,.34,.95);if(light){const p=new THREE.PointLight('#ffd08a',7,7,1.6);p.position.set(x,1.7,z);scene.add(p)}}
 floorLamp(6.1,-3.5,true);floorLamp(-7.6,1.2,false);shadeLamp(world,L[0]+3.8,.32,L[1]+.5,.3);shadeLamp(world,L[0]-3.6,.26,L[1]+1.6,.24);
 
 // ── 책장: 책 높이·두께·색을 달리하고, 기울어진 책·눕힌 책 더미·소품을 섞는다 ──
@@ -564,10 +567,43 @@ function whiteboard(w, p, host) {
 // 소파에 앉은 직원: 무릎 위 노트북
 const laptop = (p) => held(p.g, (t) => { P(t, G.box(.34, .02, .24), '#3c403a', 0, 0, 0); P(t, G.box(.34, .22, .015), '#3c403a', 0, .11, -.12, -.25); P(t, G.box(.3, .18, .004), screenM, 0, .11, -.11, -.25); }, 0, .04, .3);
 
+// ---------- 걷기: 바닥 칸 지도. 가구·라운지·나무 칸은 막혀 있다 ----------
+const NAV = { c: .4, n: 48, o: -9.6 }, navFree = new Uint8Array(NAV.n * NAV.n);
+function buildNav() {
+  const { c, n, o } = NAV;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const x = o + (i + .5) * c, z = o + (j + .5) * c;
+    navFree[i * n + j] = Math.hypot(x, z) < 9.0 && !blocks.some((b) => Math.hypot(b.x - x, b.z - z) < b.r + .25) ? 1 : 0;
+  }
+}
+const cellOf = (v) => [Math.floor((v.x - NAV.o) / NAV.c), Math.floor((v.z - NAV.o) / NAV.c)];
+const isFree = (i, j) => i >= 0 && j >= 0 && i < NAV.n && j < NAV.n && navFree[i * NAV.n + j] === 1;
+const freeAt = (v) => isFree(...cellOf(v));
+function nearestFree(v) {
+  const p = new THREE.Vector3(v.x, 0, v.z);
+  if (freeAt(p)) return p;
+  for (let r = .2; r < 4; r += .2) for (let a = 0; a < 16; a++) { const c = new THREE.Vector3(v.x + Math.cos(a * PI / 8) * r, 0, v.z + Math.sin(a * PI / 8) * r); if (freeAt(c)) return c; }
+  return p;
+}
+function los(a, b) { const k = Math.ceil(a.distanceTo(b) / .15); for (let i = 1; i < k; i++) if (!freeAt(new THREE.Vector3().lerpVectors(a, b, i / k))) return false; return true; }
+// 칸 경로를 찾고, 막힘 없이 보이는 데까지는 곧장 걸어가게 줄인다
+function findPath(a, b) {
+  const s0 = nearestFree(a), e = nearestFree(b), cells = gridPath(NAV.n, isFree, cellOf(s0), cellOf(e));
+  if (!cells) return [e];
+  const pts = [s0, ...cells.slice(1, -1).map(([i, j]) => new THREE.Vector3(NAV.o + (i + .5) * NAV.c, 0, NAV.o + (j + .5) * NAV.c)), e], out = [s0];
+  for (let k = 0; k < pts.length - 1;) { let m = pts.length - 1; while (m > k + 1 && !los(pts[k], pts[m])) m--; out.push(pts[m]); k = m; }
+  return out;
+}
+
 // ---------- 직원 ----------
-const people = new Map();   // name -> { name, title, sub, label, role, c, p(3D), tag, bub, busy, stand, sofa, seed }
+const people = new Map();   // name -> { name, title, sub, label, role, c, p(3D), host, home, tag, bub, busy, act, stand, sofa, seed, mode, stack, carry, path, queue }
 const labels = [];
 let built = false;          // 부팅 중에는 책상을 정적 장면(world)에 넣어 한 번에 합친다. 그 뒤 새 책상은 따로 합친다
+LOOK.ceo = { hair: '#2a211c', style: 'plain', top: 'suit', c: '#8a2f3a', pants: '#2a2622', shoes: '#2a2622' };   // 대표: 버건디 정장
+TINT.ceo = ['#8a2f3a', '#f0c4a0'];
+// 대표 책상: 금 명패, 초록 갓 스탠드, 찻잔, 높은 등받이 의자
+PROPS.ceo = (w) => { P(w,G.box(.42,.09,.05),GOLD,0,.83,.36);P(w,G.box(.3,.03,.052),INK,0,.84,.363);P(w,G.cyl(.09,.1,.025,8),'#b08d3a',.75,.79,.25);limb(w,[.75,.8,.25],[.75,1.12,.25],.012,.012,'#b08d3a',4);P(w,G.cyl(.08,.08,.28,6,1),'#2f7d5a',.72,1.14,.25,0,0,PI/2,[1,1,.7]);mug(w,'#f4efe2',-.75,.78,.2);P(w,G.box(.46,.5,.07),'#5a2a2a',0,1.3,-1.06,-.1); };
+const deskBlocks = (host, list) => { host.updateMatrixWorld(true); for (const [x, z, r] of list) { const v = host.localToWorld(new THREE.Vector3(x, 0, z)); block(v.x, v.z, r); } };
 function addPerson(info) {
   const k = people.size, role = roleOf(info.name);
   if (!seatOf.has(info.name)) seatOf.set(info.name, seatFor(info.name, false));
@@ -575,19 +611,22 @@ function addPerson(info) {
   const s = { id: role, c: TINT[role]?.[0] || COLORS[k % COLORS.length], skin: TINT[role]?.[1] || SKINS[k % SKINS.length],
     look: LOOK[role] || { style: 'plain', top: 'tee', pants: '#4a4f5a', shoes: '#e9e2d0', hair: HAIRS[k % HAIRS.length] } };
   const p = person(s);
+  let host = scene;
   if (desk_) {
-    const [x, z, ry, kind] = seat, w = at(x, 0, z, ry), host = at(x, 0, z, ry);
+    const [x, z, ry, kind] = seat, w = at(x, 0, z, ry);
+    host = at(x, 0, z, ry);
     scene.add(host);
-    if (kind === 'board') whiteboard(w, p, host);
-    else { desk(w, s, kind); chair(w, 0, -.8, rnd(-.15, .15)); p.g.position.set(0, .61, -.75); sit(p); host.add(p.g); }
+    if (kind === 'board') { whiteboard(w, p, host); deskBlocks(host, [[-.6, 0, .5], [.6, 0, .5]]); }
+    else { desk(w, s, kind === 'ceo' ? undefined : kind); chair(w, 0, -.8, kind === 'ceo' ? 0 : rnd(-.15, .15)); p.g.position.set(0, .61, -.75); sit(p); host.add(p.g); deskBlocks(host, [[-.55, 0, .7], [.55, 0, .7], [0, -.8, .4]]); }
     PROPS[role]?.(w, p);
-    if (built) scene.add(bake(w)); else world.add(w);
+    if (built) { scene.add(bake(w)); buildNav(); } else world.add(w);
   } else {
     const th = (195 + seat.sofa * 18.75) * PI / 180;
     p.g.position.set(L[0] + Math.cos(th) * 1.88, .02, L[1] + Math.sin(th) * 1.88); p.g.rotation.y = Math.atan2(-Math.cos(th), -Math.sin(th));
     sit(p); laptop(p); scene.add(p.g);
   }
-  const q = { ...info, p, role, c: s.c, label: String(info.title || info.name).replace(/[「」]/g, ''), stand: desk_ && seat[3] === 'board', sofa: !desk_, seed: k * 1.7, busy: false };
+  const q = { ...info, p, role, host, c: s.c, label: String(info.title || info.name).replace(/[「」]/g, ''), stand: desk_ && seat[3] === 'board', sofa: !desk_, seed: k * 1.7, busy: false,
+    act: info.name === 'ceo' ? 'read' : null, home: { pos: p.g.position.clone(), rot: p.g.rotation.y }, mode: 'seat', queue: Promise.resolve(), pending: 0, stack: [], carry: [], path: [], visitors: 0 };
   const d = document.createElement('div');
   d.className = 'tag'; d.dataset.id = info.name;
   d.innerHTML = `<span class="bub"></span><b><i style="background:${q.c}"></i>${esc(q.label)}</b>`;
@@ -597,9 +636,15 @@ function addPerson(info) {
   people.set(info.name, q);
   return q;
 }
-for (const info of ROSTER) addPerson(info);
+for (const info of [CEO, ...ROSTER]) addPerson(info);
 scene.add(bake(world));
 built = true;
+// 걸어서 돌아가야 하는 고정 가구: 라운지, 독서 자리, 2층 기둥, 책장, 간식대, 바닥 등
+block(L[0], L[1], 3.4); block(5.9, -1.6, 1.1); block(T[0] + 4.5, T[1] - 1.7, .6); block(T[0] - 3.3, T[1] - 3.5, .6);
+for (const k of [-1.2, 0, 1.2]) block(8.3 + .12 * k, -.5 + .99 * k, .5);
+for (const k of [-.6, .6]) block(-8.7 + .1 * k, .3 - .995 * k, .5);
+block(L[0] + 3.8, L[1] + .5, .35); block(L[0] - 3.6, L[1] + 1.6, .35);
+buildNav();
 // 처음 보는 이름(general-purpose, Explore, 새로 채용된 직원 등)은 그 자리에서 앉힌다
 const someone = (name) => people.get(name) || addPerson({ name, title: name === 'general-purpose' ? '임시 지원' : name, sub: '기타 에이전트' });
 
@@ -626,17 +671,126 @@ const ANIM = {
   // 마케팅: 휴대폰을 넘겨 보다가 가끔 둘러보고 메가폰을 들썩, 발 까딱 (쉴 때도 같은 동작)
   marketing(p,t){const up=pulse(t,6.5,2.4);p.R.sh.rotation.set(-.55,0,-.2);p.R.el.rotation.x=-1.4;p.R.hand.rotation.z=Math.sin(t*5)*.08;p.L.sh.rotation.set(-.35-up*.5,0,.3+up*.1);p.L.el.rotation.x=-1.0-up*.3;p.head.rotation.set(.3*(1-up),Math.sin(t*.45)*.5*up+.12*(1-up),0);p.lR.kn.rotation.x=PI/2-.04+Math.sin(t*3)*.07},
 };
+// 일하는 중: map.mjs가 알려 준 지금 하는 일(읽기·조사·실행·작성)에 맞춘 동작. 역할 고유 동작이 있으면 그것(화이트보드·태블릿·계산기·헤드셋·메가폰)
+const ACT = {
+  read(p, t) { const flip = pulse(t, 4.5, .9); p.R.sh.rotation.set(-.4 - flip * .45, -flip * .3, -.1); p.R.el.rotation.x = -1.1 - flip * .35; p.L.el.rotation.x = -1.15; p.head.rotation.set(.32 + Math.sin(t * .8) * .05, Math.sin(t * 1.4) * .2, 0); },
+  search(p, t) { p.g.rotation.x = .08; p.R.el.rotation.x = -1.02 + Math.sin(t * 7) * .03; p.R.hand.rotation.x = Math.sin(t * 7) * .25; p.L.el.rotation.x = -1.1; p.head.rotation.set(.06 + Math.sin(t * 3.1) * .04, Math.sin(t * 2.2) * .32, 0); },
+  type(p, t) { typing(p, t, 17, .06); p.head.rotation.set(.12 + Math.abs(Math.sin(t * 2)) * .05, Math.sin(t * .9) * .08, 0); },
+};
+function busyAnim(q) {
+  const r = q.sofa ? null : q.role, a = q.act;
+  if (r === 'plan' || r === 'marketing') return ANIM[r];   // 화이트보드 앞 지시봉 / 휴대폰·메가폰
+  if (a === 'read') return ACT.read;
+  if (a === 'search') return r === 'scout' ? ANIM.scout : ACT.search;   // 스카우트는 돋보기로 지도 훑기
+  return (r !== 'scout' && ANIM[r]) || ACT.type;   // 작성·실행: 타이핑, 태블릿, 계산기, 헤드셋 응대
+}
+// 쉬는 중: 등을 기대고 가끔 차 한 모금, 천천히 두리번 (일할 때와 확실히 다르게)
+function idleAnim(p, t) {
+  const sip = pulse(t, 7, 1.8);
+  p.g.rotation.x = -.07;
+  p.R.sh.rotation.set(-.5 - sip, 0, -.3); p.R.el.rotation.x = -1.2 - sip * .9;
+  p.L.sh.rotation.set(-.15, 0, .2); p.L.el.rotation.x = -.5;
+  p.head.rotation.set(-.06 - sip * .2, Math.sin(t * .35) * .5 * (1 - sip), 0);
+}
 function pose(q, t) {
   const p = q.p;
+  p.g.rotation.x = 0;
   for (const [a, sx] of [[p.L, -1], [p.R, 1]]) { a.sh.rotation.set(q.stand ? 0 : -.35, 0, q.stand ? -sx * .08 : -sx * .1); a.el.rotation.x = q.stand ? -.15 : -1.08; a.hand.rotation.set(0, 0, 0); }
-  if (!q.stand) for (const l of [p.lL, p.lR]) { l.hip.rotation.set(-PI / 2 + .04, 0, 0); l.kn.rotation.x = PI / 2 - .04; }
-  else p.lL.hip.rotation.z = 0;
+  for (const l of [p.lL, p.lR]) { l.hip.rotation.set(q.stand ? 0 : -PI / 2 + .04, 0, 0); l.kn.rotation.x = q.stand ? 0 : PI / 2 - .04; }
   p.head.rotation.set(0, 0, 0);
-  const role = q.sofa ? null : q.role;
-  if (q.busy) (ANIM[role] || ((p, t) => { typing(p, t, 14); p.head.rotation.set(.12 + Math.sin(t * 1.3) * .04, 0, 0); }))(p, t);
-  else if (role === 'marketing') ANIM.marketing(p, t);
-  else p.head.rotation.set(.04 + Math.sin(t * .3) * .05, Math.sin(t * .4) * .45, 0);
+  if (q.busy) busyAnim(q)(p, t);
+  else if (q.stand) p.head.rotation.set(.04, Math.sin(t * .4) * .5, 0);
+  else idleAnim(p, t);
   p.g.rotation.z = Math.sin(t * .9) * .012;
+}
+
+// ---------- 걷기·서류 전달 (이전 오피스의 지시 받기 → 업무 전달 → 보고 흐름) ----------
+const papers = [], paperGeo = new THREE.BoxGeometry(.3, .012, .4);   // 눌러서 여는 서류
+function newPaper(meta) { const m = new THREE.Mesh(paperGeo, M(meta.report ? '#fff1c2' : '#fbfaf3')); m.castShadow = true; m.userData = meta; papers.push(m); return m; }
+function placeStack(q) {
+  while (q.stack.length > 8) { const m = q.stack.shift(); m.removeFromParent(); papers.splice(papers.indexOf(m), 1); }
+  const [x, y, z] = q.sofa ? [L[0] + .25, -.15, L[1] + .3] : q.stand ? [.25, .87, .1] : q.name === 'ceo' ? [-.5, .79, -.05] : [.55, .79, -.3];
+  q.stack.forEach((m, i) => { (q.sofa ? scene : q.host).add(m); m.position.set(x + ((i * 37) % 5) * .01, y + i * .013, z); m.rotation.set(0, ((i * 53) % 7) * .05, 0); });
+}
+function carry(q, list) { q.carry = list; list.forEach((m, i) => { q.p.g.add(m); m.position.set(0, .3 + i * .013, .34); m.rotation.set(-.25, 0, 0); }); }
+function dropOn(host, q) { host.stack.push(...q.carry); q.carry = []; placeStack(host); }
+const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+// 한 사람의 움직임은 줄을 서서 차례로: 겹치는 이벤트에도 순간 이동하지 않는다
+const job = (q, fn) => { q.pending++; q.queue = q.queue.then(fn).catch((e) => log('움직임 오류: ' + e.message, 'bad')).finally(() => q.pending--); };
+const floorOf = (q) => { const v = new THREE.Vector3(); q.p.g.getWorldPosition(v); v.y = 0; return v; };
+const localPt = (q, x, z) => { q.host.updateMatrixWorld(); return q.host.localToWorld(new THREE.Vector3(x, 0, z)); };
+const standPt = (q) => (q.standAt ||= nearestFree(q.stand ? floorOf(q) : localPt(q, 1.15, -.75)));   // 자리에서 일어나 설 곳
+function visitPt(host, i) {   // 손님이 와서 설 곳(여럿이면 옆으로 줄)
+  if (host.sofa) { const c = new THREE.Vector3(L[0], 0, L[1]); return nearestFree(c.clone().add(floorOf(host).sub(c).setLength(3.8))); }
+  if (host.name === 'ceo') return nearestFree(localPt(host, -.5 + (i % 3) * .7, 1.45 + Math.floor(i / 3) * .6));
+  if (host.stand) return nearestFree(localPt(host, -1.0 + i * .6, 1.7));
+  return nearestFree(localPt(host, 1.65, .2 + i * .6));
+}
+const walkTo = (q, dest) => new Promise((done) => { q.path = findPath(floorOf(q), dest); q.arrive = done; q.mode = 'walk'; });
+function standUp(q) {
+  if (q.mode !== 'seat') return;
+  scene.attach(q.p.g);
+  const d = new THREE.Vector3(0, 0, 1).applyQuaternion(q.p.g.quaternion);
+  q.p.g.rotation.set(0, Math.atan2(d.x, d.z), 0); q.p.g.position.y = 1.0; q.mode = 'stand';
+}
+function sitDown(q) { q.host.add(q.p.g); q.p.g.position.copy(q.home.pos); q.p.g.rotation.set(0, q.home.rot, 0); q.mode = 'seat'; }
+const face = (q, host) => { const a = floorOf(q), b = floorOf(host); q.p.g.rotation.y = Math.atan2(b.x - a.x, b.z - a.z); };
+// walk = motionOf(...).walk. give: 서류를 들고 가서 놓고 온다(보고는 내 책상의 산출물도 함께). take: 서류를 받아 와 내 책상에 놓는다
+async function visit(q, host, walk, paper) {
+  if (q.sofa) return;   // shortcut: 라운지 소파는 바닥이 한 단 낮아 걷지 않는다(말풍선·히스토리로만 보임). 소파 직원이 늘면 계단 칸을 지도에 넣는다
+  const i = host.visitors++;
+  try {
+    if (walk.give === 'report' || walk.give === 'final') {
+      const mine = q.stack.filter((x) => x.userData.path);
+      q.stack = q.stack.filter((x) => !x.userData.path); placeStack(q);
+      carry(q, [...mine, newPaper(paper)]);
+    } else if (walk.give) carry(q, [newPaper(paper)]);
+    standUp(q);
+    await walkTo(q, visitPt(host, i));
+    face(q, host); q.mode = 'stand';
+    await wait(900);
+    if (walk.give) dropOn(host, q);
+    if (walk.take) carry(q, [newPaper(paper)]);
+    await wait(300);
+  } finally { host.visitors--; }
+  await walkTo(q, standPt(q));
+  if (q.carry.length) dropOn(q, q);
+  sitDown(q);
+}
+// motionOf 결과를 실제 움직임으로. ev = 원래 이벤트(서류 제목·내용), ev.paper = 지시·TODO 서류
+function perform(m, ev = {}) {
+  if (m.work) { const q = people.get(m.work.who); if (q) q.act = m.work.act; return; }
+  if (m.file) { const q = people.get(m.file.who); if (q) job(q, async () => { q.stack.push(newPaper({ title: m.file.path, path: m.file.path })); placeStack(q); }); return; }
+  const w = m.walk, q = people.get(w.who), host = people.get(w.to);
+  if (!q || !host || q === host) return;
+  const paper = w.give === 'order' ? { title: `업무지시: ${ev.task}`, text: ev.prompt || ev.task }
+    : w.give === 'report' ? { title: `${q.label} 보고`, text: ev.summary || (ev.ok === false ? '실패' : '완료'), report: true }
+    : w.give === 'final' ? { title: '최종 보고', text: ev.text, report: true } : ev.paper;
+  job(q, () => visit(q, host, w, paper));
+}
+const WV = new THREE.Vector3();
+function move(q, dt, t) {
+  if (q.mode === 'seat') return pose(q, t);
+  const g = q.p.g, p = q.p;
+  let moving = false;
+  if (q.mode === 'walk') {
+    const tgt = q.path[0];
+    if (!tgt) { q.mode = 'stand'; const done = q.arrive; q.arrive = null; done?.(); }
+    else {
+      WV.set(tgt.x - g.position.x, 0, tgt.z - g.position.z);
+      const d = WV.length(), step = Math.min(6, 2.2 * (1 + q.pending * .5)) * dt;   // 밀린 일이 많으면 빨리 걷는다
+      if (d <= step) { g.position.x = tgt.x; g.position.z = tgt.z; q.path.shift(); }
+      else { g.position.x += WV.x / d * step; g.position.z += WV.z / d * step; const da = Math.atan2(WV.x, WV.z) - g.rotation.y; g.rotation.y += Math.atan2(Math.sin(da), Math.cos(da)) * Math.min(1, dt * 10); }
+      moving = true;
+    }
+  }
+  const sw = moving ? Math.sin(t * 9) : 0, held = q.carry.length > 0;
+  p.lL.hip.rotation.set(-sw * .5, 0, 0); p.lR.hip.rotation.set(sw * .5, 0, 0);
+  p.lL.kn.rotation.x = Math.max(0, sw) * .6; p.lR.kn.rotation.x = Math.max(0, -sw) * .6;
+  for (const [a, sx] of [[p.L, -1], [p.R, 1]]) { a.sh.rotation.set(held ? -.95 : sx * sw * .45, 0, -sx * .08); a.el.rotation.x = held ? -.75 : -.2; a.hand.rotation.set(0, 0, 0); }
+  p.head.rotation.set(held ? .15 : 0, 0, 0);
+  g.rotation.x = g.rotation.z = 0;
+  g.position.y = 1.0 + (moving ? Math.abs(Math.cos(t * 9)) * .04 : 0);
 }
 
 // ---------- 머리 위 말풍선: 앞사람(화면 아래쪽)부터 자리를 잡고, 겹치는 뒤쪽 말풍선은 위로 밀어 올린다 ----------
@@ -657,9 +811,17 @@ function placeLabels() {
 const hist = createHistory();
 const VERB = { order: '지시 받음', read: '읽는 중', search: '조사 중', run: '실행 중', write: '작성 중', report: '보고' };
 let askCeo = new Map();   // agent name -> first open TODO id
+let openTodos = [];
 const running = () => document.body.dataset.running === '1';
 function paint(name) {
   const q = people.get(name); if (!q) return;
+  if (name === 'ceo') {   // 대표: 결정 기다리는 TODO
+    const t0 = openTodos[0];
+    q.busy = !!t0;
+    q.bub.className = 'bub' + (q.busy ? '' : ' idle');
+    q.bub.innerHTML = t0 ? `<strong>결정 기다리는 TODO ${openTodos.length}건</strong><small>${esc(cut(`T${t0.id} ${t0.desc.split('\n')[0]}`, 32))}</small>` : '<strong>결정·승인</strong>';
+    return;
+  }
   const k = hist.latest(name), last = k?.ev.at(-1);
   q.busy = name === 'pm' ? running() : [...hist.tasks.values()].some((x) => x.agent === name && x.state === '진행 중');
   let head = '대기', sub = k ? `최근: ${k.title} · ${k.state}` : q.sub;
@@ -693,15 +855,17 @@ function openHist(name, keep) {
 }
 function closeHist() { focusId = null; $('hist').classList.remove('open'); for (const l of labels) l.d.classList.remove('on'); }
 const ray = new THREE.Raycaster(), NDC = new THREE.Vector2();
+function aim(e) { const b = renderer.domElement.getBoundingClientRect(); NDC.set((e.clientX - b.left) / b.width * 2 - 1, 1 - (e.clientY - b.top) / b.height * 2); ray.setFromCamera(NDC, camera); }
+const pickPaper = (e) => { aim(e); return ray.intersectObjects(papers.filter((m) => m.parent), false)[0]?.object; };
 function pickPerson(e) {
-  const b = renderer.domElement.getBoundingClientRect();
-  NDC.set((e.clientX - b.left) / b.width * 2 - 1, 1 - (e.clientY - b.top) / b.height * 2);
-  ray.setFromCamera(NDC, camera);
+  aim(e);
   let best = null, d = 1e9;
   for (const q of people.values()) { const h = ray.intersectObject(q.p.g, true)[0]; if (h && h.distance < d) { d = h.distance; best = q.name; } }
   return best;
 }
 document.addEventListener('click', (e) => {
+  const pp = e.target === renderer.domElement && pickPaper(e);
+  if (pp) return openPaper(pp.userData);   // 책상 위 서류 → 그 문서(또는 지시·보고 내용)
   const tag = e.target.closest('.tag'), id = tag ? tag.dataset.id : e.target === renderer.domElement ? pickPerson(e) : null;
   if (id) return openHist(id);
   const f = e.target.closest('#hist .tx.more, #hist .fold');
@@ -715,16 +879,17 @@ document.addEventListener('click', (e) => {
   if (u) return openPaper({ path: u.dataset.p, title: u.dataset.p });
   if (focusId && (e.target.closest('[data-x]') || !e.target.closest('#hist, #viewer, #zoom'))) closeHist();
 });
-renderer.domElement.addEventListener('mousemove', (e) => { renderer.domElement.style.cursor = pickPerson(e) ? 'pointer' : ''; });
+renderer.domElement.addEventListener('mousemove', (e) => { renderer.domElement.style.cursor = pickPaper(e) || pickPerson(e) ? 'pointer' : ''; });
 
 // ---------- 화면 루프 ----------
 const clock = new THREE.Clock(), FH = new THREE.Vector3(), LK = new THREE.Vector3();
-let looping = false, frames = 0, fitK = 1;
+let looping = false, frames = 0, fitK = 1, lastT = 0;
 function frame() {
   if (document.body.classList.contains('panelonly')) { looping = false; return; }   // 오피스 끔: 렌더 루프 정지
   looping = true;
-  const t = clock.getElapsedTime();
-  for (const q of people.values()) pose(q, t + q.seed);
+  const t = clock.getElapsedTime(), dt = Math.min(t - lastT, .05);
+  lastT = t;
+  for (const q of people.values()) move(q, dt, t + q.seed);
   sun.position.set(SUN.x + Math.sin(t * .09) * 5, SUN.y, SUN.z + Math.cos(t * .09) * 2);
   gobo.position.x = Math.sin(t * .8) * .22; gobo.position.z = Math.cos(t * .6) * .16; canopy.rotation.z = Math.sin(t * .7) * .016; canopy.rotation.x = Math.cos(t * .5) * .012;
   for (const f of sways) f.rotation.z = Math.sin(t * 1.3 + f.userData.p) * .07;
@@ -973,7 +1138,10 @@ function alertCeo(kind, title, body) {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { unseen = 0; document.title = baseTitle; } });
 let knownTodos = null;   // ids already on screen; the first load never chimes
 function noticeTodos(open) {
-  if (knownTodos) for (const t of open) if (!knownTodos.has(t.id)) alertCeo('todo', `대표 TODO T${t.id} · ${t.type}`, `${t.by}: ${t.desc.split('\n')[0]}`);
+  if (knownTodos) for (const t of open) if (!knownTodos.has(t.id)) {
+    alertCeo('todo', `대표 TODO T${t.id} · ${t.type}`, `${t.by}: ${t.desc.split('\n')[0]}`);
+    perform(todoMotion(t, [...people.keys()]), { paper: { title: `T${t.id} ${t.type}`, text: t.desc } });   // 물어본 사람이 대표에게 서류를 가져간다
+  }
   knownTodos = new Set([...(knownTodos || []), ...open.map((t) => t.id)]);
 }
 
@@ -984,6 +1152,7 @@ const picked = new Map();   // id -> File[] attached, kept across refreshes
 function renderTodos(open) {
   $('ntodo').textContent = `${open.length}건 대기`;
   noticeTodos(open);
+  openTodos = open;
   askCeo = new Map();
   for (const t of open) if (!askCeo.has(t.by)) askCeo.set(t.by, t.id);
   paintAll();
@@ -1103,6 +1272,8 @@ refreshBoard();
 // ---------- 실행 줄 → 사람·말풍선·히스토리·대화 내역 ----------
 function handle(ev, live) {
   const p = ev.agent && someone(ev.agent);
+  const m = live && motionOf(ev);
+  if (m) perform(m, ev);   // 기록 다시 받기(새로고침)에서는 걷지 않는다
   switch (ev.kind) {
     case 'dispatch': log(ev.task, 'go', `PM → ${p.label}`); break;
     case 'tool': log(`${p.label} · ${ev.tool} ${ev.detail || ''}`, 'tool'); break;
@@ -1137,7 +1308,7 @@ es.onmessage = (m) => {
 function onEvent(e) {
   const t = evTime ?? Date.now();
   if (e.type === '_office') {
-    if (e.prompt) { log(e.prompt, 'ceo', '대표 지시'); hist.run(e._run, e.prompt, t); }
+    if (e.prompt) { log(e.prompt, 'ceo', '대표 지시'); hist.run(e._run, e.prompt, t); if (!e._history) perform(instructionMotion(), { paper: { title: '대표 지시', text: e.prompt } }); }
     if (e.state) setRunning(e.state === 'running', e.runs);
     if (e.ended) { feeds.delete(e._run); hist.end(e._run); paintAll(); }
     if (e.log) log(e.log);

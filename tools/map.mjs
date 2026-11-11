@@ -95,6 +95,43 @@ export function createHistory(max = 200) {
   };
 }
 
+// What the 3D office acts out for a mapper event (office.html runs it; history replays skip it).
+// walk = who goes to whom: give = carries a paper there, take = brings one back. work = what they are doing at the desk.
+export function motionOf(ev) {
+  if (ev.kind === 'dispatch') return { walk: { who: 'pm', to: ev.agent, give: 'order' } };   // PM hands the work order over
+  if (ev.kind === 'report') return { walk: { who: ev.agent, to: 'pm', give: 'report' } };     // staff bring their papers to PM
+  if (ev.kind === 'result') return { walk: { who: 'pm', to: 'ceo', give: 'final' } };         // PM brings the final report to the CEO
+  if (ev.kind === 'tool') return { work: { who: ev.agent, act: ev.step } };
+  if (ev.kind === 'say') return { work: { who: ev.agent, act: 'say' } };
+  if (ev.kind === 'paper') return { file: { who: ev.agent, path: ev.path } };                 // a board/ file lands on their desk
+  return null;
+}
+export const instructionMotion = () => ({ walk: { who: 'pm', to: 'ceo', take: 'instruction' } });   // PM fetches a new CEO order
+export const todoMotion = (todo, staff) => ({ walk: { who: staff.includes(todo.by) ? todo.by : 'pm', to: 'ceo', give: 'todo' } });
+
+// Shortest walk on a grid of floor cells (8 directions, no cutting corners past furniture). null = unreachable.
+export function gridPath(n, free, [si, sj], [gi, gj]) {
+  const g = new Float64Array(n * n).fill(Infinity), from = new Int32Array(n * n).fill(-1), done = new Uint8Array(n * n);
+  const f = (c) => g[c] + Math.hypot((c / n | 0) - gi, (c % n) - gj), open = [si * n + sj];
+  g[open[0]] = 0;
+  while (open.length) {
+    let b = 0;
+    for (let k = 1; k < open.length; k++) if (f(open[k]) < f(open[b])) b = k;
+    const cur = open.splice(b, 1)[0], ci = cur / n | 0, cj = cur % n;
+    if (done[cur]) continue;
+    done[cur] = 1;
+    if (ci === gi && cj === gj) { const out = []; for (let c = cur; c >= 0; c = from[c]) out.unshift([c / n | 0, c % n]); return out; }
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+      const i = ci + di, j = cj + dj;
+      if ((!di && !dj) || i < 0 || j < 0 || i >= n || j >= n || !free(i, j)) continue;
+      if (di && dj && (!free(ci + di, cj) || !free(ci, cj + dj))) continue;
+      const k = i * n + j, ng = g[cur] + (di && dj ? Math.SQRT2 : 1);
+      if (ng < g[k]) { g[k] = ng; from[k] = cur; open.push(k); }
+    }
+  }
+  return null;
+}
+
 export function boardRel(fp) {
   if (!fp) return null;
   const n = '/' + fp.replace(/\\/g, '/');
