@@ -65,6 +65,7 @@ export function parseCommand(text, { replyTodo = null, todos = [], files = 0 } =
     const byNum = /^\d+$/.test(first || '') ? todo.options[Number(first) - 1] : null;
     const exact = todo.options.find((o) => rest === o || (rest.startsWith(o) && SEP.test(rest.slice(o.length))));
     const answer = byNum || exact;
+    if (!answer && todo.type === '확인' && rest) return { kind: 'answer', id, answer: '추가 지시', note: rest };   // 보고에 글로 답하면 추가 지시
     if (!answer) return { kind: 'error', text: `T${id} 보기 중에서 골라 주세요: ${todo.options.map((o, i) => `${i + 1}. ${o}`).join('  ')}` };
     return { kind: 'answer', id, answer, note: (byNum ? more.join(' ') : rest.slice(answer.length).replace(SEP_ALL, '')).trim() };
   }
@@ -111,7 +112,8 @@ export function createTelegram({ cfg, url, runDir, todos, status, onRun, onAnswe
   const remember = (mid, id) => { msgTodo.set(mid, id); writeFileSync(mapFile, JSON.stringify([...msgTodo].slice(-300))); };
   const keys = (t) => (t.options.length ? t.options.map((o, i) => [{ text: o, callback_data: `a:${t.id}:${i}` }]) : t.type === '실행' ? [[{ text: '완료', callback_data: `a:${t.id}:x` }]] : []);
   const buttons = (t) => (keys(t).length ? { reply_markup: { inline_keyboard: keys(t) } } : {});
-  const howTo = (t) => (!keys(t).length ? '이 메시지에 답장으로 글이나 파일(사진·문서·음성)을 보내 주세요.'
+  const howTo = (t) => (t.type === '확인' ? '끝내려면 [종료]를, 이어서 시킬 일이 있으면 이 메시지에 답장으로 적어 주세요([추가 지시]를 누른 뒤 보내도 돼요).'
+    : !keys(t).length ? '이 메시지에 답장으로 글이나 파일(사진·문서·음성)을 보내 주세요.'
     : `${t.type === '실행' ? '했으면 [완료]를' : t.type === '승인' ? '승인/반려를' : '보기 버튼을'} 누르세요. 이유·메모·파일은 누른 뒤 바로 보내면 함께 기록돼요. 이 메시지에 답장해도 돼요.`);
   const todoText = (t) => `📋 대표 TODO T${t.id} · ${t.type} · ${t.by}\n${t.desc}${t.ref ? `\n근거: ${t.ref}` : ''}\n\n${howTo(t)}`;
 

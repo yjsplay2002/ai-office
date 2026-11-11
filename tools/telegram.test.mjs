@@ -50,4 +50,9 @@ assert.equal(r('research에게 시켜').kind, 'run');
 assert.equal(r('', { files: 1 }).kind, 'wait');
 assert.deepEqual(r('', { files: 1, replyTodo: 4 }), { kind: 'answer', id: 4, answer: '첨부 참고', note: '' });
 assert.equal(r('', { files: 1, replyTodo: 3 }).kind, 'error');   // 결정 needs a pick
+// 확인 TODO: 버튼은 종료 / 추가 지시, 글로 답하면 추가 지시
+const ct = [{ id: 12, type: '확인', by: 'pm', options: ['종료', '추가 지시'] }];
+assert.deepEqual(parseCommand('종료', { replyTodo: 12, todos: ct }), { kind: 'answer', id: 12, answer: '종료', note: '' });
+assert.deepEqual(parseCommand('추천안으로 진행해', { replyTodo: 12, todos: ct }), { kind: 'answer', id: 12, answer: '추가 지시', note: '추천안으로 진행해' });
+assert.deepEqual(parseCommand('T12 추가 지시 표로 정리', { todos: ct }), { kind: 'answer', id: 12, answer: '추가 지시', note: '표로 정리' });
 console.log('telegram ok');

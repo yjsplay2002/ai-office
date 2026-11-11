@@ -6,17 +6,20 @@
 // - 근거: board/plans/2026-11-05-pricing.md
 // - 상태: 대기
 
-export const TYPES = ['결정', '승인', '입력', '실행'];
+// 확인 = 대시보드 실행이 끝나 올라온 보고. 대표가 '종료'하거나 '추가 지시'로 이어서 시킨다.
+export const TYPES = ['결정', '승인', '입력', '실행', '확인'];
+export const CHECK = ['종료', '추가 지시'];
 
 export function parseTodos(text) {
   return text.split(/^### /m).slice(1).map((part) => {
     const [head, ...lines] = part.split(/\r?\n/);
-    const m = head.match(/^T(\d+)\s*·\s*(결정|승인|입력|실행)\s*·\s*(.+?)\s*$/);
+    const m = head.match(/^T(\d+)\s*·\s*(결정|승인|입력|실행|확인)\s*·\s*(.+?)\s*$/);
     if (!m) return null;
     const field = (k) => (lines.find((l) => l.startsWith(`- ${k}:`)) || '').slice(k.length + 3).trim();
     const type = m[2];
     let options = field('옵션').split(' / ').map((s) => s.trim()).filter(Boolean);
     if (type === '승인' && !options.length) options = ['승인', '반려'];
+    if (type === '확인') options = CHECK;
     const status = field('상태') || '대기';
     const desc = lines.filter((l) => l.trim() && !l.startsWith('- ') && !l.startsWith('  ')).join('\n').trim();
     const refs = refPaths(lines.filter((l) => /^- (근거|파일|QR):/.test(l)));
@@ -48,7 +51,8 @@ export function answerTodo(text, id, answer, note, today) {
   if (todo.done) throw new Error(`T${id}은 이미 처리됨`);
   if (todo.options.length && !todo.options.includes(answer)) throw new Error('보기 중 하나를 골라 주세요');
   if (todo.type === '입력' && !answer.trim()) throw new Error('답을 입력해 주세요');
-  const full = [answer.trim() || '완료', note?.trim()].filter(Boolean).join(' — ');
+  if (todo.type === '확인' && answer === '추가 지시' && !note?.trim()) throw new Error('추가로 시킬 일을 적어 주세요');
+  const full = todo.type === '확인' && answer === '추가 지시' ? `추가 지시: ${note.trim()}` : [answer.trim() || '완료', note?.trim()].filter(Boolean).join(' — ');
 
   const lines = text.split(/\r?\n/);
   const start = lines.findIndex((l) => new RegExp(`^### T${id}\\s*·`).test(l));
@@ -61,6 +65,24 @@ export function answerTodo(text, id, answer, note, today) {
   block.push(`- 상태: 완료 ${today}`, `- 답: ${first}`, ...rest.map((l) => '  ' + l), '');
   lines.splice(start, end - start, ...block);
   return { text: lines.join('\n'), todo, full };
+}
+
+// A finished dashboard run -> one '확인' TODO at the end of todos.md. Numbered from the text passed in, so read the file
+// right before calling (other PM sessions append too). report = { summary, ref, error }.
+export function addCheckTodo(text, { summary, ref, error }) {
+  const id = Math.max(0, ...[...String(text).matchAll(/^### T(\d+)\b/gm)].map((m) => Number(m[1]))) + 1;
+  const ls = String(summary || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const one = (ls.find((l) => !l.startsWith('#')) || ls[0] || '').replace(/^#+\s*/, '');   // 제목 줄보다 첫 본문 줄
+  const desc = `${error ? '작업이 오류로 끝났습니다. 보고를 확인해 주세요' : '보고를 확인해 주세요'}: ${one.length > 120 ? one.slice(0, 119) + '…' : one || '(내용 없음)'}`;
+  const nl = /\r\n/.test(text) ? '\r\n' : '\n';
+  const head = String(text || `# 대표 TODO${nl}`).replace(/\s*$/, '');
+  return { id, text: [head, '', `### T${id} · 확인 · pm`, desc, `- 근거: ${ref}`, '- 상태: 대기', ''].join(nl) };
+}
+
+// What an answered TODO hands to the next PM run: one line, or null when nothing should start ('확인' closed with 종료).
+export function followUp(todo, full, ref = todo.ref) {
+  if (todo.type === '확인' && !full.startsWith('추가 지시')) return null;
+  return `- T${todo.id} [${todo.type} · ${todo.by}] ${todo.desc.split('\n')[0]} → ${full}${todo.type === '확인' && ref ? ` (보고 전문: ${ref})` : ''}`;
 }
 
 // TODO attachments land in board/uploads/T<id>/; the paths go into the answer so the PM can read them.

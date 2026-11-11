@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, exi
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseTodos, answerTodo, uploadPlan } from './todos.mjs';
+import { parseTodos, answerTodo, uploadPlan, addCheckTodo, followUp } from './todos.mjs';
 import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
@@ -55,7 +55,9 @@ function startRun(prompt) {
     const tick = () => {
       if (!runs.has(id)) return;
       if (i >= lines.length) { runs.delete(id); return send({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, ended: true }); }
-      send(JSON.parse(lines[i++]));
+      const obj = JSON.parse(lines[i++]);
+      send(obj);
+      if (obj.type === 'result') reportTodo(id, prompt, obj);
       runs.set(id, { timer: setTimeout(tick, 700) });
     };
     return tick();
@@ -133,6 +135,7 @@ function attach({ id, pid, prompt, t: started }) {
         if (fresh) progress(obj, ts);
         // 직원별 토큰은 이 오피스가 띄운 세션만 센다(같은 폴더의 다른 Claude 작업과 섞이지 않게). tools/usage.mjs가 읽는다.
         if (fresh && obj.type === 'system' && obj.subtype === 'init' && obj.session_id) appendFileSync(path.join(runDir, 'sessions.txt'), obj.session_id + '\n');
+        if (fresh && obj.type === 'result') reportTodo(id, prompt, obj);
         if (fresh && obj.type === 'result') tg?.notify(`${obj.is_error ? '⚠️ 최종 보고 (오류)' : '✅ 최종 보고'}\n${String(obj.result || '').trim().slice(0, 600)}`);
       }
     }
@@ -187,6 +190,22 @@ function listBoard(dir = board) {
 const todosFile = path.join(board, 'todos.md');
 const todos = () => (existsSync(todosFile) ? parseTodos(readFileSync(todosFile, 'utf8')) : []);
 
+// 실행이 최종 보고로 끝나면 보고 전문을 board/reports/에 남기고 대표 TODO에 '확인'을 올린다(오류로 끝나도 올린다. 취소된 실행은 결과가 없어 올리지 않음).
+// board/가 없는 폴더(플러그인 저장소에서 리플레이 등)에는 쓰지 않는다.
+function reportTodo(run, prompt, obj) {
+  if (!existsSync(board)) return;
+  try {
+    const d = new Date(), day = d.toLocaleDateString('sv'), hm = d.toTimeString().slice(0, 8).replace(/:/g, '');
+    const rel = `board/reports/${day}-${hm}-run${run}.md`, text = String(obj.result || '').trim();
+    mkdirSync(path.join(board, 'reports'), { recursive: true });
+    const ask = String(prompt || '').split('\n')[0].slice(0, 300);
+    writeFileSync(path.join(root, rel), `# 최종 보고 · 대시보드 실행 ${run}\n\n- 시각: ${day} ${d.toTimeString().slice(0, 5)}\n- 결과: ${obj.is_error ? '오류' : '완료'}\n- 지시: ${ask}\n\n---\n\n${text}\n`);
+    const r = addCheckTodo(existsSync(todosFile) ? readFileSync(todosFile, 'utf8') : '', { summary: text, ref: rel, error: !!obj.is_error });   // 다른 PM 세션도 쓰므로 바로 직전에 읽는다
+    writeFileSync(todosFile, r.text);
+    office({ log: `보고 확인 TODO T${r.id} 추가` });
+  } catch (err) { office({ log: '보고 TODO 추가 실패: ' + err.message }); }
+}
+
 function checkUploads(dir, files) {
   const ups = uploadPlan(dir, files);
   if (ups.reduce((n, u) => n + u.buf.length, 0) > 50e6) throw new Error('첨부는 합쳐서 50MB까지');
@@ -195,7 +214,7 @@ function checkUploads(dir, files) {
 const saveUploads = (ups) => { for (const u of ups) { mkdirSync(path.dirname(path.join(root, u.rel)), { recursive: true }); writeFileSync(path.join(root, u.rel), u.buf); } };
 
 function submitTodo(id, answer, note, files) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString('sv');   // 로컬 날짜(UTC면 한국 아침이 전날로 찍힘)
   const ups = checkUploads(`T${id}`, files);
   if (ups.length) note = [note?.trim(), `첨부: ${ups.map((u) => u.rel).join(', ')}`].filter(Boolean).join(' — ');
   const r = answerTodo(readFileSync(todosFile, 'utf8'), id, answer || '', note, today);
@@ -206,7 +225,9 @@ function submitTodo(id, answer, note, files) {
   office({ log: `TODO T${id} 처리: ${r.full}` });
   // 토큰(11-06 점검): 답이 몰려 오면 PM 세션 하나로 묶는다. 마지막 답 뒤 60초 동안 새 답이 없으면 시작.
   // shortcut: 대기 중 서버가 재시작되면 묶음이 사라진다(답 자체는 todos.md에 저장됨). 자주 생기면 runDir에 대기 목록을 저장.
-  pendingAnswers.push(`- T${id} [${r.todo.type} · ${r.todo.by}] ${title} → ${r.full}`);
+  const line = followUp(r.todo, r.full);
+  if (!line) return r.full;   // 확인 TODO를 '종료'로 닫음: 이어서 할 일 없음
+  pendingAnswers.push(line);
   clearTimeout(answerTimer);
   answerTimer = setTimeout(flushAnswers, ANSWER_BATCH_MS);
   return r.full;
