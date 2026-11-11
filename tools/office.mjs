@@ -11,6 +11,7 @@ import { parseTodos, answerTodo, uploadPlan, addCheckTodo, followUp } from './to
 import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
+import { loadLog, lastRun, KEEP_LINES, SEND_LINES } from './eventlog.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -30,13 +31,21 @@ const runs = new Map();   // run id -> { pid, poll } (or replay { timer }). Seve
 // without killing or blocking it: on boot it re-attaches to every run still listed there.
 const runDir = path.join(root, '.office-runs');
 mkdirSync(runDir, { recursive: true });
-let nextRun = 1;
-let history = [];        // raw lines since the office was last idle, replayed to new viewers
+// 대시보드 기록: 방송한 줄은 모두 history.jsonl에도 남겨 서버를 다시 켜도 대화 내역·보고함·히스토리 카드가 돌아온다.
+// 부팅 때 7일·5000줄로 줄이고, 다시 붙는 실행(파일이 남은 실행)의 옛 줄은 지운다 — 그 실행이 처음부터 다시 보내므로 중복이 안 생긴다.
+const histFile = path.join(runDir, 'history.jsonl');
+const reattach = readdirSync(runDir).filter((f) => /^\d+\.json$/.test(f))
+  .map((f) => { try { return JSON.parse(readFileSync(path.join(runDir, f), 'utf8')); } catch { return null; } }).filter(Boolean);
+let history = loadLog(existsSync(histFile) ? readFileSync(histFile, 'utf8') : '', { drop: new Set(reattach.map((m) => m.id)) });
+writeFileSync(histFile, history.length ? history.join('\n') + '\n' : '');
+let nextRun = Math.max(lastRun(history), ...reattach.map((m) => m.id)) + 1;   // 옛 기록의 실행 번호와 겹치지 않게
 const clients = new Set();
 
 function broadcast(obj) {
   const line = JSON.stringify({ _t: Date.now(), ...obj });   // _t = when it happened, so replayed history keeps real times
   history.push(line);
+  if (history.length > KEEP_LINES * 1.2) history = history.slice(-KEEP_LINES);   // 파일은 다음 부팅 때 줄인다
+  try { appendFileSync(histFile, line + '\n'); } catch {}
   for (const res of clients) res.write(`data: ${line}\n\n`);
 }
 const office = (o) => broadcast({ type: '_office', ...o });
@@ -44,7 +53,6 @@ const busy = () => runs.size > 0;
 
 // Every instruction / TODO answer starts its own PM run immediately — no queue.
 function startRun(prompt) {
-  if (!busy()) history = [];
   const id = nextRun++;
   if (replay) {
     const send = (obj) => broadcast({ ...obj, _run: id });
@@ -283,9 +291,7 @@ setInterval(checkTodos, 5000);
 console.log(tg ? '텔레그램: 오피스 봇으로 알림 + 답장·지시 받기' : '텔레그램: 꺼짐 (.office-telegram.env에 오피스 전용 봇 토큰 필요)');
 
 // Re-attach to runs that kept going while this server was down (finished ones are read to the end, then closed).
-for (const f of readdirSync(runDir).filter((f) => f.endsWith('.json'))) {
-  try { const meta = JSON.parse(readFileSync(path.join(runDir, f), 'utf8')); nextRun = Math.max(nextRun, meta.id + 1); attach(meta); } catch {}
-}
+for (const meta of reattach) attach(meta);
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -300,8 +306,11 @@ http.createServer(async (req, res) => {
     }
     if (p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
-      res.write(`data: ${JSON.stringify({ type: '_office', history: history.length, state: busy() ? 'running' : 'idle', runs: runs.size })}\n\n`);
-      for (const l of history) res.write(`data: ${JSON.stringify({ ...JSON.parse(l), _history: true })}\n\n`);
+      const recent = history.slice(-SEND_LINES);   // shortcut: 새 화면에는 최근 3000줄만. 더 옛날 대화가 필요해지면 위로 스크롤할 때 더 받기
+      res.write(`data: ${JSON.stringify({ type: '_office', history: recent.length })}\n\n`);
+      for (const l of recent) res.write(`data: ${JSON.stringify({ ...JSON.parse(l), _history: true })}\n\n`);
+      // 기록 끝에 지금 상태: 기록 속 옛 실행(서버가 꺼진 사이 사라진 것 포함)은 화면에서 끝난 것으로 정리된다
+      res.write(`data: ${JSON.stringify({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, live: [...runs.keys()], _history: true })}\n\n`);
       clients.add(res);
       return req.on('close', () => clients.delete(res));
     }

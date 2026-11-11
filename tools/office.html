@@ -1328,8 +1328,11 @@ function gauge(k, v) {
 const feeds = new Map(); // run id -> mapper: runs interleave on one stream
 const feedOf = (id) => feeds.get(id) || feeds.set(id, createMapper()).get(id);
 const es = new EventSource('/api/events');
+let streams = 0, skipOld = false;   // 다시 연결되면(서버 재시작 등) 이미 그린 기록은 또 받지 않는다
 es.onmessage = (m) => {
   const e = JSON.parse(m.data);
+  if (e.history != null) { skipOld = ++streams > 1; return; }
+  if (skipOld && e._history && !e.live) return;
   evTime = e._t ?? null;
   try { onEvent(e); } finally { evTime = null; }
 };
@@ -1338,6 +1341,10 @@ function onEvent(e) {
   const t = evTime ?? Date.now();
   if (e.type === '_office') {
     if (e.prompt) { log(e.prompt, 'ceo', '대표 지시'); hist.run(e._run, e.prompt, t); if (!e._history) perform(instructionMotion(), { paper: { title: '대표 지시', text: e.prompt } }); }
+    if (e.live) {   // 기록 끝의 현재 상태: 지금 돌지 않는 옛 실행은 끝난 것으로
+      for (const k of hist.tasks.values()) if (!e.live.includes(k.run)) hist.end(k.run);
+      for (const id of feeds.keys()) if (!e.live.includes(id)) feeds.delete(id);
+    }
     if (e.state) setRunning(e.state === 'running', e.runs);
     if (e.ended) { feeds.delete(e._run); hist.end(e._run); paintAll(); }
     if (e.log) log(e.log);
