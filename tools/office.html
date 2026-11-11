@@ -134,6 +134,24 @@
   #chat.full .msg { font-size:15px; } #chat.full .msg.tool { font-size:13px; }
   #viewer { position:fixed; inset:0; background:rgba(40,30,15,.45); display:none; align-items:center; justify-content:center; z-index:9; }
   #viewer.on { display:flex; }
+  /* 직원 관리 */
+  #staffpage { position:fixed; inset:0; z-index:9; background:rgba(40,30,15,.45); display:none; align-items:center; justify-content:center; }
+  #staffpage.on { display:flex; }
+  #staffpage article { width:min(1100px,96vw); max-height:92vh; display:flex; flex-direction:column; background:var(--side); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; }
+  #staffpage header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:var(--bd); font:700 17px var(--serif); }
+  #staffpage header small { font:12px var(--font); color:var(--dim); margin-left:8px; }
+  #scards { overflow:auto; padding:14px; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
+  .scard { display:flex; gap:12px; background:var(--card); border:var(--bd); border-radius:12px; padding:10px; }
+  .scard img { width:96px; height:96px; flex:none; border-radius:10px; background:var(--sky); }
+  .scard .sinfo { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+  .scard .srole { font-size:11px; color:var(--dim); }
+  .scard .sname { font:700 15px var(--serif); background:var(--well); border:var(--bd); border-radius:8px; padding:3px 8px; color:var(--text); }
+  .scard .sdesc { font-size:12px; color:var(--dim); display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+  .scard .srow { display:flex; gap:8px; font-size:12px; color:var(--dim); }
+  .scard select { font:inherit; color:var(--text); background:var(--well); border:var(--bd); border-radius:8px; padding:2px 4px; }
+  .scard .stok { font-size:11px; color:var(--dim); }
+  .scard .sft { display:flex; justify-content:space-between; align-items:center; }
+  .scard .err { color:var(--bad); font-size:12px; } .scard .ok { color:var(--ok); font-size:12px; }
   #viewer article { width:min(820px,94vw); max-height:88vh; display:flex; flex-direction:column; background:#fbfaf6; color:#1b2230; border-radius:6px; box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; }
   #viewer header { display:flex; gap:12px; justify-content:space-between; align-items:center; padding:10px 12px 10px 20px; border-bottom:1px solid #e4e0d6; font-weight:700; }
   #vtitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
@@ -230,6 +248,7 @@
     <div class="gauge">5시간 <div><span id="g5"></span></div> <em id="t5">–</em></div>
     <div class="gauge">7일 <div><span id="g7"></span></div> <em id="t7">–</em></div>
     <button id="bell" title="TODO·보고 알림 소리 / 브라우저 알림">🔔 알림 켜기</button>
+    <button id="staffbtn" title="직원의 이름·모델·노력 수준 보기와 바꾸기">👥 직원 관리</button>
     <button id="viewbtn" title="3D 오피스를 끄면 렌더링을 멈추고 패널을 화면 전체로 봅니다">🖥 오피스 끄기</button>
   </div>
   <div class="ov" id="shareBox">
@@ -253,6 +272,7 @@
   <section><h2>문서 (board/) <span id="ndocs">0</span></h2><ul class="list" id="docs"></ul><button class="more" data-l="docs" hidden></button></section>
   <section id="chat"><h2>대화 내역 <button id="chatfull">크게 보기</button></h2><div id="log" aria-live="polite"><div class="empty">지시를 보내면 PM과 직원들의 대화가 여기에 쌓입니다.</div></div></section>
 </aside>
+<div id="staffpage" role="dialog" aria-modal="true" aria-label="직원 관리"><article><header><span>직원 관리<small>바꾼 내용은 .claude/agents/*.md · .claude/ai-office.json에 저장(모델·노력은 다음 실행부터)</small></span><button id="sclose">닫기</button></header><div id="scards"></div></article></div>
 <div id="viewer" role="dialog" aria-modal="true" aria-labelledby="vtitle"><article><header><span id="vtitle"></span><button id="vclose">닫기</button></header><div id="vbody"></div></article></div>
 <dialog id="zoom" aria-labelledby="ztitle"><header><a id="ztitle" target="_blank" rel="noopener"></a><button id="zclose">닫기</button></header><div id="zbody"></div></dialog>
 
@@ -292,7 +312,8 @@ scene.background = new THREE.Color('#e6ecc8'); scene.fog = new THREE.Fog('#e6ecc
 
 // 직원 명단 = .claude/agents/*.md + pm. 자리는 아래 SLOTS(라운지 둘레 고리 + 뒤쪽 빈 책상), 다 차면 라운지 소파.
 const agents = await (await fetch('/api/agents')).json();
-const ROSTER = [{ name: 'pm', title: 'PM 「지휘」', sub: '메인 세션' }, ...agents.map((a) => ({ name: a.name, title: a.title || a.name, sub: [a.model, a.effort].filter(Boolean).join('·') }))];
+const pmInfo = (await (await fetch('/api/staff')).json())[0] || { name: '지휘' };
+const ROSTER = [{ name: 'pm', title: `PM 「${pmInfo.name}」`, sub: [pmInfo.model, pmInfo.effort].filter((x) => x && x !== 'inherit').join('·') || '메인 세션' }, ...agents.map((a) => ({ name: a.name, title: a.title || a.name, sub: [a.model, a.effort].filter(Boolean).join('·') }))];
 const ALIAS = { research: 'scout' };   // 플러그인 기본 팀의 research = 시안의 조사 스카우트
 const DESK = { scout: 'map', plan: 'board', dev: 'dual', console: 'triple', bm: 'ledger', design: 'tablet' };   // 역할별 책상(시안)
 // 자리: 대표는 앞 가운데 단상(기본 카메라에서 잘 보이게), PM은 대표 옆, 나머지는 라운지를 둘러싼 고리.
@@ -655,7 +676,7 @@ function addPerson(info) {
     sit(p); laptop(p); scene.add(p.g);
     const sp = SPOTS.find((x) => x.sofa === seat.sofa); if (sp) sp.who = info.name;   // 이 소파 칸은 이 사람 자리
   }
-  const q = { ...info, p, role, host, c: s.c, label: String(info.title || info.name).replace(/[「」]/g, ''), stand: desk_ && seat[3] === 'board', sofa: !desk_, seed: k * 1.7, busy: false,
+  const q = { ...info, p, role, host, c: s.c, label: String(info.title || info.name).replace(/[「」]/g, ''), stand: desk_ && seat[3] === 'board', sofa: !desk_, seed: k * 1.7, busy: false, spec: s,
     act: info.name === 'ceo' ? 'read' : null, home: { pos: p.g.position.clone(), rot: p.g.rotation.y }, mode: 'seat', at: 'desk', queue: Promise.resolve(), pending: 0, stack: [], carry: [], path: [], visitors: 0 };
   const d = document.createElement('div');
   d.className = 'tag'; d.dataset.id = info.name;
@@ -1133,7 +1154,7 @@ $('vclose').onclick = closeViewer;
 $('viewer').onclick = (e) => { if (e.target.id === 'viewer') closeViewer(); };
 const setChatFull = (on) => { $('chat').classList.toggle('full', on); $('chatfull').textContent = on ? '닫기' : '크게 보기'; $('log').scrollTop = $('log').scrollHeight; };
 $('chatfull').onclick = () => setChatFull(!$('chat').classList.contains('full'));
-addEventListener('keydown', (e) => { if (e.key !== 'Escape' || $('zoom').open) return; if ($('viewer').classList.contains('on')) closeViewer(); else if (focusId) closeHist(); else setChatFull(false); });
+addEventListener('keydown', (e) => { if (e.key !== 'Escape' || $('zoom').open) return; if ($('staffpage').classList.contains('on')) $('staffpage').classList.remove('on'); else if ($('viewer').classList.contains('on')) closeViewer(); else if (focusId) closeHist(); else setChatFull(false); });
 $('log').onclick = (e) => { const i = e.target.dataset.r; if (i != null) openPaper(reports[i]); };
 
 const reports = [];
@@ -1367,6 +1388,66 @@ function setOffice(on) {
 }
 $('viewbtn').onclick = () => setOffice(document.body.classList.contains('panelonly'));
 let viewPref = 'on'; try { viewPref = localStorage.getItem('office-view') || 'on'; } catch {}
+
+// ---------- 직원 관리: 카드마다 3D 인물 얼굴(한 번만 따로 그려 그림으로), 이름·모델·노력 수준 바꾸기 ----------
+const MODELS = ['inherit', 'opus', 'sonnet', 'haiku', 'fable'], EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
+const portraits = new Map();
+function portraitsOf(list) {   // 작은 렌더러 하나로 모두 그리고 바로 버린다(카드마다 살아 있는 렌더러를 두지 않음)
+  const todo = list.filter((q) => !portraits.has(q.name));
+  if (!todo.length) return;
+  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  r.setPixelRatio(1); r.setSize(192, 192, false); r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.25;
+  const cam = new THREE.PerspectiveCamera(28, 1, .1, 20);
+  cam.position.set(.35, 1.0, 1.6); cam.lookAt(0, .8, 0);
+  for (const q of todo) {
+    const sc = new THREE.Scene(), dl = new THREE.DirectionalLight('#ffe2b0', 2.4);
+    dl.position.set(1, 2, 2); sc.add(new THREE.HemisphereLight('#fff6dc', '#86995c', 1.5), dl);
+    sc.add(person(q.spec).g);
+    r.render(sc, cam);
+    portraits.set(q.name, r.domElement.toDataURL('image/png'));
+  }
+  r.dispose(); r.forceContextLoss();
+}
+let staffList = [];
+async function openStaff() {
+  staffList = await (await fetch('/api/staff')).json();
+  portraitsOf(staffList.map((x) => people.get(x.id)).filter(Boolean));
+  const sum = (v) => v ? v.in + v.cache + v.out : 0, opt = (list, v, label) => [...new Set([...list, v])].map((x) => `<option value="${esc(x)}"${x === v ? ' selected' : ''}>${esc(label(x))}</option>`).join('');
+  $('scards').innerHTML = staffList.map((x) => {
+    const u = lastUsage.find((r) => r.agent === x.id);
+    return `<div class="scard" data-id="${esc(x.id)}"><img alt="" src="${portraits.get(x.id) || ''}"><div class="sinfo">
+      <div class="srole">${esc(x.role)} · ${esc(x.id)}</div><input class="sname" maxlength="12" value="${esc(x.name)}" placeholder="표시 이름">
+      <div class="sdesc">${esc(x.desc)}</div>
+      <div class="srow"><label>모델 <select class="smodel">${opt(MODELS, x.model, (m) => m === 'inherit' ? '상속(기본)' : m)}</select></label><label>노력 <select class="seffort">${opt(EFFORTS, x.effort, (m) => m || '기본')}</select></label></div>
+      <div class="stok">${u ? `토큰 오늘 ${fmt(sum(u.today))} · 누적 ${fmt(sum(u.total))}` : '토큰 기록 없음'}</div>
+      <div class="sft"><span class="err"></span><button class="primary" data-save>저장</button></div></div></div>`;
+  }).join('');
+  $('staffpage').classList.add('on');
+}
+$('staffbtn').onclick = openStaff;
+$('sclose').onclick = () => $('staffpage').classList.remove('on');
+$('staffpage').onclick = async (e) => {
+  if (e.target.id === 'staffpage') return $('staffpage').classList.remove('on');
+  if (e.target.dataset.save == null) return;
+  const card = e.target.closest('.scard'), id = card.dataset.id, old = staffList.find((x) => x.id === id), msg = card.querySelector('.err');
+  const now = { name: card.querySelector('.sname').value.trim(), model: card.querySelector('.smodel').value, effort: card.querySelector('.seffort').value };
+  const change = Object.fromEntries(Object.entries(now).filter(([k, v]) => v !== old[k]));   // 바뀐 것만 보낸다
+  if (!Object.keys(change).length) { msg.className = 'ok'; msg.textContent = '바뀐 것 없음'; return; }
+  e.target.disabled = true;
+  const r = await fetch('/api/staff', { method: 'POST', body: JSON.stringify({ id, ...change }) });
+  const j = await r.json();
+  e.target.disabled = false;
+  if (!r.ok) { msg.className = 'err'; msg.textContent = j.error; return; }
+  Object.assign(old, j);
+  msg.className = 'ok'; msg.textContent = '저장됨';
+  const q = people.get(id);   // 오피스 이름표·말풍선에 바로 반영
+  if (q) {
+    q.label = id === 'pm' ? `PM ${j.name}` : [j.role, j.name].filter(Boolean).join(' ');
+    q.sub = [j.model, j.effort].filter((v) => v && v !== 'inherit').join('·') || q.sub;
+    q.tag.querySelector('b').innerHTML = `<i style="background:${q.c}"></i>${esc(q.label)}`;
+    paint(id); refreshUsage();
+  }
+};
 
 // ---------- boot ----------
 paintAll();

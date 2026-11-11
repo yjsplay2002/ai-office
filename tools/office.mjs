@@ -12,6 +12,7 @@ import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
 import { loadLog, lastRun, KEEP_LINES, SEND_LINES } from './eventlog.mjs';
+import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -76,7 +77,7 @@ function startRun(prompt) {
   const shell = !claudeExe && process.platform === 'win32', q = (a) => (shell ? `"${a}"` : a);   // cmd needs the quotes
   // 토큰·안전: 개인 MCP 커넥터(메일·슬랙·드라이브 등)와 전역 스킬은 bypassPermissions 실행에 싣지 않는다.
   // 그래서 대시보드에서 도는 브라우저 담당은 CLI 브라우저 도구(Bash)를 써야 한다.
-  const child = spawn(claudeExe || 'claude', ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'bypassPermissions',
+  const child = spawn(claudeExe || 'claude', ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'bypassPermissions', ...pmArgs(pmConf()),   // PM 모델·노력: .claude/ai-office.json(직원 관리), 실행마다 다시 읽음
     '--allowedTools', q('WebSearch,WebFetch,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*)'),
     // Telegram plugin tools are blocked: the office reaches its owner only through its own bot (tools/tg-send.mjs).
     '--disallowedTools', q('mcp__plugin_telegram_telegram')],
@@ -176,13 +177,34 @@ function cancel() {
   office({ state: 'idle', runs: 0, log: `취소됨 — 작업 ${n}건 모두 중단` });
 }
 
+// 직원 관리: PM 설정 파일과 팀원 머리말. 서버는 파일만 고치고 커밋하지 않는다.
+const pmFile = path.join(root, '.claude', 'ai-office.json');
+const pmConf = () => readPm(existsSync(pmFile) ? readFileSync(pmFile, 'utf8') : '');
+function staff() {
+  const pm = pmConf();
+  return [{ id: 'pm', role: 'PM', name: pm.name, desc: '메인 세션. 대표 지시를 받아 팀원에게 나눠 맡긴다.', model: pm.model, effort: pm.effort },
+    ...agents().map((a) => readAgent(readFileSync(a.file, 'utf8'), a.name))];
+}
+// change = { id, model, effort, name }; id must be pm or an agent listed in .claude/agents (the file path comes from that listing).
+function saveStaff({ id, model, effort, name }) {
+  const change = { model, effort, name };
+  if (id === 'pm') { mkdirSync(path.dirname(pmFile), { recursive: true }); writeFileSync(pmFile, editPm(existsSync(pmFile) ? readFileSync(pmFile, 'utf8') : '', change)); }
+  else {
+    const a = agents().find((x) => x.name === id);
+    if (!a) throw new Error('없는 직원');
+    writeFileSync(a.file, editAgent(readFileSync(a.file, 'utf8'), change));
+  }
+  office({ log: `직원 관리: ${id} 설정을 바꿈` });
+  return staff().find((x) => x.id === id);
+}
+
 function agents() {
   const dir = path.join(root, '.claude', 'agents');
   if (!existsSync(dir)) return [];
   return readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => {
     const fm = (readFileSync(path.join(dir, f), 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1] || '';
     const get = (k) => (fm.match(new RegExp(`^${k}:\\s*(.*)$`, 'm')) || [])[1]?.trim() || '';
-    return { name: get('name') || f.replace(/\.md$/, ''), title: get('description').split('.')[0], model: get('model'), effort: get('effort') };
+    return { file: path.join(dir, f), name: get('name') || f.replace(/\.md$/, ''), title: get('description').split('.')[0], model: get('model'), effort: get('effort') };
   });
 }
 
@@ -315,7 +337,8 @@ http.createServer(async (req, res) => {
       return req.on('close', () => clients.delete(res));
     }
     if (p === '/api/usage') return json(res, 200, usage(root));
-    if (p === '/api/agents') return json(res, 200, agents());
+    if (p === '/api/agents') return json(res, 200, agents().map(({ file, ...a }) => a));
+    if (p === '/api/staff' && req.method === 'GET') return json(res, 200, staff());
     if (p === '/api/board') return json(res, 200, { files: listBoard(), todos: todos(), runs: runs.size });
     if (p === '/api/file') {
       const f = safeBoard(url.searchParams.get('path') || '');
@@ -344,6 +367,10 @@ http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/cancel') { cancel(); return json(res, 200, { ok: true }); }
+    if (req.method === 'POST' && p === '/api/staff') {
+      const b = await body(req), str = (v) => (v === undefined ? undefined : String(v));
+      try { return json(res, 200, saveStaff({ id: String(b.id || ''), model: str(b.model), effort: str(b.effort), name: str(b.name) })); } catch (err) { return json(res, 400, { error: err.message }); }
+    }
     if (req.method === 'POST' && p === '/api/todo') {
       const { id, answer, note, files } = await body(req);
       try { submitTodo(Number(id), String(answer ?? ''), String(note ?? ''), Array.isArray(files) ? files : []); } catch (err) { return json(res, 400, { error: err.message }); }
