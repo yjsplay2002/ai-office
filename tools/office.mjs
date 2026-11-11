@@ -176,6 +176,7 @@ function agents() {
 }
 
 function listBoard(dir = board) {
+  if (!existsSync(dir)) return [];   // board/가 아직 없는 새 팀
   return readdirSync(dir).flatMap((f) => {
     const p = path.join(dir, f);
     if (statSync(p).isDirectory()) return listBoard(p);
