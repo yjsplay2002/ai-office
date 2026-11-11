@@ -1,6 +1,6 @@
 // node tools/motion.test.mjs — what the 3D office acts out for each event, and walking around furniture.
 import assert from 'node:assert/strict';
-import { createMapper, motionOf, instructionMotion, todoMotion, gridPath } from './map.mjs';
+import { createMapper, motionOf, instructionMotion, todoMotion, gridPath, seatPlan } from './map.mjs';
 
 // Events from a run -> motions, in order.
 const feed = createMapper();
@@ -40,4 +40,12 @@ for (let k = 1; k < p.length; k++) {
 }
 assert.ok(p.some(([, j]) => j === 9));
 assert.equal(gridPath(n, (i) => i !== 5, [1, 1], [8, 1]), null);   // fully walled off
+// Seats: dev (most traffic) nearest PM, then plan, research…; unknown roles after; overflow -> sofa (-1).
+const slots = [[0, 1], [0, 9], [0, 3], [0, 6]], seats = seatPlan(['sound', 'marketing', 'research', 'dev', 'plan'], slots, [0, 0]);
+assert.equal(seats.get('dev'), 0);
+assert.equal(seats.get('plan'), 2);
+assert.equal(seats.get('research'), 3);
+assert.equal(seats.get('marketing'), 1);
+assert.equal(seats.get('sound'), -1);
+assert.deepEqual([...seatPlan([], slots, [0, 0])], []);
 console.log('motion ok:', m.length, 'motions, path', p.length, 'cells');

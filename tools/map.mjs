@@ -109,6 +109,15 @@ export function motionOf(ev) {
 export const instructionMotion = () => ({ walk: { who: 'pm', to: 'ceo', take: 'instruction' } });   // PM fetches a new CEO order
 export const todoMotion = (todo, staff) => ({ walk: { who: staff.includes(todo.by) ? todo.by : 'pm', to: 'ceo', give: 'todo' } });
 
+// Who sits where: the roles PM exchanges with most get the desk slots nearest PM (short walks), others the rest in
+// roster order, and anyone left over gets -1 (a lounge sofa). slots = [[x, z], ...], pm = [x, z]. -> Map name -> slot index.
+export const PRIORITY = ['dev', 'plan', 'scout', 'research', 'design', 'console', 'bm', 'marketing'];
+export function seatPlan(names, slots, pm) {
+  const rank = (n) => (PRIORITY.includes(n) ? PRIORITY.indexOf(n) : PRIORITY.length);
+  const free = slots.map((_, i) => i).sort((a, b) => Math.hypot(slots[a][0] - pm[0], slots[a][1] - pm[1]) - Math.hypot(slots[b][0] - pm[0], slots[b][1] - pm[1]));
+  return new Map([...names].sort((a, b) => rank(a) - rank(b)).map((n) => [n, free.length ? free.shift() : -1]));
+}
+
 // Shortest walk on a grid of floor cells (8 directions, no cutting corners past furniture). null = unreachable.
 export function gridPath(n, free, [si, sj], [gi, gj]) {
   const g = new Float64Array(n * n).fill(Infinity), from = new Int32Array(n * n).fill(-1), done = new Uint8Array(n * n);
