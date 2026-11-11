@@ -18,6 +18,12 @@ mkdirSync(path.join(dir, 's1', 'subagents'), { recursive: true });
 writeFileSync(path.join(dir, 's1.jsonl'), u(7));
 writeFileSync(path.join(dir, 's1', 'subagents', 'agent-a.jsonl'), u(3));
 writeFileSync(path.join(dir, 's1', 'subagents', 'agent-a.meta.json'), '{"agentType":"research"}');
+// s2 = 같은 폴더에서 돈 오피스 밖 세션(대표의 일반 Claude 작업). sessions.txt에 없으니 세지 않는다.
+mkdirSync(path.join(dir, 's2', 'subagents'), { recursive: true });
+writeFileSync(path.join(dir, 's2.jsonl'), u(1000));
+writeFileSync(path.join(dir, 's2', 'subagents', 'agent-b.jsonl'), u(1000));
+mkdirSync(path.join(root, '.office-runs'), { recursive: true });
+writeFileSync(path.join(root, '.office-runs', 'sessions.txt'), 's1\n');
 const rows = usage(root);
 rmSync(home, { recursive: true, force: true });
 assert.deepEqual(rows.map((r) => [r.agent, r.total.out]), [['pm', 7], ['research', 3]]);

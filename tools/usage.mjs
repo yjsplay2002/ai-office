@@ -1,5 +1,6 @@
 // 직원별 토큰 사용량: Claude Code가 남기는 세션 기록(~/.claude/projects/<slug>/)을 그대로 집계한다.
 // 메인 세션 = pm, <session>/subagents/agent-*.jsonl = .meta.json의 agentType.
+// 같은 폴더에서 돈 세션 중 이 오피스가 띄운 것(.office-runs/sessions.txt, tools/office.mjs가 기록)만 센다.
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -39,10 +40,13 @@ function daysOf(file) {
   return days;
 }
 
-function files(dir) {
+export const officeSessions = (root) => { try { return new Set(readFileSync(path.join(root, '.office-runs', 'sessions.txt'), 'utf8').split(/\s+/).filter(Boolean)); } catch { return new Set(); } };
+
+function files(dir, ids) {
   if (!existsSync(dir)) return [];
   const out = [];
   for (const f of readdirSync(dir)) {
+    if (!ids.has(f.replace(/\.jsonl$/, ''))) continue;
     const p = path.join(dir, f);
     if (f.endsWith('.jsonl')) { out.push({ file: p, agent: 'pm' }); continue; }
     const sub = path.join(p, 'subagents');
@@ -63,7 +67,7 @@ export function usage(root, now = new Date()) {
   const weekAgo = new Date(now - 6 * 864e5).toLocaleDateString('sv');
   const per = {};
   const add = (s, d) => { s.in += d.in; s.cache += d.cache; s.out += d.out; };
-  for (const { file, agent } of files(projectDir(root))) {
+  for (const { file, agent } of files(projectDir(root), officeSessions(root))) {
     const a = (per[agent] ||= { agent, today: { in: 0, cache: 0, out: 0 }, week: { in: 0, cache: 0, out: 0 }, total: { in: 0, cache: 0, out: 0 } });
     for (const [d, s] of Object.entries(daysOf(file))) {
       add(a.total, s);

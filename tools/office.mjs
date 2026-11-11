@@ -131,6 +131,8 @@ function attach({ id, pid, prompt, t: started }) {
         try { obj = JSON.parse(l); } catch { send({ type: '_office', log: l, _t: ts }); continue; }
         send({ ...obj, _t: ts });
         if (fresh) progress(obj, ts);
+        // 직원별 토큰은 이 오피스가 띄운 세션만 센다(같은 폴더의 다른 Claude 작업과 섞이지 않게). tools/usage.mjs가 읽는다.
+        if (fresh && obj.type === 'system' && obj.subtype === 'init' && obj.session_id) appendFileSync(path.join(runDir, 'sessions.txt'), obj.session_id + '\n');
         if (fresh && obj.type === 'result') tg?.notify(`${obj.is_error ? '⚠️ 최종 보고 (오류)' : '✅ 최종 보고'}\n${String(obj.result || '').trim().slice(0, 600)}`);
       }
     }
