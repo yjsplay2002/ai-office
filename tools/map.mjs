@@ -3,6 +3,7 @@
 
 // Tool -> history step kind (office.html colours them). Anything else counts as 'run'.
 const STEP = { Read: 'read', Grep: 'read', Glob: 'read', WebSearch: 'search', WebFetch: 'search', Write: 'write', Edit: 'write', NotebookEdit: 'write' };
+const full = (s) => String(s || '').trim();   // history keeps whole texts; the card clamps them in CSS
 export const line = (s, n = 140) => { const l = String(s || '').split('\n').map((x) => x.trim()).find(Boolean) || ''; return l.length > n ? l.slice(0, n - 1) + '…' : l; };
 
 export function createMapper() {
@@ -35,7 +36,7 @@ export function createMapper() {
       if (!parent && (c.name === 'Agent' || c.name === 'Task')) {
         const agent = c.input?.subagent_type || 'general-purpose';
         agentOf.set(c.id, { agent, bg: !!c.input?.run_in_background });
-        out.push({ kind: 'dispatch', agent, id: c.id, task: c.input?.description || '', prompt: line(c.input?.prompt) });
+        out.push({ kind: 'dispatch', agent, id: c.id, task: c.input?.description || '', prompt: full(c.input?.prompt) });
         continue;
       }
       const rel = boardRel(c.input?.file_path);
@@ -44,14 +45,14 @@ export function createMapper() {
     }
 
     // Only notifications for Agent calls count; most task_* lines are a subagent's own Bash tasks.
-    if (e.type === 'system' && e.subtype === 'task_notification' && agentOf.has(e.tool_use_id)) finish(e.tool_use_id, e.status === 'completed', line(e.summary));
+    if (e.type === 'system' && e.subtype === 'task_notification' && agentOf.has(e.tool_use_id)) finish(e.tool_use_id, e.status === 'completed', full(e.summary));
 
     if (e.type === 'user' && !parent) for (const c of content) {
       const a = c.type === 'tool_result' && agentOf.get(c.tool_use_id);
       if (!a) continue;
       // A background agent's tool_result only says it was launched; it is finished by its task_notification.
       if (a.bg && !c.is_error) continue;
-      finish(c.tool_use_id, !c.is_error, c.is_error ? line(typeof c.content === 'string' ? c.content : c.content?.[0]?.text) : '');
+      finish(c.tool_use_id, !c.is_error, c.is_error ? full(typeof c.content === 'string' ? c.content : c.content?.[0]?.text) : '');
     }
 
     if (e.type === 'result') out.push({ kind: 'result', text: e.result || '', turns: e.num_turns, error: !!e.is_error });
@@ -63,11 +64,19 @@ export function createMapper() {
 // ev = [time, kind, text, path?] with kind order|read|search|run|write|say|report.
 export function createHistory(max = 200) {
   const tasks = new Map();
-  const push = (k, row) => { if (!k) return; k.ev.push(row); if (k.ev.length > max) k.ev.splice(1, 1); };   // keep the order line
+  const same = (a, b) => String(a).replace(/\s+/g, ' ').trim() === String(b).replace(/\s+/g, ' ').trim();
+  // A memo or report that repeats earlier text (the final result usually repeats the last assistant message) is not added again.
+  const dup = (k, [, kind, text]) => {
+    if (kind !== 'say' && kind !== 'report') return false;
+    if (k.ev.some((e) => same(e[2], text))) return true;
+    let i = k.ev.length; while (i > 0 && k.ev[i - 1][1] === 'say') i--;   // or the last few memos joined together
+    return i < k.ev.length && same(k.ev.slice(i).map((e) => e[2]).join(' '), text);
+  };
+  const push = (k, row) => { if (!k || dup(k, row)) return; k.ev.push(row); if (k.ev.length > max) k.ev.splice(1, 1); };   // keep the order line
   const runKey = (n) => `run:${n}`;
   return {
     tasks,
-    run(n, prompt, t) { tasks.set(runKey(n), { agent: 'pm', run: n, title: line(prompt, 60), start: t, state: '진행 중', ev: [[t, 'order', `대표: ${line(prompt)}`]] }); },
+    run(n, prompt, t) { tasks.set(runKey(n), { agent: 'pm', run: n, title: line(prompt, 60), start: t, state: '진행 중', ev: [[t, 'order', `대표: ${full(prompt)}`]] }); },
     // Run finished or cancelled: whatever never reported is closed too.
     end(n) { for (const k of tasks.values()) if (k.run === n && k.state === '진행 중') k.state = k.agent === 'pm' ? '완료' : '보고 없이 끝남'; },
     feed(ev, t, n) {
@@ -77,9 +86,9 @@ export function createHistory(max = 200) {
         push(tasks.get(runKey(n)), [t, 'run', `${ev.agent}에게 맡김: ${ev.task}`]);
       }
       if (ev.kind === 'tool') push(k, [t, ev.step, ev.detail || ev.tool, ev.path]);
-      if (ev.kind === 'say') push(k, [t, 'say', line(ev.text)]);
+      if (ev.kind === 'say') push(k, [t, 'say', full(ev.text)]);
       if (ev.kind === 'report' && k) { k.state = ev.ok ? '완료' : '실패'; push(k, [t, 'report', ev.summary || k.state]); }
-      if (ev.kind === 'result' && k) { k.state = ev.error ? '실패' : '완료'; push(k, [t, 'report', line(ev.text) || '최종 보고']); }
+      if (ev.kind === 'result' && k) { k.state = ev.error ? '실패' : '완료'; push(k, [t, 'report', full(ev.text) || '최종 보고']); }
     },
     // The card to show for a person: a running one first (runs overlap), else the newest.
     latest(agent) { let best = null; for (const k of tasks.values()) if (k.agent === agent && (!best || ((k.state === '진행 중') - (best.state === '진행 중') || (k.start >= best.start ? 1 : -1)) > 0)) best = k; return best; },

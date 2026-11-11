@@ -45,7 +45,7 @@ const plan = h.latest('plan');
 assert.equal(plan.title, '가격 선택지');
 assert.equal(plan.state, '완료');
 assert.deepEqual(plan.ev.map((e) => e[1]), ['order', 'read', 'run', 'say', 'write', 'report']);
-assert.equal(plan.ev[0][2], '조사 결과로');
+assert.equal(plan.ev[0][2], '조사 결과로\n가격 선택지 3개');   // full text kept; the card clamps it
 assert.equal(plan.ev[4][3], 'board/plans/p.md');
 assert.equal(h.latest('sound').state, '실패');
 assert.equal(h.latest('general-purpose').ev.at(-1)[2], '효과음 12개 정리');
@@ -65,4 +65,18 @@ h3.run(1, '긴 작업', 1); h3.run(2, '짧은 답', 2); h3.feed({ kind: 'result'
 assert.equal(h3.latest('pm').title, '긴 작업');
 h3.end(1);
 assert.equal(h3.latest('pm').title, '짧은 답');
+// Dedupe: the final result repeats the PM's last message(s); a memo/report equal to an earlier line is not added again.
+const long = '긴 메모 '.repeat(60).trim();
+const h4 = createHistory();
+h4.run(1, '정리해 줘', 0);
+h4.feed({ kind: 'say', agent: 'pm', text: long }, 1, 1);
+h4.feed({ kind: 'say', agent: 'pm', text: long }, 2, 1);
+h4.feed({ kind: 'say', agent: 'pm', text: '둘째 줄' }, 3, 1);
+h4.feed({ kind: 'result', text: `${long}
+
+둘째 줄` }, 4, 1);
+h4.feed({ kind: 'result', text: '새 결론' }, 5, 1);
+assert.deepEqual(h4.latest('pm').ev.map((e) => e[1]), ['order', 'say', 'say', 'report']);
+assert.equal(h4.latest('pm').ev[1][2], long);   // not cut
+assert.equal(h4.latest('pm').ev.at(-1)[2], '새 결론');
 console.log('history ok:', pick('report').length, 'reports,', h.tasks.size, 'cards');
