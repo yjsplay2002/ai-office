@@ -7,16 +7,20 @@ import os from 'node:os';
 
 export const projectDir = (root) => path.join(os.homedir(), '.claude', 'projects', root.replace(/[^A-Za-z0-9]/g, '-'));
 
-const cache = new Map(); // file -> { key, days: {date: {in, cache, out}} }
+const cache = new Map(); // file -> { key, parsed: { days, last } }
 
-// One transcript -> tokens per local day. Each streamed block repeats the message id; the last copy has final usage.
+// One transcript -> { days: tokens per local day, last: { model, t } = the newest real model id the API answered with }.
+// Each streamed block repeats the message id; the last copy has final usage.
 export function parseTranscript(text) {
   const byId = new Map();
+  let last = null;
   for (const l of text.split('\n')) {
     if (!l.includes('"usage"')) continue;
     let e; try { e = JSON.parse(l); } catch { continue; }
     const u = e.type === 'assistant' && e.message?.usage;
     if (!u) continue;
+    const m = e.message.model;   // '<synthetic>' = Claude Code's own error lines, not a model
+    if (m && m !== '<synthetic>' && (!last || (e.timestamp || '') >= last.t)) last = { model: m, t: e.timestamp || '' };
     byId.set(e.message.id || e.uuid, { t: e.timestamp, u });
   }
   const days = {};
@@ -27,17 +31,17 @@ export function parseTranscript(text) {
     s.cache += u.cache_read_input_tokens || 0;
     s.out += u.output_tokens || 0;
   }
-  return days;
+  return { days, last };
 }
 
-function daysOf(file) {
+function parsedOf(file) {
   const st = statSync(file);
   const key = `${st.mtimeMs}:${st.size}`;
   const hit = cache.get(file);
-  if (hit?.key === key) return hit.days;
-  const days = parseTranscript(readFileSync(file, 'utf8'));
-  cache.set(file, { key, days });
-  return days;
+  if (hit?.key === key) return hit.parsed;
+  const parsed = parseTranscript(readFileSync(file, 'utf8'));
+  cache.set(file, { key, parsed });
+  return parsed;
 }
 
 export const officeSessions = (root) => { try { return new Set(readFileSync(path.join(root, '.office-runs', 'sessions.txt'), 'utf8').split(/\s+/).filter(Boolean)); } catch { return new Set(); } };
@@ -61,7 +65,7 @@ function files(dir, ids) {
   return out;
 }
 
-// -> [{ agent, today, week, total }] each {in, cache, out}, biggest total first.
+// -> [{ agent, model, today, week, total }] each {in, cache, out}, biggest total first. model = newest actual model id ('' if none yet).
 export function usage(root, now = new Date()) {
   const today = now.toLocaleDateString('sv');
   const weekAgo = new Date(now - 6 * 864e5).toLocaleDateString('sv');
@@ -69,12 +73,14 @@ export function usage(root, now = new Date()) {
   const add = (s, d) => { s.in += d.in; s.cache += d.cache; s.out += d.out; };
   for (const { file, agent } of files(projectDir(root), officeSessions(root))) {
     const a = (per[agent] ||= { agent, today: { in: 0, cache: 0, out: 0 }, week: { in: 0, cache: 0, out: 0 }, total: { in: 0, cache: 0, out: 0 } });
-    for (const [d, s] of Object.entries(daysOf(file))) {
+    const { days, last } = parsedOf(file);
+    if (last && last.t >= (a.t || '')) { a.model = last.model; a.t = last.t; }
+    for (const [d, s] of Object.entries(days)) {
       add(a.total, s);
       if (d >= weekAgo) add(a.week, s);
       if (d === today) add(a.today, s);
     }
   }
   const sum = (s) => s.in + s.cache + s.out;
-  return Object.values(per).sort((x, y) => sum(y.total) - sum(x.total));
+  return Object.values(per).map(({ t, ...r }) => ({ model: '', ...r })).sort((x, y) => sum(y.total) - sum(x.total));
 }

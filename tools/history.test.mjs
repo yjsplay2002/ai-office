@@ -79,4 +79,15 @@ h4.feed({ kind: 'result', text: '새 결론' }, 5, 1);
 assert.deepEqual(h4.latest('pm').ev.map((e) => e[1]), ['order', 'say', 'say', 'report']);
 assert.equal(h4.latest('pm').ev[1][2], long);   // not cut
 assert.equal(h4.latest('pm').ev.at(-1)[2], '새 결론');
+// Threads: a comment run joins its thread; lines come back in time order with their speaker; a cancelled run says 중단.
+const th = h.thread(1);
+assert.deepEqual(th[0], { t: 0, kind: 'order', text: '가격 정해 줘', who: 'ceo' });
+assert.ok(th.some((x) => x.who === 'pm' && x.to === 'plan' && x.kind === 'order'));
+assert.ok(th.some((x) => x.who === 'plan' && x.kind === 'write'));
+assert.ok(th.every((x, i) => !i || th[i - 1].t <= x.t));
+h.run(9, '하나 더', 99, 1);
+h.feed({ kind: 'dispatch', agent: 'dev', id: 'ag9', task: '고치기' }, 100, 9);
+h.end(9, '중단');
+assert.deepEqual(h.thread(1).slice(-3).map((x) => [x.who, x.kind]), [['ceo', 'order'], ['pm', 'run'], ['pm', 'order']]);
+assert.equal(h.latest('dev').state, '중단');
 console.log('history ok:', pick('report').length, 'reports,', h.tasks.size, 'cards');

@@ -76,19 +76,27 @@ export function createHistory(max = 200) {
   const runKey = (n) => `run:${n}`;
   return {
     tasks,
-    run(n, prompt, t) { tasks.set(runKey(n), { agent: 'pm', run: n, title: line(prompt, 60), start: t, state: '진행 중', ev: [[t, 'order', `대표: ${full(prompt)}`]] }); },
-    // Run finished or cancelled: whatever never reported is closed too.
-    end(n) { for (const k of tasks.values()) if (k.run === n && k.state === '진행 중') k.state = k.agent === 'pm' ? '완료' : '보고 없이 끝남'; },
+    // thread = the run whose thread this one continues (a CEO comment); a new instruction is its own thread.
+    run(n, prompt, t, thread = n) { tasks.set(runKey(n), { agent: 'pm', run: n, thread, title: line(prompt, 60), start: t, state: '진행 중', ev: [[t, 'order', `대표: ${full(prompt)}`]] }); },
+    // Run finished or cancelled (why = '중단'): whatever never reported is closed too.
+    end(n, why) { for (const k of tasks.values()) if (k.run === n && k.state === '진행 중') k.state = why || (k.agent === 'pm' ? '완료' : '보고 없이 끝남'); },
     feed(ev, t, n) {
       const k = tasks.get(ev.id || runKey(n));
       if (ev.kind === 'dispatch') {
-        tasks.set(ev.id, { agent: ev.agent, run: n, title: ev.task || ev.agent, start: t, state: '진행 중', ev: [[t, 'order', ev.prompt || ev.task]] });
+        tasks.set(ev.id, { agent: ev.agent, run: n, thread: tasks.get(runKey(n))?.thread ?? n, title: ev.task || ev.agent, start: t, state: '진행 중', ev: [[t, 'order', ev.prompt || ev.task]] });
         push(tasks.get(runKey(n)), [t, 'run', `${ev.agent}에게 맡김: ${ev.task}`]);
       }
       if (ev.kind === 'tool') push(k, [t, ev.step, ev.detail || ev.tool, ev.path]);
       if (ev.kind === 'say') push(k, [t, 'say', full(ev.text)]);
       if (ev.kind === 'report' && k) { k.state = ev.ok ? '완료' : '실패'; push(k, [t, 'report', ev.summary || k.state]); }
       if (ev.kind === 'result' && k) { k.state = ev.error ? '실패' : '완료'; push(k, [t, 'report', full(ev.text) || '최종 보고']); }
+    },
+    // Every line of a thread in time order, each with its speaker: the CEO gives the PM's orders, the PM gives staff theirs.
+    thread(id) {
+      return [...tasks.values()].filter((k) => k.thread === id)
+        .flatMap((k) => k.ev.map(([t, kind, text, path]) => kind !== 'order' ? { t, kind, text, path, who: k.agent }
+          : k.agent === 'pm' ? { t, kind, text: String(text).replace(/^대표: /, ''), who: 'ceo' } : { t, kind, text, who: 'pm', to: k.agent }))
+        .sort((a, b) => a.t - b.t);
     },
     // The card to show for a person: a running one first (runs overlap), else the newest.
     latest(agent) { let best = null; for (const k of tasks.values()) if (k.agent === agent && (!best || ((k.state === '진행 중') - (best.state === '진행 중') || (k.start >= best.start ? 1 : -1)) > 0)) best = k; return best; },

@@ -122,10 +122,11 @@
   #usage small { margin-left:5px; color:var(--dim); font-size:10px; }
   #usage tfoot td { font-weight:700; border-top:1px solid var(--dim); }
   /* 대화 내역: 누가 / 무엇을. 도구 사용은 한 줄로 눌러 둔다 */
-  #chat { flex:1 0 300px; min-height:300px; display:flex; flex-direction:column; border-bottom:0; padding-bottom:0; }
+  #chat { display:flex; flex-direction:column; padding-bottom:0; }
+  #threads { flex:1 0 300px; min-height:300px; display:flex; flex-direction:column; border-bottom:0; }
   #chat h2 { align-items:center; }
   #chat h2 button { padding:1px 8px; font-size:12px; }
-  #log { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:2px; padding-bottom:14px; overscroll-behavior:contain; }
+  #log { height:220px; flex:none; overflow:auto; display:flex; flex-direction:column; gap:2px; padding-bottom:14px; overscroll-behavior:contain; }
   #log .empty { color:var(--dim); font-size:12px; }
   .msg { display:grid; grid-template-columns:auto 1fr; column-gap:8px; padding:5px 0; font-size:13px; line-height:1.55; }
   .msg time { grid-row:span 2; color:var(--dim); font:11px/1.9 ui-monospace,Consolas,monospace; font-variant-numeric:tabular-nums; }
@@ -143,9 +144,44 @@
   .msg a { color:var(--link); cursor:pointer; }
   .msg code { font:.9em ui-monospace,Consolas,monospace; background:rgba(90,70,40,.1); border-radius:3px; padding:0 .3em; }
   .msg strong { color:#1d160e; }
+  /* 스레드: 대표 지시 하나 = 스레드 하나. 사람(페르소나)마다 한 명의 사용자처럼 말하고, 도구 사용은 한 줄로 접는다 */
+  #tlist { flex:1; min-height:0; max-height:none; }
+  .th-row { display:flex; gap:9px; align-items:flex-start; padding:7px 4px !important; cursor:pointer; border-radius:8px; }
+  .th-row:hover, .th-row.on { background:var(--well); }
+  .th-row.closed { opacity:.55; }
+  .th-row .tb { flex:1; min-width:0; }
+  .th-row .ttl { font-weight:700; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .th-row .sub { font-size:11px; color:var(--dim); }
+  .th-row .pv { font-size:12px; color:var(--text); opacity:.8; margin:1px 0 2px; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
+  .th-row .pv b { font-weight:700; }
+  .avs { display:flex; flex:none; padding-right:6px; } .avs .av { width:22px; height:22px; margin-right:-6px; border:2px solid var(--side); border-radius:7px; }
+  .av { display:block; width:34px; height:34px; flex:none; border-radius:9px; object-fit:cover; }
+  span.av { visibility:hidden; height:0; }
+  .badge { display:inline-block; font-size:10.5px; font-weight:700; border-radius:5px; padding:0 6px; margin-right:4px; color:#fff; background:#b9ad95; }
+  .badge.run { background:var(--ok); } .badge.bad { background:var(--bad); }
+  #thread { position:fixed; top:0; right:0; bottom:0; width:min(460px,100vw); z-index:8; background:var(--side); border-left:var(--bd); box-shadow:-10px 0 30px rgba(60,45,20,.18); display:none; flex-direction:column; }
+  #thread.on { display:flex; }
+  #thread header { display:flex; gap:8px; align-items:center; padding:max(10px, env(safe-area-inset-top)) 12px 10px 14px; border-bottom:1px solid var(--line); }
+  #thread header > div { flex:1; min-width:0; }
+  #ttitle { font:700 15px var(--serif); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #tmeta { font-size:11px; color:var(--dim); }
+  #tmsgs { flex:1; min-height:0; overflow:auto; padding:8px 14px; overscroll-behavior:contain; }
+  .tm { display:flex; gap:9px; padding:5px 0; }
+  .tm.cont { padding-top:0; }
+  .tm .tb { flex:1; min-width:0; font-size:13px; line-height:1.55; }
+  .tm .who { font-weight:700; font-size:12.5px; } .tm .who time { font-weight:400; color:var(--dim); font-size:11px; margin-left:6px; }
+  .tm.ceo .tx { background:#f3e3c4; border:1px solid rgba(168,97,47,.28); border-radius:4px 10px 10px 10px; padding:5px 9px; }
+  .tm .tx p { margin:.2em 0; }
+  .tm details { font-size:12px; color:var(--dim); margin-top:2px; }
+  .tm summary { cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tm details ol { margin:3px 0 0; padding-left:16px; } .tm details li { overflow-wrap:anywhere; }
+  .tm details u { color:var(--link); text-decoration:none; cursor:pointer; }
+  .th-sep { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--dim); margin:4px 0; } .th-sep:after { content:""; flex:1; border-top:1px solid var(--line); }
+  #thread footer { padding:8px 12px max(10px, env(safe-area-inset-bottom)); border-top:1px solid var(--line); }
+  #thread footer .err { color:var(--bad); font-size:12px; flex:1; }
   /* 대화 내역 크게 보기 = 전체 화면 */
   #chat.full { position:fixed; inset:0; z-index:8; background:var(--side); padding:max(14px, env(safe-area-inset-top)) max(16px, calc((100vw - 760px) / 2)) 0; }
-  #chat.full #log { max-height:none; }
+  #chat.full #log { max-height:none; height:auto; flex:1; min-height:0; }
   #chat.full .msg { font-size:15px; } #chat.full .msg.tool { font-size:13px; }
   #viewer { position:fixed; inset:0; background:rgba(40,30,15,.45); display:none; align-items:center; justify-content:center; z-index:9; }
   #viewer.on { display:flex; }
@@ -205,8 +241,9 @@
   @media (min-width: 761px) {
     body.panelonly aside { display:grid; grid-template-columns:minmax(360px,460px) 1fr; align-content:start; }
     body.panelonly aside > section { grid-column:1; }
-    body.panelonly #chat { grid-column:2; grid-row:1 / span 6; position:sticky; top:0; height:calc(100vh - 56px); border-left:1px solid var(--line); }
-    body.panelonly .list { max-height:320px; }
+    body.panelonly #threads { grid-column:2; grid-row:1 / span 6; position:sticky; top:0; height:calc(100vh - 56px); border-left:1px solid var(--line); }
+    body.panelonly .list:not(#tlist) { max-height:320px; }
+    body.panelonly #log { height:320px; }
   }
   /* 휴대폰: 오피스 위, 패널 아래로 쌓고 패널만 스크롤 */
   @media (max-width: 760px) {
@@ -224,7 +261,7 @@
     .more { display:block; width:100%; margin-top:8px; color:var(--link); font-size:13px; }
     .more[hidden] { display:none; }
     #chat { flex:none; min-height:0; }
-    #log { flex:none; height:70svh; overscroll-behavior:auto; }
+    #log { flex:none; height:45svh; overscroll-behavior:auto; }
     #chat.full #log { height:auto; overscroll-behavior:contain; }
     textarea, .todo input { font-size:16px; }
     .list li { padding:0; }
@@ -287,7 +324,11 @@
   <section><h2>보고함 <span id="nrep">0</span></h2><ul class="list" id="reports"><li class="meta">아직 보고 없음</li></ul><button class="more" data-l="reports" hidden></button></section>
   <section><h2>문서 (board/) <span id="ndocs">0</span></h2><ul class="list" id="docs"></ul><button class="more" data-l="docs" hidden></button></section>
   <section id="chat"><h2>대화 내역 <button id="chatfull">크게 보기</button></h2><div id="log" aria-live="polite"><div class="empty">지시를 보내면 PM과 직원들의 대화가 여기에 쌓입니다.</div></div></section>
+  <section id="threads"><h2>스레드 <span>지시 하나 = 스레드 하나 · 눌러서 열기</span></h2><ul class="list" id="tlist"><li class="meta">지시를 보내면 스레드가 생깁니다</li></ul><button class="more" data-l="tlist" hidden></button></section>
 </aside>
+<div id="thread" role="dialog" aria-labelledby="ttitle"><header><div><div id="ttitle"></div><div id="tmeta"></div></div><button id="tstop" title="진행 중인 작업을 멈추고 스레드를 닫습니다">종료</button><button id="tclose">닫기</button></header>
+  <div id="tmsgs" aria-live="polite"></div>
+  <footer><textarea id="treply" placeholder="이 스레드에 댓글 — PM이 스레드의 맥락을 이어 처리합니다 (Ctrl+Enter)"></textarea><div class="row"><span class="err" id="terr"></span><button class="primary" id="tsend">댓글</button></div></footer></div>
 <div id="staffpage" role="dialog" aria-modal="true" aria-label="직원 관리"><article><header><span>직원 관리<small>바꾼 내용은 .claude/agents/*.md · .claude/ai-office.json에 저장(모델·노력은 다음 실행부터)</small></span><button id="sclose">닫기</button></header><div id="scards"></div></article></div>
 <div id="viewer" role="dialog" aria-modal="true" aria-labelledby="vtitle"><article><header><span id="vtitle"></span><button id="vclose">닫기</button></header><div id="vbody"></div></article></div>
 <dialog id="zoom" aria-labelledby="ztitle"><header><a id="ztitle" target="_blank" rel="noopener"></a><button id="zclose">닫기</button></header><div id="zbody"></div></dialog>
@@ -295,6 +336,14 @@
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { HorizontalTiltShiftShader } from 'three/addons/shaders/HorizontalTiltShiftShader.js';
+import { VerticalTiltShiftShader } from 'three/addons/shaders/VerticalTiltShiftShader.js';
 import { createMapper, createHistory, motionOf, instructionMotion, todoMotion, gridPath } from '/map.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -325,10 +374,21 @@ const stage = $('stage');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;   // 그림자 지도는 frame()에서 두 프레임에 한 번 다시 그린다(해·사람이 느리게 움직여 티가 안 난다)
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.25;
 stage.prepend(renderer.domElement);
+// shortcut: 리사이즈 때 흐림 폭을 화면 크기에 맞춘다. 무거우면 tiltShift=false로 끈다
+// 장면만 MSAA 버퍼(msaa)에 그리고, 흐림 두 번은 MSAA 없는 composer 버퍼끼리 주고받는다(전체 화면 패스가 4배 샘플 버퍼에 쓰면 GPU 시간이 크게 는다)
+const tiltShift = true, msaa = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }), composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
+const tsH = new ShaderPass(HorizontalTiltShiftShader), tsV = new ShaderPass(VerticalTiltShiftShader);
+tsH.uniforms.r.value = tsV.uniforms.r.value = .5; tsH.textureID = null; tsH.uniforms.tDiffuse.value = msaa.texture;
 const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(34, 1, 0.1, 200);
-scene.background = new THREE.Color('#e6ecc8'); scene.fog = new THREE.Fog('#e6ecc8', 28, 66);
+composer.addPass(tsH); composer.addPass(tsV); composer.addPass(new OutputPass());
+// 하늘: 위는 하늘색, 아래로 갈수록 복숭앗빛(하늘섬 콘셉트)
+scene.background = (() => { const c = Object.assign(document.createElement('canvas'), { width: 4, height: 256 }), g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#9dbdf0'); gr.addColorStop(.5, '#d9d9f4'); gr.addColorStop(1, '#fde0d2'); g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+scene.fog = new THREE.Fog('#f6dcd4', 62, 150);
 
 // 직원 명단 = .claude/agents/*.md + pm. 알려진 역할은 시안 자리, 나머지는 빈 책상(EXTRA), 그것도 다 차면 라운지 소파.
 const agents = await (await fetch('/api/agents')).json();
@@ -350,21 +410,21 @@ function seatFor(name, boot) {
 }
 const CEO = { name: 'ceo', title: '대표 (나)', sub: '결정·승인' };   // 대표 책상은 뒤쪽 가운데, 카메라를 보고 앉는다
 for (const p of [CEO, ...ROSTER]) seatOf.set(p.name, seatFor(p.name, true));
-const desks = [...seatOf.values()].filter(Array.isArray);
+const desks = [...Object.values(SPOT), ...EXTRA];   // 지금 빈 자리도 책상 자리다(빈 책상을 놓아 둔다)
 const blocked = (x, z, r = 1.9) => desks.some(([a, b]) => Math.hypot(a - x, b - z) < r);   // 책상 자리와 겹치는 화분·화단·등은 놓지 않는다
 // 사람이 걸을 때 돌아가야 하는 것들(원: x, z, 반지름). 바닥을 0.4m 칸으로 나눠 길을 찾는다(map.mjs gridPath)
 const blocks = [], block = (x, z, r) => blocks.push({ x, z, r });
 // 고정 난수(새로고침해도 배치가 같도록)
 let _seed=7;const rnd=(a=1,b)=>{_seed=(_seed*16807)%2147483647;const u=_seed/2147483647;return b===undefined?u*a:a+u*(b-a)};
-const WOOD='#cf9d66',WOOD2='#a8743f',WOOD3='#8a5c33',MOSS='#6f9a4a',MOSS2='#5c8a3e',CREAM='#efe6d3',CREAM2='#e2d6bd',DARK='#2f3a33',INK='#2a2622',PI=Math.PI;
-const mats={},M=(c,o)=>{if(o)return new THREE.MeshStandardMaterial({color:c,roughness:.88,flatShading:true,...o});if(!mats[c]){mats[c]=new THREE.MeshStandardMaterial({color:c,roughness:.88,flatShading:true});mats[c].userData.plain=true}return mats[c]};
+const WOOD='#dba463',WOOD2='#b97a42',WOOD3='#96602f',MOSS='#6fb24a',MOSS2='#5a9e3e',CREAM='#efe6d3',CREAM2='#e2d6bd',DARK='#2f3a33',INK='#2a2622',PI=Math.PI;
+const mats={},M=(c,o)=>{if(o)return new THREE.MeshStandardMaterial({color:c,roughness:.8,flatShading:false,...o});if(!mats[c]){mats[c]=new THREE.MeshStandardMaterial({color:c,roughness:.8,flatShading:false});mats[c].userData.plain=true}return mats[c]};
 const shade=(c,k=.78)=>'#'+new THREE.Color(c).multiplyScalar(k).getHexString();
 const P=(p,geo,c,x=0,y=0,z=0,rx=0,ry=0,rz=0,s)=>{const o=new THREE.Mesh(geo,typeof c==='string'?M(c):c);o.position.set(x,y,z);o.rotation.set(rx,ry,rz);if(s)o.scale.set(...s);o.castShadow=o.receiveShadow=true;p.add(o);return o};
-const G={box:(w,h,d)=>new THREE.BoxGeometry(w,h,d),cyl:(a,b,h,n=6)=>new THREE.CylinderGeometry(a,b,h,n),ico:(rad,d=0)=>new THREE.IcosahedronGeometry(rad,d),cone:(rad,h,n=5)=>new THREE.ConeGeometry(rad,h,n)};
+const G={box:(w,h,d)=>new THREE.BoxGeometry(w,h,d),rbox:(w,h,d,r=.05)=>new RoundedBoxGeometry(w,h,d,2,r),cyl:(a,b,h,n=6)=>new THREE.CylinderGeometry(a,b,h,n),ico:(rad,d=0)=>new THREE.IcosahedronGeometry(rad,d),cone:(rad,h,n=5)=>new THREE.ConeGeometry(rad,h,n)};
 const UP=new THREE.Vector3(0,1,0);
 function limb(p,a,b,r0,r1,c,n=6){const A=new THREE.Vector3(...a),d=new THREE.Vector3(...b).sub(A),o=P(p,G.cyl(r1,r0,d.length(),n),c);o.position.copy(A).addScaledVector(d,.5);o.quaternion.setFromUnitVectors(UP,d.clone().normalize());return o}
 // 단색 재질은 꼭짓점 색으로 바꿔 재질 하나(VC)로 합친다. 색 수만큼 늘던 그리기 횟수가 덩어리당 1회가 된다
-const VC=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.88,flatShading:true});
+const VC=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.8,flatShading:false});
 function merged(list){const by=new Map();for(const[o,mx]of list){const geo=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();geo.applyMatrix4(mx);for(const k of Object.keys(geo.attributes))if(k!=='position'&&k!=='normal')geo.deleteAttribute(k);
     let m=o.material;if(m.userData.plain){const n=geo.attributes.position.count,a=new Float32Array(n*3),c=m.color;for(let i=0;i<n;i++){a[i*3]=c.r;a[i*3+1]=c.g;a[i*3+2]=c.b}geo.setAttribute('color',new THREE.BufferAttribute(a,3));m=VC}
     if(!by.has(m))by.set(m,[]);by.get(m).push(geo)}
@@ -373,26 +433,42 @@ function bake(g){g.updateMatrixWorld(true);const l=[];g.traverse(o=>{if(o.isMesh
 function fuse(g){const ms=g.children.filter(o=>o.isMesh);ms.forEach(o=>o.updateMatrix());g.remove(...ms);g.add(...merged(ms.map(o=>[o,o.matrix])));return g}   // 관절 하나의 조각들을 한 덩어리로
 const at=(x,y,z,ry=0)=>{const g=new THREE.Group();g.position.set(x,y,z);g.rotation.y=ry;return g};
 const world=new THREE.Group(),sways=[];   // world = 움직이지 않는 것 전부
+// 잎·이끼 뭉치: 공 하나를 수천 번 찍는다(InstancedMesh, 그리기 1회). k는 밝기(아래쪽 뭉치를 어둡게 해 덩어리감을 낸다)
+function puffer(cap,geo,cast){const m=new THREE.InstancedMesh(geo,new THREE.MeshStandardMaterial({roughness:.9}),cap),o=new THREE.Object3D(),col=new THREE.Color();m.count=0;m.castShadow=m.receiveShadow=cast;m.frustumCulled=false;
+  m.put=(x,y,z,s,c,sy=1,k=1)=>{if(m.count>=cap)return;o.position.set(x,y,z);o.scale.set(s,s*sy,s);o.rotation.set(0,rnd(6),0);o.updateMatrix();m.setMatrixAt(m.count,o.matrix);m.setColorAt(m.count++,col.set(c).multiplyScalar(k))};return m}
+const puffs=puffer(6000,new THREE.SphereGeometry(1,8,5),false);puffs.receiveShadow=true;scene.add(puffs);
+const GR=['#6fbf45','#84cc4f','#5aa83e','#9ad65c','#78c44a'];
+// 뭉게 덤불: 큰 공 위·둘레에 작은 공을 붙인다(콜리플라워 모양)
+// 덤불·작은 나무: Tripo 모델(tools/chars/bush.glb·sapling.glb)을 InstancedMesh로 찍는다. 못 읽으면 예전 공 덤불·절차적 나무로
+const FOL=await(async()=>{try{const gl=new GLTFLoader(),r=await Promise.all(['bush','sapling'].map((n)=>gl.loadAsync(`/chars/${n}.glb`)));
+  return r.map((g,i)=>{let me;g.scene.traverse((o)=>{if(o.isMesh)me??=o});const geo=me.geometry.clone();geo.computeBoundingBox();const b=geo.boundingBox,c=b.getCenter(new THREE.Vector3()),sz=b.getSize(new THREE.Vector3());
+    geo.translate(-c.x,-b.min.y,-c.z);const k=1/(i?sz.y:Math.max(sz.x,sz.z));geo.scale(k,k,k);   // 덤불은 폭 1, 나무는 키 1, 밑동 y=0
+    me.material.color.setScalar(.84);return{geo,mat:me.material}})}catch(e){console.warn('덤불·작은 나무 모델을 못 불러와 예전 모양으로 그립니다',e);return null}})();
+function foliage(f,cap,cast,par=scene){const m=new THREE.InstancedMesh(f.geo,f.mat,cap),o=new THREE.Object3D(),col=new THREE.Color();m.count=0;m.castShadow=cast;m.receiveShadow=true;m.frustumCulled=false;par.add(m);
+  m.put=(x,y,z,s)=>{if(m.count>=cap)return;o.position.set(x,y,z);o.scale.setScalar(s);o.rotation.set(0,rnd(6.28),0);o.updateMatrix();m.setMatrixAt(m.count,o.matrix);m.setColorAt(m.count++,col.setScalar(rnd(.86,1.08)))};return m}
+const bushI=FOL&&foliage(FOL[0],300,false),saplingI=FOL&&foliage(FOL[1],40,true);
+function bush(m,x,y,z,s,n=7){if(bushI)return bushI.put(x,y-.7*s,z,s*2.2);m.put(x,y,z,s,GR[2],.8,.88);for(let k=0;k<n;k++){const a=rnd(6.28),e=rnd(.1,1.3),d=s*.75;m.put(x+Math.cos(a)*Math.cos(e)*d,y+Math.sin(e)*d*.8,z+Math.sin(a)*Math.cos(e)*d,s*rnd(.38,.55),GR[Math.floor(rnd(5))],.9,.82+e*.2)}}
 
-const SUN=new THREE.Vector3(-13,12,-10),AIM=new THREE.Vector3(1,0,1),sun=new THREE.DirectionalLight('#ffd39a',3.6);
-sun.position.copy(SUN);sun.target.position.copy(AIM);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-15,right:15,top:15,bottom:-15,near:1,far:70});sun.shadow.radius=2;sun.shadow.bias=-.0006;sun.shadow.normalBias=.02;
-scene.add(new THREE.HemisphereLight('#fff6dc','#86995c',1.2),sun,sun.target);
+const SUN=new THREE.Vector3(-12,17,8),AIM=new THREE.Vector3(1,0,1),sun=new THREE.DirectionalLight('#ffd9a6',3.3);
+sun.position.copy(SUN);sun.target.position.copy(AIM);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-15,right:15,top:15,bottom:-15,near:1,far:70});sun.shadow.radius=2;sun.shadow.bias=-.0006;sun.shadow.normalBias=.05;
+scene.add(new THREE.HemisphereLight('#ffeedd','#e2a877',1.25),sun,sun.target);
 
 // ── 바닥: 원형 마루(널 하나하나 길이·색을 달리해 나무결 느낌) + 한 단 내려간 라운지 ──
 const L=[1.4,2.5],ringGeo=(R,r0,d)=>{const s=new THREE.Shape();s.absarc(0,0,R,0,PI*2);const h=new THREE.Path();h.absarc(0,0,r0,0,PI*2,true);s.holes.push(h);return new THREE.ExtrudeGeometry(s,{depth:d,bevelEnabled:false,curveSegments:40})};
 {const s=new THREE.Shape();s.absarc(0,0,9.7,0,PI*2);const h=new THREE.Path();h.absarc(L[0],-L[1],3.25,0,PI*2,true);s.holes.push(h);P(world,new THREE.ExtrudeGeometry(s,{depth:.6,bevelEnabled:false,curveSegments:48}),WOOD3,0,-.62,0,-PI/2)}
-const tones=['#cf9d66','#c8945c','#d6a772','#c08a55','#d2a06a'];
+const tones=['#dba463','#d39a58','#e2ae6e','#cc9050','#d8a060'];
 for(let x=-9.5;x<9.5;x+=.5){const cx=x+.25,c=Math.sqrt(Math.max(0,9.55*9.55-cx*cx));if(c<.4)continue;const dx=cx-L[0],d=Math.abs(dx)<3.3?Math.sqrt(3.3*3.3-dx*dx):0;
   for(const[z0,z1]of d?[[-c,L[1]-d],[L[1]+d,c]]:[[-c,c]]){let z=z0;while(z<z1-.08){const len=Math.min(rnd(1.3,3.6),z1-z);P(world,G.box(.47,.05,len-.03),tones[Math.floor(rnd(5))],cx,-.005,z+len/2);z+=len}}}
 P(world,ringGeo(9.78,9.3,.09),WOOD2,0,-.05,0,-PI/2);P(world,ringGeo(3.5,3.18,.09),WOOD2,L[0],-.05,L[1],-PI/2);
 P(world,G.cyl(3.25,3.25,.1,40),WOOD3,L[0],-.65,L[1]);P(world,ringGeo(3.2,2.5,.3),'#d9ab76',L[0],-.6,L[1],-PI/2);P(world,ringGeo(2.75,2.5,.04),WOOD2,L[0],-.3,L[1],-PI/2);
-for(const[rad,c,y]of[[2.42,'#e9dfc8',-.58],[1.9,'#ddd0b3',-.57],[1.25,'#e9dfc8',-.56]])P(world,G.cyl(rad,rad,.04,28),c,L[0],y,L[1]);   // 둥근 러그(동심원 무늬)
-// 라운지 곡선 소파: 받침 + 방석 + 등받이 + 쿠션 + 담요
-const cush=['#6f9a4a','#d9b25a','#f4efe2','#8fae6b'];
+for(let k=0;k<8;k++)P(world,G.cyl(2.42-k*.3,2.42-k*.3,.04,32),k%2?'#e0cca2':'#f0e4ca',L[0],-.58+k*.004,L[1]);   // 둥근 러그(동심원 무늬)
+// 라운지 곡선 소파: 둥글게 이어진 받침·방석·등받이 + 쿠션
+const cush=['#f2a98f','#f7c6a8','#fbe3c8','#f4b3a0'],SOF='#7fcabb',SOF2='#a9e0d2';
+const arcGeo=(r0,r1,a0,a1,h,bev=.05)=>{const s=new THREE.Shape();s.absarc(0,0,r1,a0,a1,false);s.absarc(0,0,r0,a1,a0,true);return new THREE.ExtrudeGeometry(s,{depth:h-bev*2,bevelEnabled:true,bevelSize:bev,bevelThickness:bev,bevelSegments:3,curveSegments:36})};
+{const a0=5.6*PI/180,a1=174.4*PI/180;P(world,arcGeo(1.55,2.36,a0,a1,.28,.04),SOF,L[0],-.54,L[1],-PI/2);P(world,arcGeo(1.56,2.14,a0,a1,.17,.07),SOF2,L[0],-.24,L[1],-PI/2);P(world,arcGeo(2.16,2.36,a0,a1,.74,.09),SOF2,L[0],-.24,L[1],-PI/2);
+  for(let i=1;i<9;i++){const th=(185.6+i*18.75)*PI/180;P(world,G.box(.62,.02,.015),SOF,L[0]+Math.cos(th)*1.85,-.135,L[1]+Math.sin(th)*1.85,0,-th)}}   // 방석 사이 골
 for(let i=0;i<9;i++){const th=(195+i*18.75)*PI/180,g=at(L[0]+Math.cos(th)*1.95,-.56,L[1]+Math.sin(th)*1.95,Math.atan2(-Math.cos(th),-Math.sin(th)));world.add(g);
-  P(g,G.box(.72,.28,.82),CREAM2,0,.14,0);P(g,G.box(.66,.14,.72),CREAM,0,.35,.03);P(g,G.box(.7,.5,.2),CREAM,0,.6,-.36,-.14);P(g,G.box(.72,.06,.24),CREAM2,0,.86,-.4,-.14);
-  if(i%2===0&&i!==4)P(g,G.box(.34,.34,.12),cush[i%4],rnd(-.1,.1),.58,-.2,-.35,rnd(-.4,.4),rnd(-.2,.2));if(i===7)P(g,G.box(.3,.3,.11),cush[1],.12,.57,-.12,-.5,.5,.1);
-  if(i===1){P(g,G.box(.5,.03,.5),MOSS2,.02,.43,.1,0,.1);P(g,G.box(.5,.42,.03),MOSS2,.02,.22,.44,.06,.1);P(g,G.box(.5,.3,.03),MOSS2,.02,.7,-.22,-.14,.1);for(let k=-2;k<=2;k++)P(g,G.box(.03,.07,.02),'#86a85f',.02+k*.1,-.0,.47)}}
+  if(i%2===0&&i!==4)P(g,G.rbox(.36,.36,.14,.06),cush[i%4],rnd(-.1,.1),.6,-.14,-.35,rnd(-.4,.4),rnd(-.2,.2));if(i===7||i===3)P(g,G.rbox(.32,.32,.13,.06),cush[i%3+1],.14,.59,-.1,-.5,.5,.1)}
 // 원목 탁자와 그 위 소품(책, 꽃병, 찻주전자, 잔)
 {const g=at(L[0],-.56,L[1]+.25);world.add(g);P(g,G.cyl(.85,.8,.13,9),WOOD2,0,.33,0);for(let k=0;k<3;k++)P(g,G.cyl(.14,.16,.28,6),WOOD3,Math.cos(k*2.1)*.5,.14,Math.sin(k*2.1)*.5);
   P(g,G.box(.34,.05,.25),'#b5533c',-.35,.42,.2,0,.3);P(g,G.box(.3,.04,.22),'#e9e2d0',-.35,.465,.2,0,.5);P(g,G.cyl(.08,.11,.24,6),'#b9c7b0',.3,.52,-.2);
@@ -401,27 +477,145 @@ for(let i=0;i<9;i++){const th=(195+i*18.75)*PI/180,g=at(L[0]+Math.cos(th)*1.95,-
   for(const dx of[.26,.2])P(g,G.cyl(.04,.03,.06,6),'#f4efe2',dx,.445,.35+(dx-.23)*5)}
 P(world,G.ico(.55,1),MOSS,L[0]-1.3,-.32,L[1]+1.55,0,0,0,[1,.55,1]);P(world,G.cyl(.42,.42,.3,8),CREAM2,L[0]+1.5,-.41,L[1]+1.2);P(world,G.cyl(.44,.44,.06,8),CREAM,L[0]+1.5,-.24,L[1]+1.2);
 
-// ── 통유리 벽: 굵은 기둥, 가는 중간 창살, 가로대 2줄, 문턱, 나무 보 ──
-for(let i=0;i<=32;i++){const th=PI+i*PI/32,big=i%2===0;P(world,G.box(big?.14:.05,6.6,big?.14:.05),DARK,Math.cos(th)*9.55,3.3,Math.sin(th)*9.55,0,-th)}
-const arc=(R,t,y,c,n=6)=>P(world,new THREE.TorusGeometry(R,t,n,64,PI),c,0,y,0,-PI/2);arc(9.55,.32,6.75,WOOD2,7);arc(9.2,.14,6.5,WOOD,5);arc(9.55,.05,2.2,DARK,4);arc(9.55,.05,4.4,DARK,4);arc(9.55,.13,.06,WOOD3,5);
-{const g=new THREE.Mesh(new THREE.CylinderGeometry(9.55,9.55,6.6,48,1,true,PI/2,PI),new THREE.MeshStandardMaterial({color:'#dff5e6',transparent:true,opacity:.1,roughness:.1,side:THREE.DoubleSide,depthWrite:false}));g.position.y=3.3;scene.add(g)}
+// ── 낮은 나무 난간: 마루 둘레(앞쪽은 트여 있어 안이 보인다) ──
+const WALL=[PI*1.02,PI*1.98],inWall=(th)=>{const t=(th%(PI*2)+PI*2)%(PI*2);return t>WALL[0]-.01&&t<WALL[1]+.01};
+{const N=40,R=9.55,gap=(th)=>{const d=Math.atan2(Math.sin(th-PI/2),Math.cos(th-PI/2));return Math.abs(d)<.12||inWall(th)};
+  for(let i=0;i<N;i++){const th=i*PI*2/N,t2=(i+1)*PI*2/N;if(gap(th))continue;P(world,G.box(.2,1,.2),WOOD2,Math.cos(th)*R,.5,Math.sin(th)*R,0,-th);P(world,G.box(.27,.08,.27),WOOD,Math.cos(th)*R,1.03,Math.sin(th)*R,0,-th);
+    if(gap(t2))continue;const m=(th+t2)/2,len=2*R*Math.sin(PI/N);for(const[y,h]of[[.9,.12],[.3,.08]])P(world,G.box(.12,h,len),y>.5?WOOD:WOOD2,Math.cos(m)*R,y,Math.sin(m)*R,0,-m);for(const f of[-.3,-.1,.1,.3])P(world,G.cyl(.035,.035,.56,5),WOOD2,Math.cos(m+f*PI*2/N)*R,.6,Math.sin(m+f*PI*2/N)*R)}}
 
-// ── 바깥 숲(인스턴스): 줄기, 잎 덩어리 4개씩, 덤불 ──
-P(world,G.cyl(48,48,.1,40),'#6f9a52',0,-.74,0);
-{const N=90,tr=new THREE.InstancedMesh(G.cyl(.28,.46,1,6),M('#6b4a32'),N),lf=new THREE.InstancedMesh(G.ico(1),new THREE.MeshStandardMaterial({roughness:.9,flatShading:true}),N*4+70),o=new THREE.Object3D(),c=new THREE.Color();
-  for(let i=0;i<N;i++){const ph=rnd(2.7,6.75),rad=rnd(11.5,34),x=Math.cos(ph)*rad,z=Math.sin(ph)*rad,h=rnd(7,12.5);o.rotation.set(rnd(-.06,.06),rnd(3),rnd(-.06,.06));o.position.set(x,h/2-.7,z);o.scale.set(rnd(.8,1.3),h,rnd(.8,1.3));o.updateMatrix();tr.setMatrixAt(i,o.matrix);
-    for(let k=0;k<4;k++){const s=rnd(1.3,2.6);o.rotation.set(rnd(3),rnd(3),rnd(3));o.position.set(x+rnd(-1.5,1.5),h*rnd(.6,1.02),z+rnd(-1.5,1.5));o.scale.set(s,s*.8,s);o.updateMatrix();lf.setMatrixAt(i*4+k,o.matrix);lf.setColorAt(i*4+k,c.set(['#5f9440','#7fae4a','#a3c45a','#4f8238','#8fb552'][(i+k)%5]))}}
-  for(let i=0;i<70;i++){const ph=rnd(2.9,6.55),rad=rnd(10.6,20),s=rnd(.5,1.1);o.rotation.set(rnd(3),rnd(3),0);o.position.set(Math.cos(ph)*rad,-.4,Math.sin(ph)*rad);o.scale.set(s*1.3,s*.7,s);o.updateMatrix();lf.setMatrixAt(N*4+i,o.matrix);lf.setColorAt(N*4+i,c.set(i%2?'#4f8238':'#6a9c45'))}
-  tr.castShadow=lf.castShadow=true;tr.frustumCulled=lf.frustumCulled=false;scene.add(tr,lf)}
+// ── 하늘섬: 잔디 윗면, 둥근 바윗덩이 절벽, 매달린 뿌리, 가장자리 이끼·덤불·나무, 폭포. 둘레엔 구름과 작은 섬들 ──
+const softK={},SOFT=(c,o)=>o?(softK[c+JSON.stringify(o)]||=M(c,{roughness:.95,...o})):M(c);   // 같은 색·옵션은 재질 하나(색마다 새로 만들면 그리기 횟수가 그만큼 는다)
+const IR=11.2,FALL=.95,near=(th,c,w)=>Math.abs(Math.atan2(Math.sin(th-c),Math.cos(th-c)))<w;   // 섬 반지름, 폭포 방향(오른쪽 앞)
+P(world,G.cyl(IR,IR-.25,.7,64),'#7cc24e',0,-1.0,0);
+// 절벽: 층마다 모서리 둥근 바윗덩이를 둘러 세운다. 아래로 갈수록 좁고 어둡다
+{const RB=new RoundedBoxGeometry(1,1,1,2,.22),TAN=['#e8caa2','#deba8e','#d4ac7e','#ecd4b2','#cda47a'];let y=-1.25,t=0;
+  for(const[a,b,h]of[[IR-.3,IR-.6,2.5],[IR-.6,IR-1.8,2.2],[IR-1.8,7.2,2.1],[7.2,4.4,2],[4.4,1.4,1.9]]){P(world,G.cyl(a-1,Math.max(.2,b-1),h,20),'#8a6244',0,y-h/2,0);
+    const n=Math.max(5,Math.round(a*2.2));for(let i=0;i<n;i++){const th=(i+rnd(-.2,.2))*PI*2/n,hh=h*rnd(.8,1.35),rr=(a+b)/2-rnd(.2,1.1);P(world,RB,shade(TAN[Math.floor(rnd(5))],(1-t*.05)*rnd(.86,1.04)),Math.cos(th)*rr,y-hh/2+rnd(-.1,.3),Math.sin(th)*rr,rnd(-.07,.07),-th+rnd(-.15,.15),rnd(-.07,.07),[rnd(1.6,2.2),hh,PI*2*a/n*rnd(.9,1.08)])}
+    y-=h;t++}
+  P(world,G.ico(1.3,1),'#b98f66',0,y-.2,0,0,0,0,[1,1.4,1]);
+  for(let i=0;i<16;i++){const th=rnd(6.28),rr=rnd(7,IR-.8),x=Math.cos(th)*rr,z=Math.sin(th)*rr,y0=-2.6-(IR-rr)*.9,l=rnd(1.2,3);limb(world,[x,y0,z],[x+rnd(-.3,.3),y0-l,z+rnd(-.3,.3)],.05,.025,i%3?'#5aa83e':'#8a5a36',4);puffs.put(x,y0-l,z,.17,GR[i%5])}}
+// 가장자리 이끼: 둥근 둔덕 위에 잔 뭉치, 절벽으로 흘러내린 이끼. 잔디엔 작은 꽃(흰·분홍·노랑)과 둥근 돌
+{for(let i=0;i<170;i++){const th=i*PI*2/170+rnd(-.02,.02);if(near(th,FALL,.12)||near(th,PI/2,.1))continue;const rr=IR+rnd(-.35,.25),x=Math.cos(th)*rr,z=Math.sin(th)*rr;
+    if(bushI){if(i%9===0){const big=Math.sin(th)<.3?1:.65;for(let k=0;k<2+(rnd()<.5);k++)bushI.put(x+rnd(-.7,.7),-.85,z+rnd(-.7,.7),rnd(1,1.6)*big)}}else{puffs.put(x,-.8+rnd(-.1,.1),z,rnd(.5,.8),GR[i%5],.7,.88);
+    for(let k=0;k<6;k++)puffs.put(x+rnd(-.55,.55),-.5+rnd(-.14,.14),z+rnd(-.55,.55),rnd(.16,.32),GR[(i+k)%5],.8,1.02+rnd(.1))}
+    if(i%2&&!bushI){const l=rnd(.2,.9),x2=Math.cos(th)*(IR+.3),z2=Math.sin(th)*(IR+.3);puffs.put(x2,-1.1-l*.5,z2,rnd(.4,.6),GR[(i+2)%5],1.3+l*.3,.84);puffs.put(x2+rnd(-.25,.25),-1.3-l,z2+rnd(-.25,.25),rnd(.25,.4),GR[i%5],1,.74)}}
+  // 덤불 모델이 있으면 공 둔덕 대신 매끈한 이끼 턱(토러스 호)으로 가장자리를 감싼다. 폭포·다리 자리는 비운다
+  if(bushI)for(const[a,b]of[[FALL+.2,PI/2-.14],[PI/2+.14,FALL-.2+PI*2]]){const t=new THREE.TorusGeometry(IR-.1,.42,8,Math.ceil((b-a)*24),b-a);t.rotateX(PI/2);t.rotateY(-a);P(world,t,'#79bf4b',0,-.72,0,0,0,0,[1,.55,1])}
+  if(!bushI)for(let i=0;i<260;i++){const th=rnd(6.28),rr=rnd(9.95,IR-.2);if(near(th,FALL,.09)||near(th,PI/2,.1))continue;puffs.put(Math.cos(th)*rr,-.66,Math.sin(th)*rr,rnd(.2,.42),GR[i%5],.5,1.04)}
+  for(let i=0;i<80;i++){const th=rnd(6.28),rr=rnd(9.95,IR+.25),c=['#ffffff','#ffd0dc','#fff1a0','#ffffff'][i%4];if(near(th,FALL,.1)||near(th,PI/2,.1))continue;for(let k=0;k<4;k++)P(world,G.ico(rnd(.07,.11),0),c,Math.cos(th)*rr+rnd(-.25,.25),-.33+rnd(.14),Math.sin(th)*rr+rnd(-.25,.25))}
+  for(let i=0;i<22;i++){const th=rnd(6.28),rr=rnd(10,IR);if(near(th,PI/2,.1))continue;P(world,G.ico(rnd(.2,.4),1),['#d6cfc2','#e4ddd0','#c4bdb0'][i%3],Math.cos(th)*rr,-.5,Math.sin(th)*rr,0,rnd(3),0,[1.3,.75,1])}}
+// 가장자리 덤불·작은 나무(뒤쪽은 크게, 앞쪽은 낮게 해서 안을 가리지 않는다)
+for(let i=0;i<54;i++){const th=i*PI*2/54+rnd(-.04,.04),front=Math.sin(th)>.35,rr=rnd(10.2,IR-.4),x=Math.cos(th)*rr,z=Math.sin(th)*rr;if(near(th,FALL,.16)||near(th,PI/2,.15))continue;
+  if(!front&&i%5===0){const h=rnd(2,3.2);if(saplingI)saplingI.put(x,-.75,z,h+1.6);else{limb(world,[x,-.7,z],[x+rnd(-.2,.2),-.7+h,z],.22,.13,'#a06a3c',8);for(let k=0;k<4;k++)bush(puffs,x+rnd(-.65,.65),-.4+h+rnd(.6),z+rnd(-.65,.65),rnd(.7,1),8)}}
+  else if(!bushI||i%3===0)bush(puffs,x,-.55,z,rnd(.35,front?.5:.75),6)}
+// 마루 난간에 기대 넘치는 덤불(옆·뒤쪽)
+for(let i=0;i<26;i++){const th=rnd(6.28);if(bushI&&i%3)continue;if(Math.sin(th)>.75||near(th,FALL,.2))continue;bush(puffs,Math.cos(th)*9.75,rnd(.1,.5),Math.sin(th)*9.75,rnd(.3,.5),5)}
+// 폭포: 잔디 위 개울 → 가장자리에서 아래로. 물줄기는 줄무늬 텍스처를 흘려 움직인다
+const fallTex=(()=>{const c=Object.assign(document.createElement('canvas'),{width:64,height:128}),g=c.getContext('2d');g.fillStyle='#8fdcf6';g.fillRect(0,0,64,128);for(let i=0;i<60;i++){g.fillStyle=`rgba(255,255,255,${.35+Math.random()*.55})`;g.fillRect(Math.random()*64,Math.random()*128,2+Math.random()*5,14+Math.random()*34)}
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1,3);t.colorSpace=THREE.SRGBColorSpace;return t})();
+{const x=Math.cos(FALL),z=Math.sin(FALL),tx=-z,tz=x,wm=new THREE.MeshStandardMaterial({map:fallTex,transparent:true,opacity:.92,roughness:.3,emissive:'#9fdcf4',emissiveIntensity:.4,side:THREE.DoubleSide});
+  const st=new THREE.Mesh(new THREE.BoxGeometry(2.4,.05,2.6),wm);st.rotation.y=-FALL;st.position.set(x*(IR-.75),-.63,z*(IR-.75));scene.add(st);
+  const fall=new THREE.Mesh(new THREE.CylinderGeometry(2.6,2.9,13,12,1,true,-.55,1.1),wm);fall.position.set(x*(IR-2.1),-7.1,z*(IR-2.1));fall.rotation.y=PI/2-FALL;scene.add(fall);
+  for(let k=0;k<14;k++){const u=rnd(-1.3,1.3);puffs.put(x*(IR+.45)+tx*u,-.72+rnd(-.1,.1),z*(IR+.45)+tz*u,rnd(.18,.32),'#ffffff',.8,1.1)}   // 떨어지는 턱의 물거품
+  for(const sd of[-1,1])for(let k=0;k<5;k++)P(world,G.ico(rnd(.25,.45),1),['#d6cfc2','#e4ddd0'][k%2],x*(IR-.2-k*.45)+tx*sd*1.45,-.55,z*(IR-.2-k*.45)+tz*sd*1.45,0,rnd(3),0,[1.2,.8,1]);
+  for(let k=0;k<12;k++)puffs.put(x*(IR+.4)+rnd(-1.3,1.3),-13.4+rnd(.8),z*(IR+.4)+rnd(-1.3,1.3),rnd(.5,1),'#ffffff',.8,1.1)}
+// 구름과 작은 섬들: 한 덩어리로 합쳐 아주 조금 흔들린다(돌지 않아 구도가 그대로다)
+const sky=new THREE.Group(),skyG=new THREE.Group();scene.add(sky);
+const CLOUD=[SOFT('#fffaf8',{emissive:'#ffe6e0',emissiveIntensity:.35}),SOFT('#ffe8e8',{emissive:'#ffc4cc',emissiveIntensity:.35})];
+function cloud(x,y,z,s){const g=at(x,y,z,rnd(-.5,.5));for(let k=0;k<7;k++){const px=rnd(-2.3,2.3)*s,f=1-Math.abs(px)/(3.2*s);P(g,new THREE.SphereGeometry(rnd(.8,1.3)*s*(.6+f*.5),10,7),k%3?CLOUD[0]:CLOUD[1],px,rnd(-.1,.7)*s*f,rnd(-.9,.9)*s,0,0,0,[1,.74,1])}skyG.add(g)}
+for(let i=0;i<16;i++){const th=rnd(2.6,6.8),rr=rnd(13,26);cloud(Math.cos(th)*rr,rnd(-20,-13),Math.sin(th)*rr,rnd(1.6,2.6))}   // 섬 아래
+for(let i=0;i<13;i++){const th=rnd(3.25,6.15),rr=rnd(26,52);cloud(Math.cos(th)*rr,rnd(-12,7),Math.sin(th)*rr,rnd(2,3.4))}   // 뒤쪽 하늘
+for(let i=0;i<5;i++){const sd=i%2?1:-1;cloud(sd*rnd(18,27),rnd(-12,-4),rnd(-12,1),rnd(1.6,2.6))}   // 섬 양옆
+const bushS=FOL&&foliage(FOL[0],80,false,sky),saplingS=FOL&&foliage(FOL[1],30,false,sky);
+const ISLE_RB=new RoundedBoxGeometry(1,1,1,2,.22);   // 작은 섬 절벽도 큰 섬처럼 모서리 둥근 바윗덩이
+function islet(x,y,z,s,o={}){const g=at(x,y,z,rnd(3));P(g,G.cyl(2*s,1.9*s,.4*s,16),'#7cc24e',0,0,0);g.updateMatrixWorld(true);const W=(a,b,c)=>g.localToWorld(new THREE.Vector3(a,b,c));
+  if(FOL)for(let k=0;k<6;k++){const a=k*1.05+rnd(.4),p=W(Math.cos(a)*1.75*s,.1*s,Math.sin(a)*1.75*s);bushS.put(p.x,p.y,p.z,rnd(.9,1.3)*s)}
+  else for(let k=0;k<18;k++){const a=k*.35;P(g,G.ico(rnd(.36,.5)*s,1),GR[k%5],Math.cos(a)*1.95*s,-.08*s,Math.sin(a)*1.95*s,0,0,0,[1,.65,1]);if(k%3===0)P(g,G.ico(.3*s,1),GR[(k+2)%5],Math.cos(a)*2.05*s,-.5*s,Math.sin(a)*2.05*s,0,0,0,[.9,1.5,.8])}
+  P(g,G.cone(1.8*s,3.2*s,10),'#c79f74',0,-1.8*s,0,PI);for(let k=0;k<12;k++){const a=k*.52+rnd(.3),d=k%3*.3+rnd(.1);const r=rnd(.5,.7)*s*(1-d*.5);P(g,ISLE_RB,['#e8caa2','#d4ac7e','#deba8e'][k%3],Math.cos(a)*1.6*s*(1-d),-.6*s-d*2.8*s,Math.sin(a)*1.6*s*(1-d),rnd(-.1,.1),-a,rnd(-.1,.1),[r*1.5,r*2.3,r*1.7])}
+  for(let t=0;t<(o.trees??2);t++){const tx=rnd(-1,1)*s,tz=rnd(-1,1)*s,h=rnd(1.4,2.2)*s;if(FOL){const p=W(tx,.15*s,tz);saplingS.put(p.x,p.y,p.z,h+.9*s);continue}   // bake()는 UV를 지우므로 텍스처 나무는 굽지 않고 sky의 인스턴스로
+    limb(g,[tx,.2*s,tz],[tx,h,tz],.16*s,.1*s,'#a06a3c',6);for(let k=0;k<9;k++)P(g,G.ico(rnd(.4,.75)*s,1),GR[Math.floor(rnd(5))],tx+rnd(-.6,.6)*s,h+rnd(.7)*s,tz+rnd(-.6,.6)*s)}
+  if(!FOL)for(let k=0;k<5;k++)P(g,G.ico(rnd(.25,.4)*s,1),GR[k],rnd(-1.4,1.4)*s,.25*s,rnd(-1.4,1.4)*s);
+  if(o.house){P(g,G.rbox(.9*s,.7*s,.8*s,.08*s),'#f6e8d0',.9*s,.55*s,-.4*s);P(g,G.cone(.82*s,.6*s,4),'#d9805a',.9*s,1.2*s,-.4*s,0,PI/4);P(g,G.box(.2*s,.36*s,.02),'#8a5f3c',.9*s,.38*s,0);P(g,G.box(.12*s,.3*s,.12*s),'#c9744f',1.15*s,1.35*s,-.5*s)}
+  skyG.add(g);
+  if(o.fall){const w=new THREE.Mesh(new THREE.PlaneGeometry(.6*s,4.5*s),new THREE.MeshStandardMaterial({map:fallTex,transparent:true,opacity:.9,emissive:'#9fdcf4',emissiveIntensity:.4,side:THREE.DoubleSide}));w.position.set(0,-2.2*s,1.98*s);g.add(w);g.updateMatrixWorld(true);sky.attach(w)}}
+islet(-10.5,8,-22,1.8,{trees:3});islet(14.5,-1,-20,1.7,{house:true,fall:true});islet(-19,-4,-8,1.4,{fall:true});islet(19,-9,-4,1.3,{trees:1});islet(-9,11,-46,2.4,{trees:3});islet(-11.5,-14,-6,1.3,{house:true});islet(11.5,-13,-10,1.4,{trees:2});islet(27,-3,-38,2,{trees:2,fall:true});islet(-30,-2,-36,2,{house:true});
+{const b=bake(skyG);b.traverse(o=>{o.castShadow=o.receiveShadow=false});sky.add(b)}
 
-// ── 실내 나무: 굽은 줄기 + 곁줄기 + 가지 끝마다 잎 덩어리, 뿌리 ──
-const T=[3.9,-2.1],BARK='#7a573a',BARK2='#6a4a30',treeG=at(T[0],0,T[1]),canopyG=new THREE.Group();world.add(treeG);
-{const tp=[[0,0,0],[.08,2.4,.05],[.22,4.5,-.05],[.3,6.2,.1]],rr=[.36,.27,.2,.13];for(let i=0;i<3;i++)limb(treeG,tp[i],tp[i+1],rr[i],rr[i+1],i%2?BARK2:BARK,7);
-  limb(treeG,[.1,1.5,.1],[.95,4.2,.5],.2,.13,BARK2,6);limb(treeG,[.95,4.2,.5],[1.2,6,.7],.13,.08,BARK,6);
-  for(let k=0;k<6;k++)P(treeG,G.cone(.16,.6,4),BARK2,Math.cos(k*1.05)*.36,.14,Math.sin(k*1.05)*.36,Math.sin(k*1.05)*1.1,0,-Math.cos(k*1.05)*1.1);
-  const tips=[[.3,6.2,.1],[1.2,6,.7]];for(const[fx,fy,fz,tx,ty,tz]of[[.22,4.5,-.05,-1.9,5.9,-.6],[.22,4.5,-.05,1.6,5.6,-1.6],[.15,3.6,0,-1.5,5.2,1.2],[.95,4.2,.5,2.6,5.6,1],[.3,6.2,.1,-.6,7.3,.3],[.3,6.2,.1,1,7.4,-.6],[1.2,6,.7,1.8,7.1,1.5],[.1,3,0,-2.3,4.6,-.2]]){limb(treeG,[fx,fy,fz],[tx,ty,tz],.09,.04,BARK,5);tips.push([tx,ty,tz])}
-  for(const[x,y,z]of tips)for(let k=0;k<4;k++){const s=rnd(.5,.95);P(canopyG,G.ico(s),['#6fa344','#8bb84e','#5c9440','#a3c45a'][Math.floor(rnd(4))],x+rnd(-.7,.7),y+rnd(-.1,.7),z+rnd(-.7,.7),rnd(3),rnd(3),0,[1,.75,1])}}
-const canopy=bake(canopyG);canopy.position.set(T[0],0,T[1]);scene.add(canopy);
+// ── 실내 나무: 세로로 패인 수피와 뒤틀린 뿌리, 잔잔하게 굴곡진 콜리플라워 수관 ──
+const T=[3.9,-2.1],BARK='#b5713f',BARK2='#c98250',BARK3='#8f5530',treeG=at(T[0],0,T[1]);world.add(treeG);
+const TR=y=>1.45+.57*Math.exp(-y*1.6)+.14*Math.sin(y*.49)+Math.max(0,y-8)*.075;
+const toL=Math.atan2(L[1]-T[1],L[0]-T[0]);
+const canopy=new THREE.Group();canopy.position.set(T[0],0,T[1]);scene.add(canopy);canopy.name='central-tree-canopy';{
+  // Local randomness keeps the rest of the island's procedural layout unchanged.
+  for(let k=0;k<10;k++)if(!near(k*.628+.2,toL,.7))rnd();
+  for(let k=0;k<24;k++)rnd();
+  for(let k=0;k<13;k++){rnd();const n=9+Math.floor(rnd(4));for(let j=0;j<n*4;j++)rnd()}
+  // 나무는 Tripo로 만든 모델(tools/chars/tree.glb: 줄기 중심이 원점, 밑동 y=0, 키 18로 구워 둠). 못 읽으면 아래 절차적 나무로 대신한다.
+  // Inset blue-green round window, framed like a small hand-carved porthole. (모델 줄기도 이 높이·방향 반지름이 1.6~1.8이라 같은 자리에 맞는다)
+  {const a=PI/2-.3,r=TR(2.5)+.3,w=at(Math.cos(a)*r,2.5,Math.sin(a)*r,PI/2-a);treeG.add(w);
+    P(w,new THREE.TorusGeometry(.43,.105,12,32),'#e2ae6e');P(w,G.cyl(.405,.405,.05,32),M('#779d99',{emissive:'#a4c3b2',emissiveIntensity:.15}),0,0,-.04,PI/2);
+    P(w,G.box(.8,.065,.07),'#e2ae6e',0,0,.015);P(w,G.box(.065,.8,.07),'#e2ae6e',0,0,.015);
+  }
+  let treeGlb=null;try{treeGlb=(await new GLTFLoader().loadAsync('/chars/tree.glb')).scene}catch(e){console.warn('tree.glb',e)}
+  if(treeGlb){treeGlb.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;o.material.color.setScalar(.84)}});canopy.add(treeGlb)}else{   // .84: 텍스처에 이미 칠해진 명암 위에 장면 조명이 겹쳐 수관이 허옇게 뜨지 않게
+  let seed=9721;const rand=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
+  const barkMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95});
+  const woodGeos=[],leafGeos=[],v=new THREE.Vector3(),color=new THREE.Color();
+  // A single continuous surface carries the grain: narrow dark furrows between soft raised ridges.
+  function wood(path,radii,segments=28,sides=40,phase=0){
+    const curve=new THREE.CatmullRomCurve3(path.map(p=>new THREE.Vector3(...p))),frames=curve.computeFrenetFrames(segments,false),pos=[],cols=[],idx=[];
+    for(let j=0;j<=segments;j++){
+      const t=j/segments,u=t*(radii.length-1),q=Math.min(radii.length-2,Math.floor(u)),r=THREE.MathUtils.lerp(radii[q],radii[q+1],u-q),p=curve.getPointAt(t);
+      for(let k=0;k<=sides;k++){
+        const a=k/sides*PI*2,w=a+.035*Math.sin(t*11+phase)+.022*Math.sin(t*27+a*3),grain=Math.cos(w*17+phase),fine=Math.cos(w*31+t*1.7),rr=r*(1+.045*grain+.018*fine+.028*Math.sin(a*7+t*5));
+        v.copy(p).addScaledVector(frames.normals[j],Math.cos(a)*rr).addScaledVector(frames.binormals[j],Math.sin(a)*rr);pos.push(v.x,v.y,v.z);
+        color.set('#b87844').lerp(new THREE.Color('#6e4028'),Math.pow((1-grain)/2,9)*.48).lerp(new THREE.Color('#d49a60'),Math.max(0,grain)*.21);
+        color.multiplyScalar(.92+.08*Math.sin(a*3+phase)+.035*Math.sin(t*35+a*8));cols.push(color.r,color.g,color.b);
+        if(j<segments&&k<sides){const n=j*(sides+1)+k;idx.push(n,n+1,n+sides+1,n+1,n+sides+2,n+sides+1)}
+      }
+    }
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));g.setIndex(idx);g.computeVertexNormals();woodGeos.push(g);
+  }
+  const ys=[0,.35,1,2,3.3,4.6,6,7.5,9,10.7,12];
+  wood(ys.map(y=>[.12*Math.sin(y*.55),y,.09*Math.sin(y*.7)]),ys.map(TR),72,80);
+  for(let k=0;k<10;k++){
+    const a=k*PI/5+.18,end=near(a,toL,.7)?2.02:2.38+rand()*.18,dx=Math.cos(a),dz=Math.sin(a);
+    wood([[dx*.9,2.2,dz*.9],[dx*1.38,.9,dz*1.38],[dx*(end-.3),.22,dz*(end-.3)],[dx*end,.055,dz*end]],[.48,.43,.22,.045],18,20,k);
+  }
+  // Heavy boughs emerge above the upper deck, then curl outward under the crown.
+  for(let k=0;k<8;k++){
+    const a=k*PI/4+.25,dx=Math.cos(a),dz=Math.sin(a),h=8.2+(k%3)*.5;
+    wood([[dx*.6,h,dz*.6],[dx*1.75,h+1.25,dz*1.75],[dx*3.5,11.45+(k%2)*.45,dz*3.5],[dx*5.1,12.25,dz*5.1]],[.85,.65,.4,.12],25,24,k*.7);
+  }
+  const bark=new THREE.Mesh(mergeGeometries(woodGeos),barkMat);bark.castShadow=bark.receiveShadow=true;const barkG=at(T[0],0,T[1]);barkG.name='central-tree-wood';barkG.add(bark);scene.add(barkG);woodGeos.forEach(g=>g.dispose());
+  // Broad connected crowns carry small, partly buried convex leaflets.
+  const lobes=[[0,14.9,0,3.15,1.02]];
+  for(let k=0;k<9;k++){const a=k*PI*2/9+.15;lobes.push([Math.cos(a)*4.65,12.65+rand()*.6,Math.sin(a)*4.4,2.65+rand()*.35,.82])}
+  for(let k=0;k<6;k++){const a=k*PI/3+.6;lobes.push([Math.cos(a)*2.7,14.15+rand()*.45,Math.sin(a)*2.6,2.65+rand()*.3,.91])}
+  const capGeo=new THREE.SphereGeometry(1,12,3,0,PI*2,0,PI/2),capColors=[];
+  for(let i=0;i<capGeo.attributes.position.count;i++){const h=capGeo.attributes.position.getY(i),k=.93+.07*h;capColors.push(k,k,k)}
+  capGeo.setAttribute('color',new THREE.Float32BufferAttribute(capColors,3));
+  const caps=new THREE.InstancedMesh(capGeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),lobes.length*360),cap=new THREE.Object3D(),normal=new THREE.Vector3();
+  caps.count=0;caps.castShadow=false;caps.receiveShadow=false;caps.name='central-tree-leaflets';
+  const leafColor=(nx,ny,nz)=>new THREE.Color('#4f7c32').lerp(new THREE.Color('#a8c956'),THREE.MathUtils.clamp((ny+.75)*.56-nx*.1+nz*.05,0,1));
+  for(const [x,y,z,r,sy] of lobes){
+    const g=new THREE.SphereGeometry(1,24,10),p=g.attributes.position,colors=new Float32Array(p.count*3);
+    for(let i=0;i<p.count;i++){
+      v.fromBufferAttribute(p,i).normalize();const nx=v.x,ny=v.y,nz=v.z,relief=1+.018*Math.sin(nx*7+ny*3)*Math.cos(nz*8-ny*4);
+      p.setXYZ(i,x+nx*r*relief,y+ny*r*sy*relief,z+nz*r*relief);color.copy(leafColor(nx,ny,nz)).multiplyScalar(.92);colors[i*3]=color.r;colors[i*3+1]=color.g;colors[i*3+2]=color.b;
+    }
+    g.setAttribute('color',new THREE.BufferAttribute(colors,3));g.computeVertexNormals();leafGeos.push(g);
+    for(let k=0;k<360;k++){
+      const ny=THREE.MathUtils.clamp(1-2*(k+.5)/360+(rand()-.5)*.025,-.999,.999),a=k*2.399963+(rand()-.5)*.52,rr=Math.sqrt(1-ny*ny),nx=Math.cos(a)*rr,nz=Math.sin(a)*rr;
+      const relief=1+.018*Math.sin(nx*7+ny*3)*Math.cos(nz*8-ny*4),width=.27+rand()*.21,height=width*(.5+rand()*.38);
+      cap.position.set(x+nx*(r*relief-.075),y+ny*(r*relief-.075)*sy,z+nz*(r*relief-.075));if(lobes.some(l=>l[0]!==x||l[1]!==y||l[2]!==z?Math.hypot((cap.position.x-l[0])/l[3],(cap.position.y-l[1])/(l[3]*l[4]),(cap.position.z-l[2])/l[3])<1.015:false))continue;normal.set(nx,ny/sy,nz).normalize();cap.quaternion.setFromUnitVectors(UP,normal);cap.rotateY(rand()*PI*2);cap.scale.set(width,height,width*(.77+rand()*.36));cap.updateMatrix();
+      caps.setMatrixAt(caps.count,cap.matrix);color.copy(leafColor(nx,ny,nz)).multiplyScalar(.94+rand()*.1);caps.setColorAt(caps.count++,color);
+    }
+  }
+  const crown=new THREE.Mesh(mergeGeometries(leafGeos),new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}));crown.receiveShadow=false;crown.castShadow=false;canopy.add(crown,caps);leafGeos.forEach(g=>g.dispose());
+  }
+}
+
 // ── 화분 여러 종류 ──
 function pot(g,s,c=CREAM2){P(g,G.cyl(.26*s,.19*s,.4*s,7),c,0,.2*s,0);P(g,G.cyl(.27*s,.27*s,.05*s,7),shade(c,.9),0,.4*s,0);P(g,G.cyl(.22*s,.22*s,.02,7),'#5a4030',0,.43*s,0)}
 const plants={
@@ -438,32 +632,75 @@ function bed(x,z,s=1){if(blocked(x,z))return;block(x,z,1.3*s+.1);const g=at(x,0,
   rock(g,rnd(-.8,.8)*s,rnd(-.6,.6)*s,s);rock(g,rnd(-1.2,1.2)*s,rnd(-.9,.9)*s,s*.7);
   for(let i=0;i<14;i++)P(g,G.cone(.03,rnd(.25,.45),3),'#86a85f',rnd(-1.3,1.3)*s,.25,rnd(-1.1,1.1)*s,rnd(-.3,.3),0,rnd(-.3,.3));for(let i=0;i<6;i++)P(g,G.ico(.05),'#f4efe2',rnd(-1.2,1.2)*s,.27,rnd(-1,1)*s);
   for(let i=0;i<3;i++)fernClump(x+rnd(-1.1,1.1)*s,z+rnd(-.9,.9)*s,s)}
-bed(T[0]+.2,T[1],1.3);bed(-6.7,4.8,1);bed(7.2,4.7,.9);bed(-8.2,-.9,.6);
-// ── 원형 2층 데크: 평평한 고리 바닥, 난간 기둥·손잡이·유리, 그 위 안락의자·탁자·등·화분 ──
-{const g=at(T[0],0,T[1]);world.add(g);P(g,ringGeo(5.35,3.95,.3),WOOD,0,4.3,0,-PI/2);P(g,ringGeo(5.42,5.3,.42),WOOD2,0,4.24,0,-PI/2);P(g,ringGeo(4,3.9,.42),WOOD2,0,4.24,0,-PI/2);
-  for(const R of[4.02,5.28]){for(let i=0;i<24;i++)P(g,G.cyl(.02,.02,.8,4),DARK,Math.cos(i*PI/12)*R,5,Math.sin(i*PI/12)*R);P(g,new THREE.TorusGeometry(R,.03,4,48),WOOD3,0,5.4,0,PI/2);
-    const gl=new THREE.Mesh(new THREE.CylinderGeometry(R,R,.7,48,1,true),new THREE.MeshStandardMaterial({color:'#e8fff0',transparent:true,opacity:.14,side:THREE.DoubleSide,depthWrite:false}));gl.position.set(T[0],4.98,T[1]);scene.add(gl)}
-  const seat=(th,c)=>{const s=at(Math.cos(th)*4.65,4.6,Math.sin(th)*4.65,-th-PI/2);g.add(s);P(s,G.box(.6,.2,.6),c,0,.22,0);P(s,G.box(.6,.5,.14),c,0,.5,-.26,-.15);P(s,G.box(.1,.3,.6),shade(c,.9),-.32,.3,0);P(s,G.box(.1,.3,.6),shade(c,.9),.32,.3,0);for(const[a,b]of[[-.25,-.25],[.25,-.25],[-.25,.25],[.25,.25]])P(s,G.cyl(.02,.02,.14,4),WOOD3,a,.06,b)};
-  seat(1.0,'#8fae6b');seat(1.85,CREAM);seat(2.75,'#8fae6b');seat(.15,CREAM);
-  for(const th of[1.42,2.3]){P(g,G.cyl(.25,.25,.04,7),WOOD2,Math.cos(th)*4.65,4.98,Math.sin(th)*4.65);P(g,G.cyl(.03,.03,.36,4),WOOD3,Math.cos(th)*4.65,4.78,Math.sin(th)*4.65);P(g,G.cyl(.04,.035,.07,6),'#f4efe2',Math.cos(th)*4.6,5.04,Math.sin(th)*4.7)}
-  for(const[th,k]of[[.58,'fern'],[3.1,'snake'],[-.6,'monstera'],[4,'ficus']]){const pg=at(Math.cos(th)*4.7,4.6,Math.sin(th)*4.7);g.add(pg);plants[k](pg,.7)}
-  for(const[dx,dz]of[[4.5,-1.7],[-3.3,-3.5]])for(let k=-2;k<=2;k++)P(g,G.box(.14,4.3,.5),k%2?WOOD2:WOOD3,dx+k*.2,2.15,dz)}
+block(T[0],T[1],2.3);
+// 밑동 둘레: 작은 화분, 이끼, 돌
+for(let k=0;k<11;k++){const a=k*.57+.5;if(near(a,toL,.75))continue;const r=rnd(2.1,2.3),x=Math.cos(a)*r,z=Math.sin(a)*r;if(k%2){const pg=at(x,0,z,rnd(6));treeG.add(pg);plants[['fern','snake','monstera'][k%3]](pg,rnd(.5,.75))}else{bush(puffs,T[0]+x,.12,T[1]+z,rnd(.25,.35),5);P(treeG,G.ico(.2,1),'#d6cfc2',x*1.1,.1,z*1.1,0,rnd(3),0,[1.2,.7,1])}}
+bed(-6.7,4.8,1);bed(7.2,4.7,.9);bed(-8.2,-.9,.6);
+// ── 책장 한 채(w 폭, rows 단): 책 높이·두께·색을 달리하고 군데군데 작은 화분·기울어진 책 ──
+const BOOK=['#b5533c','#d9b25a','#56733f','#e9e2d0','#5d7fa3','#8a5a3c','#c9744f','#3c5a52','#e6c9a0','#7a4f6d'];
+function shelf(g,w,rows,rh=.62,d=.42){const h=rows*rh+.1;P(g,G.box(w,h,.06),WOOD3,0,h/2,-d/2+.03);for(const x of[-w/2,w/2])P(g,G.box(.08,h,d),WOOD2,x,h/2,0);P(g,G.box(w+.1,.08,d+.06),WOOD,0,h+.02,0);
+  for(let j=0;j<rows;j++){const y0=.06+j*rh,end=w/2-.07;let x=-w/2+.07;P(g,G.box(w,.06,d),WOOD,0,y0-.03,0);
+    while(x<end-.1){const r=rnd();if(r<.09&&x<end-.3){P(g,G.cyl(.08,.06,.13,7),'#f4efe2',x+.13,y0+.065,.03);P(g,G.ico(.12,1),GR[1],x+.13,y0+.22,.03);x+=.3;continue}
+      const bw=rnd(.06,.13),bh=rnd(.3,rh-.14),lean=r>.93;P(g,G.box(bw,bh,d*rnd(.6,.75)),BOOK[Math.floor(rnd(10))],x+bw/2+(lean?.05:0),y0+bh/2,.03,0,0,lean?-.2:0);x+=bw+(lean?.12:.012)}}}
+// ── 원형 2층 데크: 줄기를 두른 둥근 마루, 굵은 나무 난간, 줄기에서 뻗은 받침목, 그 위 안락의자·탁자·책장·화분 ──
+{const g=at(T[0],0,T[1]);world.add(g);P(g,ringGeo(5.35,1.4,.3),'#dba463',0,4.3,0,-PI/2);P(g,ringGeo(5.48,5.3,.46),WOOD2,0,4.2,0,-PI/2);P(g,ringGeo(3.5,3.44,.02),WOOD2,0,4.59,0,-PI/2);
+  for(let i=0;i<40;i++){const th=i*PI/20;P(g,G.box(3.6,.012,.03),WOOD2,Math.cos(th)*3.5,4.604,Math.sin(th)*3.5,0,-th)}   // 널 사이 골
+  for(let i=0;i<10;i++){const th=i*PI/5+.3;limb(g,[Math.cos(th)*1.45,2.9,Math.sin(th)*1.45],[Math.cos(th)*4.9,4.25,Math.sin(th)*4.9],.14,.1,WOOD2,6)}   // 줄기에서 뻗은 받침목
+  // 난간: 기둥·손잡이·살. 계단 꼭대기(STH=2.95) 쪽은 트여 있다
+  const RAIL=5.28,NP=32,open=(th)=>near(th,2.95,.2);
+  for(let i=0;i<NP;i++){const th=i*PI*2/NP,m=th+PI/NP,len=2*RAIL*Math.sin(PI/NP);
+    if(!open(th)){P(g,G.box(.15,1,.15),WOOD2,Math.cos(th)*RAIL,5.1,Math.sin(th)*RAIL,0,-th);P(g,G.box(.22,.07,.22),WOOD,Math.cos(th)*RAIL,5.63,Math.sin(th)*RAIL,0,-th)}
+    if(open(th)||open(th+PI*2/NP))continue;
+    P(g,G.box(.12,.1,len+.03),WOOD,Math.cos(m)*RAIL,5.5,Math.sin(m)*RAIL,0,-m);P(g,G.box(.07,.06,len),WOOD2,Math.cos(m)*RAIL,4.78,Math.sin(m)*RAIL,0,-m);
+    for(const f of[-.3,0,.3]){const b=m+f*PI*2/NP;P(g,G.cyl(.032,.032,.68,5),WOOD2,Math.cos(b)*RAIL,5.13,Math.sin(b)*RAIL)}}
+  const seat=(th,c)=>{const s=at(Math.cos(th)*4.65,4.6,Math.sin(th)*4.65,-th-PI/2);g.add(s);P(s,G.rbox(.62,.24,.62,.08),c,0,.24,0);P(s,G.rbox(.62,.54,.18,.08),c,0,.52,-.26,-.15);P(s,G.rbox(.14,.34,.62,.06),shade(c,.9),-.32,.32,0);P(s,G.rbox(.14,.34,.62,.06),shade(c,.9),.32,.32,0);for(const[a,b]of[[-.25,-.25],[.25,-.25],[-.25,.25],[.25,.25]])P(s,G.cyl(.03,.03,.14,5),WOOD3,a,.06,b)};
+  seat(1.0,'#9fd9cc');seat(1.85,'#f7c6a8');seat(2.75,'#9fd9cc');seat(.15,CREAM);
+  for(const th of[1.42,2.3]){P(g,G.cyl(.3,.3,.06,12),WOOD2,Math.cos(th)*4.65,4.98,Math.sin(th)*4.65);P(g,G.cyl(.05,.07,.36,6),WOOD3,Math.cos(th)*4.65,4.78,Math.sin(th)*4.65);P(g,G.cyl(.045,.04,.08,7),'#f4efe2',Math.cos(th)*4.6,5.05,Math.sin(th)*4.7);P(g,G.box(.2,.04,.15),BOOK[th>2?4:0],Math.cos(th)*4.75,5.03,Math.sin(th)*4.55,0,.4)}
+  for(const[th,k]of[[.58,'fern'],[3.45,'snake'],[-.6,'monstera'],[3.9,'ficus'],[-.2,'snake']]){const pg=at(Math.cos(th)*4.85,4.6,Math.sin(th)*4.85);g.add(pg);plants[k](pg,.7)}
+  for(const th of[4.3,4.8,5.3]){const sg=at(Math.cos(th)*4.9,4.6,Math.sin(th)*4.9,Math.atan2(-Math.cos(th),-Math.sin(th)));g.add(sg);shelf(sg,1.9,3)}   // 데크 뒤쪽 책장
+  for(let k=0;k<12;k++){const a=k*.52;if(k%2)bush(puffs,T[0]+Math.cos(a)*1.75,4.72,T[1]+Math.sin(a)*1.75,rnd(.16,.24),4);else{const pg=at(Math.cos(a)*2,4.6,Math.sin(a)*2,rnd(6));g.add(pg);plants[['fern','monstera','snake'][k%3]](pg,rnd(.4,.6))}}}   // 줄기 둘레 화분·이끼
 // ── 종이 등: 각진 갓 + 나무 마개. 매단 등, 삼발이 스탠드, 바닥 등 ──
-const lampM=new THREE.MeshStandardMaterial({color:'#fff3d6',emissive:'#ffd08a',emissiveIntensity:1.05,roughness:1,flatShading:true});
-const shadeLamp=(g,x,y,z,rad,sy=.85)=>{P(g,new THREE.SphereGeometry(rad,8,5),lampM,x,y,z,0,0,0,[1,sy,1]);P(g,G.cyl(rad*.4,rad*.4,.04,8),WOOD3,x,y+rad*sy*.93,z);P(g,G.cyl(rad*.4,rad*.4,.04,8),WOOD3,x,y-rad*sy*.93,z)};
+const lampM=new THREE.MeshStandardMaterial({color:'#ffe9bc',emissive:'#ffb450',emissiveIntensity:.8,roughness:1}),glows=[];
+const shadeLamp=(g,x,y,z,rad,sy=.85)=>{glows.push([g,x,y,z]);P(g,new THREE.SphereGeometry(rad,12,8),lampM,x,y,z,0,0,0,[1,sy,1]);P(g,G.cyl(rad*.4,rad*.4,.04,8),WOOD3,x,y+rad*sy*.93,z);P(g,G.cyl(rad*.4,rad*.4,.04,8),WOOD3,x,y-rad*sy*.93,z)};
 for(const th of[.75,1.6,2.45,3.3]){const x=T[0]+Math.cos(th)*4.65,z=T[1]+Math.sin(th)*4.65;shadeLamp(world,x,3.25,z,.3);P(world,G.cyl(.012,.012,.75,4),DARK,x,3.9,z)}
 function floorLamp(x,z,light){if(blocked(x,z))return;block(x,z,.45);for(let k=0;k<3;k++)limb(world,[x+Math.cos(k*2.1)*.32,0,z+Math.sin(k*2.1)*.32],[x,1.45,z],.022,.022,WOOD3,4);shadeLamp(world,x,1.72,z,.34,.95);if(light){const p=new THREE.PointLight('#ffd08a',7,7,1.6);p.position.set(x,1.7,z);scene.add(p)}}
-floorLamp(6.1,-3.5,true);floorLamp(-7.6,1.2,false);if(!blocked(L[0]+3.8,L[1]+.5))shadeLamp(world,L[0]+3.8,.32,L[1]+.5,.3);if(!blocked(L[0]-3.6,L[1]+1.6))shadeLamp(world,L[0]-3.6,.26,L[1]+1.6,.24);
+floorLamp(8.4,-3.0,true);
+{const VINE=['#6aae4c','#7fbf5a','#8fcc62'],vine=(x,y,z,l)=>{for(let k=0;k<l*6;k++)puffs.put(x+rnd(-.07,.07),y-k*.16,z+rnd(-.07,.07),rnd(.08,.15),VINE[k%3])};
+  // 뒤쪽 아치 창 벽: 기둥, 반원 아치, 낮은 창턱, 위 보. 창턱엔 작은 화분, 기둥엔 덩굴
+  const R=9.6,NB=12,bay=(WALL[1]-WALL[0])/NB;
+  for(let i=0;i<=NB;i++){const th=WALL[0]+i*bay;P(world,G.box(.26,3.3,.26),WOOD,Math.cos(th)*R,1.65,Math.sin(th)*R,0,-th);if(i%3===1)vine(Math.cos(th)*(R-.18),3.1,Math.sin(th)*(R-.18),rnd(1.2,2.4))}
+  for(let i=0;i<NB;i++){const m=WALL[0]+(i+.5)*bay,cw=2*R*Math.sin(bay/2),x=Math.cos(m)*R,z=Math.sin(m)*R;
+    P(world,G.box(.2,.8,cw),'#e9cfa5',x,.4,z,0,-m);P(world,G.box(.3,.07,cw+.1),WOOD,x,.82,z,0,-m);
+    P(world,new THREE.TorusGeometry(cw/2-.1,.09,6,18,PI),WOOD2,x,2.55,z,0,-m-PI/2);P(world,G.box(.3,.5,cw),'#e9cfa5',x,3.3,z,0,-m);P(world,G.box(.36,.1,cw+.08),WOOD2,x,3.58,z,0,-m);
+    if(i%3===0&&!blocked(x,z,1.7)){const sg=at(Math.cos(m)*(R-.38),0,Math.sin(m)*(R-.38),Math.atan2(-Math.cos(m),-Math.sin(m)));world.add(sg);shelf(sg,2,4)}   // 벽에 붙인 책장
+    else if(i%2===0){const pg=at(Math.cos(m)*(R-.05),.86,Math.sin(m)*(R-.05),rnd(6));world.add(pg);plants[['fern','snake','ficus'][i%3]](pg,.4)}
+    bush(puffs,x+rnd(-.5,.5),3.72,z+rnd(-.5,.5),rnd(.28,.45),5);
+    if(i%3===2)shadeLamp(world,Math.cos(m)*(R-.6),2.6,Math.sin(m)*(R-.6),.2)}
+  // 데크 가장자리에서 늘어진 덩굴, 데크 아래·수관에서 매단 등
+  for(let i=0;i<18;i++){const th=i*PI*2/18+rnd(-.1,.1);vine(T[0]+Math.cos(th)*5.36,4.2,T[1]+Math.sin(th)*5.36,rnd(.5,1.6))}
+  for(let i=0;i<9;i++){const th=i*PI*2/9+.3,x=T[0]+Math.cos(th)*5.1,z=T[1]+Math.sin(th)*5.1,l=rnd(.4,.9);P(world,G.cyl(.01,.01,l,3),DARK,x,4.25-l/2,z);shadeLamp(world,x,4.2-l-.18,z,.2)}
+  for(let i=0;i<12;i++){const th=i*PI*2/12+.6,r=rnd(2.3,5.8),x=T[0]+Math.cos(th)*r,z=T[1]+Math.sin(th)*r,top=11,l=rnd(2.6,3.8);P(world,G.cyl(.01,.01,l,3),DARK,x,top-l/2,z);shadeLamp(world,x,top-l-.2,z,.24)}
+  // 가로등: 마루 가장자리, 둥근 등갓
+  for(const th of[.55,1.25,1.9,2.55,5.95,.05]){const x=Math.cos(th)*9.05,z=Math.sin(th)*9.05;if(blocked(x,z,1.3))continue;block(x,z,.3);P(world,G.cyl(.15,.2,.14,10),WOOD3,x,.07,z);P(world,G.cyl(.06,.075,2.1,8),'#8a5a36',x,1.1,z);shadeLamp(world,x,2.36,z,.3,1.05);P(world,G.cone(.3,.2,12),WOOD2,x,2.74,z)}
+  // 빈 바닥 채우기: 낮은 책장, 화분, 책 더미, 방석. 책상 자리(지금·나중에 생길 자리)·계단·라운지·다리 앞과 이미 놓인 것은 피한다
+  const anyDesk=(x,z,r)=>[...Object.values(SPOT),...EXTRA].some(([a,b])=>Math.hypot(a-x,b-z)<r),free=(x,z,r)=>!anyDesk(x,z,r+1.6)&&!blocks.some(b=>Math.hypot(b.x-x,b.z-z)<b.r+r+.3)&&Math.hypot(x-L[0],z-L[1])>3.7+r&&Math.hypot(x+2.2,z+.9)>2.7+r&&Math.hypot(x,z-8.6)>1.7+r;
+  let ns=0;for(const th of[.3,.42,.8,1.08,2.1,2.3,2.72,2.9,3.05,.12]){const c=Math.cos(th),n=Math.sin(th);if(ns>=4||!free(c*8.9,n*8.9,.8))continue;ns++;block(c*8.9,n*8.9,.75);const sg=at(c*9.1,0,n*9.1,Math.atan2(-c,-n));world.add(sg);shelf(sg,1.5,2);const pg=at(.4,1.36,0);sg.add(pg);plants.fern(pg,.4);P(sg,G.box(.3,.05,.22),BOOK[ns],-.35,1.385,0,0,.3);P(sg,G.box(.26,.04,.2),BOOK[ns+3],-.35,1.43,0,0,-.2)}
+  for(const[k,x,z,s]of[['fern',-7.9,-5.0,1],['monstera',4.9,-8.0,1.1],['snake',-4.4,8.0,1],['ficus',2.6,8.5,1.1],['fern',-2.7,8.6,.9],['snake',8.9,.9,1],['monstera',-8.9,-2.6,1],['ficus',8.0,4.2,1.1],['fern',4.6,4.4,.8],['snake',-4.6,-.2,.9],['monstera',-1.6,4.9,.9],['fern',5.3,7.4,.9]])if(free(x,z,.45*s))plant(k,x,z,s);
+  [[-3.6,5.2],[4.9,.6],[-5.6,-3.9],[3.2,5.9],[-.6,-4.6],[7.3,.3],[-6.2,.9],[.4,6.6]].forEach(([x,z],k)=>{if(!free(x,z,.35))return;block(x,z,.3);if(k%2){P(world,G.cyl(.34,.37,.24,14),cush[k%4],x,.12,z);P(world,G.cyl(.3,.34,.06,14),shade(cush[k%4],1.06),x,.27,z)}else{for(let j=0;j<4;j++)P(world,G.box(.36,.07,.27),BOOK[(k+j*3)%10],x,.035+j*.072,z,0,rnd(-.4,.4));P(world,G.cyl(.05,.045,.09,8),'#f4efe2',x+.02,.335,z)}});
+  // 원형 러그(동심원)
+  for(const[x,z,r]of[[1.3,7.7,1.05],[-3.2,-4.6,1.2],[6.4,1.0,.9]])for(const[k,c]of[[1,'#efe2c6'],[.8,'#e2cfa8'],[.6,'#efe2c6'],[.38,'#e6d5b2']])P(world,G.cyl(r*k,r*k,.015,32),SOFT(c),x,.012+(1-k)*.004,z)
+  // 앞쪽 나무 다리: 마루에서 섬 끝까지, 양옆 말뚝과 밧줄
+  {const th=PI/2,ux=Math.cos(th),uz=Math.sin(th);for(let k=0;k<9;k++){const r=9.5+k*.42,y=-.04-Math.max(0,k-1)*.07;P(world,G.box(1.9,.08,.38),['#d2a06a','#c8945c','#d6a772'][k%3],ux*r,y,uz*r,0,-th+PI/2,rnd(-.03,.03))}
+    for(const sd of[-1,1])for(let k=0;k<3;k++){const r=9.9+k*1.3,x=ux*r+sd*1.05*Math.sin(th),z=uz*r-sd*1.05*Math.cos(th);P(world,G.cyl(.08,.09,.9,7),WOOD2,x,.1-k*.12,z);P(world,G.cyl(.1,.1,.05,7),WOOD,x,.56-k*.12,z);if(k<2){const r2=r+1.3;limb(world,[x,.42-k*.12,z],[ux*r2+sd*1.05*Math.sin(th),.3-k*.12,uz*r2-sd*1.05*Math.cos(th)],.022,.022,'#c9b48a',4)}}}}floorLamp(-7.6,1.2,false);if(!blocked(L[0]+3.8,L[1]+.5))shadeLamp(world,L[0]+3.8,.32,L[1]+.5,.3);if(!blocked(L[0]-3.6,L[1]+1.6))shadeLamp(world,L[0]-3.6,.26,L[1]+1.6,.24);
 
 // ── 책장: 책 높이·두께·색을 달리하고, 기울어진 책·눕힌 책 더미·소품을 섞는다 ──
-const BOOK=['#b5533c','#d9b25a','#56733f','#e9e2d0','#5d7fa3','#8a5a3c','#c9744f','#3c5a52','#e6c9a0','#7a4f6d'];
 {const g=at(8.3,0,-.5,-PI/2+.12);world.add(g);P(g,G.box(3.4,3.9,.1),WOOD3,0,1.95,-.24);for(const x of[-1.7,-.57,.57,1.7])P(g,G.box(.08,3.9,.5),WOOD2,x,1.95,0);P(g,G.box(3.5,.1,.56),WOOD2,0,3.92,0);
   for(let j=0;j<5;j++){P(g,G.box(3.4,.06,.5),WOOD,0,.06+j*.78,0);if(j===4)continue;for(let bay=0;bay<3;bay++){let x=-1.64+bay*1.135;const end=x+1.05,y0=.09+j*.78,mode=Math.floor(rnd(5));
     if(mode===0){for(let k=0;k<3;k++)P(g,G.box(.42,.07,.3),BOOK[Math.floor(rnd(10))],x+.25,y0+.035+k*.075,.02,0,rnd(-.2,.2));x+=.52;P(g,G.cyl(.09,.07,.14,6),'#d8cdb6',x+.12,y0+.07,.05);P(g,G.ico(.13),'#6fa344',x+.12,y0+.24,.05);x+=.3}
     if(mode===1){P(g,new THREE.SphereGeometry(.13,8,5),lampM,end-.18,y0+.13,.05);x+=0}
     while(x<end-(mode===1?.36:.0)-.06){const w=rnd(.05,.13),h=rnd(.3,.6),lean=rnd()<.1;P(g,G.box(w,h,rnd(.26,.34)),BOOK[Math.floor(rnd(10))],x+w/2+(lean?.06:0),y0+h/2,.02,0,0,lean?-.22:0);x+=w+(lean?.14:.012);if(rnd()<.07)x+=.12}}}}
 // 책장 옆 독서 자리: 안락의자, 발받침, 작은 탁자
-{const g=at(5.9,0,-1.6,-.9);world.add(g);P(g,G.box(.8,.26,.76),CREAM,0,.36,0);P(g,G.box(.8,.7,.18),CREAM,0,.72,-.34,-.2);P(g,G.box(.14,.34,.76),CREAM2,-.42,.5,0);P(g,G.box(.14,.34,.76),CREAM2,.42,.5,0);for(const[a,b]of[[-.32,-.3],[.32,-.3],[-.32,.3],[.32,.3]])P(g,G.cyl(.03,.02,.24,4),WOOD3,a,.12,b);
+{const g=at(6.9,0,-3.3,-1.1);world.add(g);P(g,G.box(.8,.26,.76),CREAM,0,.36,0);P(g,G.box(.8,.7,.18),CREAM,0,.72,-.34,-.2);P(g,G.box(.14,.34,.76),CREAM2,-.42,.5,0);P(g,G.box(.14,.34,.76),CREAM2,.42,.5,0);for(const[a,b]of[[-.32,-.3],[.32,-.3],[-.32,.3],[.32,.3]])P(g,G.cyl(.03,.02,.24,4),WOOD3,a,.12,b);
   P(g,G.box(.32,.3,.1),MOSS,.05,.62,-.2,-.3,.2);P(g,G.box(.5,.2,.4),CREAM2,0,.28,.95);for(const[a,b]of[[-.2,.8],[.2,.8],[-.2,1.1],[.2,1.1]])P(g,G.cyl(.025,.02,.18,4),WOOD3,a,.09,b);
   P(g,G.cyl(.26,.26,.04,7),WOOD2,.85,.5,.1);P(g,G.cyl(.03,.03,.5,4),WOOD3,.85,.25,.1);P(g,G.box(.22,.04,.16),BOOK[4],.85,.54,.1,0,.4);P(g,G.cyl(.04,.035,.07,6),'#f4efe2',.95,.555,.0)}
 // 간식대: 수납장 + 커피 기계 + 잔
@@ -475,7 +712,7 @@ const screenM=M('#dfeee6',{emissive:'#cfe8dc',emissiveIntensity:.55});
 function chair(g,x,z,ry){const c=at(x,0,z,ry);g.add(c);P(c,G.box(.48,.07,.46),'#f1ede4',0,.425,0);P(c,G.box(.44,.05,.42),CREAM2,0,.375,0);P(c,G.box(.44,.52,.05),'#f1ede4',0,.82,-.24,-.1);P(c,G.box(.36,.4,.02),CREAM2,0,.82,-.2,-.1);P(c,G.box(.05,.3,.04),'#555a52',0,.52,-.24,-.1);
   for(const sx of[-.27,.27]){P(c,G.box(.04,.2,.04),'#555a52',sx,.53,-.02);P(c,G.box(.06,.03,.26),'#3c403a',sx,.64,.0)}
   P(c,G.cyl(.03,.03,.26,5),'#555a52',0,.24,0);for(let k=0;k<5;k++){const a=k*1.257;P(c,G.box(.04,.03,.3),'#3c403a',Math.sin(a)*.15,.1,Math.cos(a)*.15,0,a);P(c,G.cyl(.035,.035,.04,6),INK,Math.sin(a)*.29,.04,Math.cos(a)*.29,0,0,PI/2)}}
-function monitor(g,s,x,ry=0,w=.78,z=.22){const m=at(x,0,z,ry);g.add(m);P(m,G.box(.26,.02,.2),'#3c403a',0,.79,0);P(m,G.box(.04,.24,.04),'#3c403a',0,.9,.04);P(m,G.box(w,.46,.035),INK,0,1.18,0,.06);P(m,G.box(w-.06,.4,.01),screenM,0,1.18,-.022,.06);
+function monitor(g,s,x,ry=0,w=.78,z=.22){const m=at(x,0,z,ry);g.add(m);P(m,G.box(.26,.02,.2),'#3c403a',0,.79,0);P(m,G.box(.04,.24,.04),'#3c403a',0,.9,.04);P(m,G.box(w,.46,.035),'#f3f1ec',0,1.18,0,.06);P(m,G.box(w-.06,.4,.01),screenM,0,1.18,-.022,.06);
   for(let k=0;k<6;k++)P(m,G.box(rnd(.12,w*.54),.022,.008),k%3===0?s.c:k%3===1?'#8aa0a8':'#b9c7b0',-.1+rnd(.04),1.32-k*.055,-.03,.06)}
 // kind: 기본(모니터 1) / dual(개발, 모니터 2) / triple(콘솔, 모니터 3) / ledger(BM, 모니터 없이 장부·계산기) / map(조사, 지도) / tablet(디자인)
 function desk(g,s,kind){P(g,G.box(2.04,.06,.96),WOOD,0,.75,0);P(g,G.box(2.04,.02,.03),WOOD3,0,.765,-.47);P(g,G.box(.06,.72,.9),WOOD2,-.96,.36,0);P(g,G.box(.5,.62,.86),WOOD2,.72,.41,0);P(g,G.box(1.4,.36,.04),WOOD2,-.24,.54,.42);
@@ -506,11 +743,32 @@ const LOOK={pm:{hair:'#3b2a20',style:'part',top:'vest',pants:'#3d4654',shoes:'#6
 const SKM=(c)=>mats['skin'+c]||=new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.22,roughness:.88,flatShading:true});
 // 표정: 눈썹 기울기(k, +면 안쪽이 올라감)·높이, 입 모양, 눈 세로 크기. 쉴 때 웃는 눈, 일할 때 집중, 대표 답을 기다릴 때 걱정
 const EXPR={normal:{k:.18,y:.07,m:'smile',ey:1},focus:{k:-.28,y:.062,m:'line',ey:.72},worry:{k:.45,y:.08,m:'frown',ey:1.05},happy:{k:.18,y:.08,m:'smile',ey:1}};
-function faceTo(p,e,blink){const f=p.fx,x=EXPR[e]||EXPR.normal,happy=e==='happy';
+function faceTo(p,e,blink){const f=p.fx,x=EXPR[e]||EXPR.normal,happy=e==='happy';if(!f)return;   // 피규어 캐릭터는 얼굴이 텍스처에 그려져 있다
   f.brows.forEach((b,i)=>{b.rotation.z=-(i?1:-1)*x.k;b.position.y=f.cy+x.y});
   for(const o of f.eyes){o.visible=!happy;o.scale.y=blink?.12:x.ey}for(const o of f.arcs)o.visible=happy;
   for(const m of['smile','line','frown'])f[m].visible=x.m===m;f.smile.scale.setScalar(happy?1.3:1)}
-function person(s){const k=s.look,top=k.c||s.c,top2=shade(top),skinC=s.skin,skin=SKM(skinC),skin2=SKM(shade(skinC,.86)),h=k.hair,g=new THREE.Group(),tg=new THREE.Group(),
+// ── 2.5등신 피규어 캐릭터(tools/chars/<역할>.glb, Tripo). 모두 같은 뼈대라 동작은 anims.glb 하나를 나눠 쓴다 ──
+// 원점은 예전 사람처럼 '서 있을 때 엉덩이 높이 1.0'. 서면 발이 바닥(-1.0), 앉으면 엉덩이가 의자 위에 오게 내린다.
+// 모델을 못 불러오면 예전 로우폴리 사람(personProc)으로 그린다.
+const CHIBI=['ceo','pm','scout','plan','dev','console','marketing','bm','design'],CS=1.5;   // CS = 피규어 키(장면 단위)
+const CHM=await (async()=>{try{const gl=new GLTFLoader(),[anim,...cs]=await Promise.all([gl.loadAsync('/chars/anims.glb'),...CHIBI.map((n)=>gl.loadAsync(`/chars/${n}.glb`))]);
+  const m={anim};CHIBI.forEach((n,i)=>m[n]=cs[i]);return m}catch(e){console.warn('피규어 캐릭터를 못 불러와 예전 사람으로 그립니다',e);return null}})();
+const hipLen=(root)=>{let v=0;root.traverse((o)=>{if(o.name==='Hip')v=o.position.length()});return v};
+const JOINTS=()=>new Proxy({},{get:(o,k)=>o[k]||=new THREE.Object3D()});   // 예전 자세 코드가 만지는 관절(팔·다리) 자리. 피규어에선 동작 클립이 몸을 움직인다
+function chibi(s){
+  const id=CHM[s.id]?s.id:['pm','console','plan','dev','marketing','design'][[...String(s.id)].reduce((a,c)=>a+c.charCodeAt(0),0)%6];   // 모르는 역할은 이름으로 하나 고른다
+  const root=SkeletonUtils.clone(CHM[id].scene);root.rotation.y=-PI/2;root.scale.setScalar(CS);   // Tripo 모델은 +X를 본다
+  root.traverse((o)=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=false;o.frustumCulled=false}});
+  const inner=new THREE.Group(),g=new THREE.Group();inner.add(root);g.add(inner);inner.position.y=-1;
+  const mixer=new THREE.AnimationMixer(root),ratio=hipLen(root)/hipLen(CHM.console.scene),acts={};
+  for(const c of CHM.anim.animations){const cl=c.clone();for(const t of cl.tracks)if(t.name.endsWith('.position'))t.values=t.values.map((v)=>v*ratio);acts[c.name]=mixer.clipAction(cl)}   // 엉덩이 위치만 몸 비율대로
+  const head=new THREE.Object3D();(root.getObjectByName('Head')||root).add(head);head.position.y=.12;   // 이름표·초점용(자세 코드가 돌려도 몸엔 영향 없음)
+  const out={g,head,fx:null,L:JOINTS(),R:JOINTS(),lL:JOINTS(),lR:JOINTS(),s,glb:{inner,mixer,acts,cur:null}};
+  play(out,'idle');mixer.update(Math.random()*3);return out}
+function play(p,name){const m=p.glb;if(!m||m.cur===name||!m.acts[name])return;const a=m.acts[name],prev=m.cur&&m.acts[m.cur];
+  a.reset().play();if(prev)a.crossFadeFrom(prev,.3,false);m.cur=name;m.inner.position.y=name==='sit'?-(.21*CS+.08):-1}
+const person=(s)=>CHM?chibi(s):personProc(s);
+function personProc(s){const k=s.look,top=k.c||s.c,top2=shade(top),skinC=s.skin,skin=SKM(skinC),skin2=SKM(shade(skinC,.86)),h=k.hair,g=new THREE.Group(),tg=new THREE.Group(),
     body=k.top==='apron'?'#f1e8d6':top,shl={vest:W,safari:'#7d8a55',apron:'#f1e8d6'}[k.top]||top;   // shl = 어깨·소매 색(조끼류는 안에 입은 셔츠 색)
   P(tg,G.box(.36,.2,.22),k.pants);P(tg,G.box(.37,.035,.23),INK,0,.1,0);P(tg,G.box(.05,.04,.01),'#d9b25a',0,.1,.118);
   P(tg,G.cyl(.2,.18,.5,6),body,0,.36,0,0,PI/6,0,[1.25,1,.72]);P(tg,G.box(.54,.1,.2),shl,0,.57,0);P(tg,G.box(.5,.04,.17),shl,0,.63,0);P(tg,G.cyl(.058,.07,.12,6),skin,0,.67,0);
@@ -655,6 +913,7 @@ function findPath(a, b) {
 // ---------- 직원 ----------
 const people = new Map();   // name -> { name, title, sub, label, role, c, p(3D), host, home, tag, bub, busy, act, stand, sofa, seed, mode, stack, carry, path, queue }
 const labels = [];
+const vacant = new Map();   // 아직 아무도 앉지 않은 자리의 빈 책상(역할 -> 합친 덩어리). 그 역할의 직원이 오면 치운다
 let built = false;          // 부팅 중에는 책상을 정적 장면(world)에 넣어 한 번에 합친다. 그 뒤 새 책상은 따로 합친다
 LOOK.ceo = { hair: '#2a211c', style: 'plain', top: 'suit', c: '#8a2f3a', pants: '#2a2622', shoes: '#2a2622' };   // 대표: 버건디 정장
 TINT.ceo = ['#8a2f3a', '#f0c4a0'];
@@ -677,14 +936,14 @@ const S = deckPt(STH, 6.25), A1 = STH + PI, A0 = A1 - TURN;   // 계단은 데�
 const onStair = (a, r = .55) => [S[0] + Math.cos(a) * r, S[1] + Math.sin(a) * r], STAIR_IN = new THREE.Vector3(onStair(A0, 1.6)[0], 0, onStair(A0, 1.6)[1]);   // 계단 입구 앞 바닥
 {
   const g = at(S[0], 0, S[1]), N = 18; world.add(g);
-  P(g, G.cyl(.09, .09, DECK + 1, 8), WOOD3, 0, (DECK + 1) / 2, 0);
-  let prev;
+  P(g, G.cyl(.16, .2, DECK + 1.1, 10), WOOD2, 0, (DECK + 1.1) / 2, 0); P(g, G.ico(.22, 1), WOOD, 0, DECK + 1.15, 0);
+  let prev, pb;   // 디딤판마다 난간 기둥, 그 위를 잇는 굵은 손잡이, 아래를 잇는 옆판
   for (let i = 0; i < N; i++) {
-    const a = A0 + (i + .5) / N * TURN, y = (i + 1) / N * DECK, top = [Math.cos(a) * 1.0, y + .9, Math.sin(a) * 1.0];
-    P(g, G.box(.95, .06, .36), i % 2 ? WOOD : WOOD2, Math.cos(a) * .55, y - .03, Math.sin(a) * .55, 0, -a, 0);
-    limb(g, [top[0], y, top[2]], top, .015, .015, DARK, 4);
-    if (prev) limb(g, prev, top, .025, .025, WOOD3, 4);
-    prev = top;
+    const a = A0 + (i + .5) / N * TURN, y = (i + 1) / N * DECK, c = Math.cos(a), n = Math.sin(a), top = [c * 1.05, y + .95, n * 1.05], bot = [c * 1.05, y - .12, n * 1.05];
+    P(g, G.box(1.0, .1, .42), i % 2 ? WOOD : '#e2ae6e', c * .58, y - .05, n * .58, 0, -a, 0);
+    limb(g, bot, top, .035, .035, WOOD2, 5);
+    if (prev) { limb(g, prev, top, .06, .06, WOOD, 6); limb(g, pb, bot, .09, .09, WOOD2, 6); }
+    prev = top; pb = bot;
   }
 }
 block(S[0], S[1], 1.1);
@@ -725,6 +984,7 @@ function addPerson(info) {
   let host = scene;
   if (desk_) {
     const [x, z, ry, kind] = seat, w = at(x, 0, z, ry);
+    vacant.get(role)?.removeFromParent(); vacant.delete(role);
     host = at(x, 0, z, ry);
     scene.add(host);
     if (kind === 'board') { whiteboard(w, p, host); deskBlocks(host, [[-.6, 0, .5], [.6, 0, .5]]); }
@@ -749,27 +1009,35 @@ function addPerson(info) {
   return q;
 }
 for (const info of [CEO, ...ROSTER]) addPerson(info);
+for (const [r, [x, z, ry, kind]] of [...Object.entries(SPOT).filter(([r, s]) => !deskUsed.has(r) && s[3] !== 'board' && r !== 'ceo'), ...EXTRA.slice(extraNext).map((e, i) => ['extra' + i, e])]) {
+  const w = at(x, 0, z, ry); desk(w, { c: '#b9c7b0' }, kind); chair(w, 0, -.8, rnd(-.5, .5)); deskBlocks(w, [[-.55, 0, .7], [.55, 0, .7], [0, -.8, .4]]);
+  const b = bake(w); scene.add(b); vacant.set(r, b);
+}
 scene.add(bake(world));
 built = true;
 // 걸어서 돌아가야 하는 고정 가구: 라운지, 독서 자리, 2층 기둥, 책장, 간식대, 바닥 등
 for (let i = 0; i < 9; i++) { const th = (195 + i * 18.75) * PI / 180; block(L[0] + Math.cos(th) * 1.98, L[1] + Math.sin(th) * 1.98, .42); }   // 라운지 소파(바닥은 걸어 들어갈 수 있다)
 block(L[0], L[1] + .25, .85); block(L[0] - 1.3, L[1] + 1.55, .5); block(L[0] + 1.5, L[1] + 1.2, .42);
-block(5.9, -1.6, 1.1); block(T[0] + 4.5, T[1] - 1.7, .6); block(T[0] - 3.3, T[1] - 3.5, .6);
+block(6.9, -3.3, 1.0);
 for (const k of [-1.2, 0, 1.2]) block(8.3 + .12 * k, -.5 + .99 * k, .5);
 for (const k of [-.6, .6]) block(-8.7 + .1 * k, .3 - .995 * k, .5);
 if (!blocked(L[0] + 3.8, L[1] + .5)) block(L[0] + 3.8, L[1] + .5, .35);
 if (!blocked(L[0] - 3.6, L[1] + 1.6)) block(L[0] - 3.6, L[1] + 1.6, .35);
 buildNav();
+// 자가 점검: 계단 입구에서 모든 자리·라운지까지 걸어갈 수 있어야 한다(새 소품이 길을 막으면 콘솔에 뜬다)
+for (const v of [...[...people.values()].map((q) => q.p.g.getWorldPosition(new THREE.Vector3())), ...desks.map(([x, z]) => new THREE.Vector3(x, 0, z)), new THREE.Vector3(L[0], 0, L[1] + 1.5)]) console.assert(gridPath(NAV.n, isFree, cellOf(nearestFree(STAIR_IN)), cellOf(nearestFree(v))), 'nav: 길이 막힘', v.x, v.z);
+// 등불 번짐: 등마다 부드러운 빛 점 하나(Points 한 번에 그린다)
+{ const c = Object.assign(document.createElement('canvas'), { width: 64, height: 64 }), g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,214,150,1)'); gr.addColorStop(.35, 'rgba(255,190,110,.45)'); gr.addColorStop(1, 'rgba(255,170,90,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  const pos = []; for (const [o, x, y, z] of glows) { o.updateWorldMatrix(true, false); const v = o.localToWorld(new THREE.Vector3(x, y, z)); pos.push(v.x, v.y, v.z); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ map: new THREE.CanvasTexture(c), size: 5, transparent: true, opacity: .55, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }))); }
 // 처음 보는 이름(general-purpose, Explore, 새로 채용된 직원 등)은 그 자리에서 앉힌다
 const someone = (name) => people.get(name) || addPerson({ name, title: name === 'general-purpose' ? '임시 지원' : name, sub: '기타 에이전트' });
 
 // 나뭇잎 그림자(보이지 않고 그림자만 드리우는 잎 뭉치), 빛줄기, 떨어지는 잎
-const gobo=new THREE.InstancedMesh(G.ico(1),new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:false}),700),o3=new THREE.Object3D(),toSun=SUN.clone().sub(AIM);
-for(let i=0;i<700;i++){const a=rnd(6.28),rr=Math.sqrt(rnd())*10.5,k=rnd(.5,.85),s=rnd(.12,.36);o3.position.set(Math.cos(a)*rr,0,Math.sin(a)*rr).addScaledVector(toSun,k);o3.scale.set(s,s*.3,s);o3.rotation.set(rnd(3),rnd(3),0);o3.updateMatrix();gobo.setMatrixAt(i,o3.matrix)}
+const gobo=new THREE.InstancedMesh(G.ico(1),new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:false}),450),o3=new THREE.Object3D(),toSun=SUN.clone().sub(AIM);
+for(let i=0;i<450;i++){const a=rnd(6.28),rr=Math.sqrt(rnd())*6.5,k=rnd(.5,.85),s=rnd(.12,.36);o3.position.set(T[0]+Math.cos(a)*rr,0,T[1]+Math.sin(a)*rr).addScaledVector(toSun,k);o3.scale.set(s,s*.3,s);o3.rotation.set(rnd(3),rnd(3),0);o3.updateMatrix();gobo.setMatrixAt(i,o3.matrix)}
 gobo.castShadow=true;gobo.frustumCulled=false;scene.add(gobo);
-{const dir=AIM.clone().sub(SUN).normalize();
-for(let i=0;i<7;i++){const beam=new THREE.Mesh(new THREE.CylinderGeometry(.3,rnd(.8,1.3),24,10,1,true),new THREE.MeshBasicMaterial({color:'#fff1c4',transparent:true,opacity:.05,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,fog:false}));
-  beam.quaternion.setFromUnitVectors(UP,dir.clone().negate());beam.position.set(rnd(-7,4),0,rnd(-5,3)).addScaledVector(dir,-12);scene.add(beam)}}
 const leafGeo=new THREE.PlaneGeometry(.2,.12),leaves=[...Array(16)].map((_,i)=>{const l=new THREE.Mesh(leafGeo,M(i%3?'#8bb84e':'#d9b25a',{side:THREE.DoubleSide}));l.userData={x:T[0]+rnd(-3,3),z:T[1]+rnd(-2,3.5),p:rnd(10),v:rnd(.45,.8)};scene.add(l);return l});
 
 // ---------- 동작: 일하는 중이면 역할별 동작(시안), 쉬는 중이면 손을 내려놓고 두리번 ----------
@@ -941,6 +1209,11 @@ function perform(m, ev = {}) {
 }
 const WV = new THREE.Vector3();
 function move(q, dt, t) {
+  if (q.p.glb) {   // 피규어: 상태 → 공유 동작 클립(걷기·앉기·쉬기·대표 기다리며 두리번·대기)
+    const sitting = q.mode === 'seat' ? !q.stand : q.mode === 'rest' && !!q.spot?.sit;
+    play(q.p, q.mode === 'walk' ? 'walk' : sitting ? 'sit' : q.mode === 'rest' ? 'standing_relax' : askCeo.has(q.name) ? 'look_around' : 'idle');
+    q.p.glb.mixer.update(dt);
+  }
   faceTo(q.p, q.mode === 'rest' ? 'happy' : askCeo.has(q.name) ? 'worry' : q.busy ? 'focus' : 'normal', t % 4.4 < .13);
   if (q.mode === 'seat') return pose(q, t);
   if (q.mode === 'rest') return restPose(q, t);
@@ -1038,44 +1311,67 @@ function pickPerson(e) {
   return best;
 }
 document.addEventListener('click', (e) => {
+  // 스레드 패널 바깥을 누르면 닫는다(목록에서 여는 클릭, 패널에서 연 문서·이미지 창, 다시 그려져 떨어진 요소는 제외)
+  if (openTh != null && e.target.isConnected && !e.target.closest('#thread, .th-row, #viewer, #zoom, #staffpage')) closeThread();
   const pp = e.target === renderer.domElement && pickPaper(e);
   if (pp) return openPaper(pp.userData);   // 책상 위 서류 → 그 문서(또는 지시·보고 내용)
   const tag = e.target.closest('.tag'), id = tag ? tag.dataset.id : e.target === renderer.domElement ? pickPerson(e) : null;
   if (id) return openHist(id);
-  const f = e.target.closest('#hist .tx.more, #hist .fold, .todo .tx.more, .todo .fold');
+  const f = e.target.closest('#hist .tx.more, #hist .fold, .todo .tx.more, .todo .fold, #tmsgs .tx.more, #tmsgs .fold');
   if (f) {
     const x = f.parentElement.querySelector('.tx'), open = x.classList.toggle('open'), card = f.closest('.todo');
-    const set = card ? repOpen : unfolded, key = card ? Number(card.dataset.id) : x.dataset.k;
+    const set = card ? repOpen : f.closest('#tmsgs') ? tOpen : unfolded, key = card ? Number(card.dataset.id) : x.dataset.k;
     open ? set.add(key) : set.delete(key);
     x.nextElementSibling.textContent = open ? '▴ 접기' : '▾ 더 보기';
     return;
   }
-  const u = e.target.closest('#hist [data-p]');
+  const u = e.target.closest('#hist [data-p], #tmsgs [data-p]');
   if (u) return openPaper({ path: u.dataset.p, title: u.dataset.p });
-  if (focusId && (e.target.closest('[data-x]') || !e.target.closest('#hist, #viewer, #zoom'))) closeHist();
+  if (focusId && (e.target.closest('[data-x]') || !e.target.closest('#hist, #viewer, #zoom, #thread'))) closeHist();
 });
 renderer.domElement.addEventListener('mousemove', (e) => { renderer.domElement.style.cursor = pickPaper(e) || pickPerson(e) ? 'pointer' : ''; });
 
 // ---------- 화면 루프 ----------
 const clock = new THREE.Clock(), FH = new THREE.Vector3(), LK = new THREE.Vector3();
 let looping = false, frames = 0, fitK = 1, lastT = 0;
+// shortcut: 시작 직후 한 번만 정하고 다시 올리지 않는다. 창 크기가 크게 바뀌는 일이 잦으면 주기적으로 다시 잰다
+// 느린 GPU(내장 그래픽)면 해상도를 0.25씩 1까지 낮춘다. 그리기 시간은 GPU 타이머로 잰다: 타이머가 없으면 그대로 둔다(화면 갱신을 늦추는 브라우저에서 괜히 낮추지 않게)
+const gl = renderer.getContext(), tq = gl.getExtension('EXT_disjoint_timer_query_webgl2'), gpuMs = [];
+let tqOn = !!tq && renderer.getPixelRatio() > 1, tqQ = null, tqRun = false;
+function gpuClock(start) {
+  if (!tqOn || frames < 60) return;   // 처음 몇 초는 셰이더·텍스처 준비로 느리다
+  if (!start) { if (tqRun) gl.endQuery(tq.TIME_ELAPSED_EXT); tqRun = false; return; }
+  if (tqQ) { if (!gl.getQueryParameter(tqQ, gl.QUERY_RESULT_AVAILABLE)) return; if (!gl.getParameter(tq.GPU_DISJOINT_EXT)) gpuMs.push(gl.getQueryParameter(tqQ, gl.QUERY_RESULT) / 1e6); gl.deleteQuery(tqQ); tqQ = null; }
+  if (gpuMs.length >= 30) {
+    const slow = gpuMs.sort((a, b) => a - b)[15] > 12; gpuMs.length = 0;   // 중앙값 12ms 넘으면 60fps가 어렵다
+    if (slow) { renderer.setPixelRatio(Math.max(1, renderer.getPixelRatio() - .25)); resize(); }
+    if (!slow || renderer.getPixelRatio() <= 1) { tqOn = false; return; }
+  }
+  tqQ = gl.createQuery(); gl.beginQuery(tq.TIME_ELAPSED_EXT, tqQ); tqRun = true;
+}
 function frame() {
   if (document.body.classList.contains('panelonly')) { looping = false; return; }   // 오피스 끔: 렌더 루프 정지
   looping = true;
   const t = clock.getElapsedTime(), dt = Math.min(t - lastT, .05);
   lastT = t;
-  for (const q of people.values()) move(q, dt, t + q.seed);
+  let walking = false;
+  for (const q of people.values()) { move(q, dt, t + q.seed); walking ||= q.mode === 'walk'; }
   sun.position.set(SUN.x + Math.sin(t * .09) * 5, SUN.y, SUN.z + Math.cos(t * .09) * 2);
   gobo.position.x = Math.sin(t * .8) * .22; gobo.position.z = Math.cos(t * .6) * .16; canopy.rotation.z = Math.sin(t * .7) * .016; canopy.rotation.x = Math.cos(t * .5) * .012;
   for (const f of sways) f.rotation.z = Math.sin(t * 1.3 + f.userData.p) * .07;
+  fallTex.offset.y = t * 1.6; sky.rotation.y = Math.sin(t * .02) * .1;
   for (const l of leaves) { const u = l.userData, y = 6 - ((t * u.v + u.p) % 6.6); l.position.set(u.x + Math.sin(t * .9 + u.p) * .5, y, u.z + Math.cos(t * .7 + u.p) * .3); l.rotation.set(t * 1.2 + u.p, t * .8, u.p); }
   const a = -.1 + Math.sin(t * .12) * .1;
-  camera.position.set(Math.sin(a) * 24.5 * fitK, 8.4 * fitK, Math.cos(a) * 24.5 * fitK); LK.set(.5, 1.5, -.4);
+  camera.position.set(Math.sin(a) * 31 * fitK, 19.5 * fitK, Math.cos(a) * 31 * fitK); LK.set(.6, -.2, 0);   // 섬 아랫면과 폭포가 보이게 조금 위에서
   fk += ((focusId ? 1 : 0) - fk) * .08;
   if (focusId) people.get(focusId)?.p.head.getWorldPosition(FH);
   if (fk > .001) { camera.position.lerp(FH, .3 * fk); LK.lerp(FH, .55 * fk); }
   camera.lookAt(LK);
-  renderer.render(scene, camera);
+  renderer.shadowMap.needsUpdate = walking || !(frames & 1);   // 걷는 사람이 있으면 매 프레임(그림자가 발을 따라오게)
+  gpuClock(true);
+  // composer는 끝나면 시작 때 대상으로 되돌린다: null로 돌려놔야 cardBlob()이 화면에 그린다
+  if (tiltShift) { renderer.setRenderTarget(msaa); renderer.render(scene, camera); renderer.setRenderTarget(null); composer.render(); } else renderer.render(scene, camera);
+  gpuClock(false);
   placeLabels();
   if (++frames % 90 === 3 && !$('shareBox').classList.contains('min')) snap();   // 최소화 중엔 스냅샷을 찍지 않는다
   requestAnimationFrame(frame);
@@ -1084,6 +1380,7 @@ function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   if (!w || !h) return;
   renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); msaa.setSize(w * renderer.getPixelRatio(), h * renderer.getPixelRatio()); tsH.uniforms.h.value = 2 / w; tsV.uniforms.v.value = 2 / h;
   fitK = Math.max(1, 1.16 / camera.aspect);   // 시안(1040x900 장면) 기준. 더 좁은 화면이면 뒤로 물러나 방 전체가 들어오게
 }
 addEventListener('resize', resize);
@@ -1234,7 +1531,7 @@ $('vclose').onclick = closeViewer;
 $('viewer').onclick = (e) => { if (e.target.id === 'viewer') closeViewer(); };
 const setChatFull = (on) => { $('chat').classList.toggle('full', on); $('chatfull').textContent = on ? '닫기' : '크게 보기'; $('log').scrollTop = $('log').scrollHeight; };
 $('chatfull').onclick = () => setChatFull(!$('chat').classList.contains('full'));
-addEventListener('keydown', (e) => { if (e.key !== 'Escape' || $('zoom').open) return; if ($('staffpage').classList.contains('on')) $('staffpage').classList.remove('on'); else if ($('viewer').classList.contains('on')) closeViewer(); else if (focusId) closeHist(); else setChatFull(false); });
+addEventListener('keydown', (e) => { if (e.key !== 'Escape' || $('zoom').open) return; if ($('staffpage').classList.contains('on')) $('staffpage').classList.remove('on'); else if ($('viewer').classList.contains('on')) closeViewer(); else if (focusId) closeHist(); else if ($('thread').classList.contains('on')) closeThread(); else setChatFull(false); });
 $('log').onclick = (e) => { const i = e.target.dataset.r; if (i != null) openPaper(reports[i]); };
 
 const reports = [];
@@ -1497,7 +1794,9 @@ function portraitsOf(list) {   // 작은 렌더러 하나로 모두 그리고 �
   for (const q of todo) {
     const sc = new THREE.Scene(), dl = new THREE.DirectionalLight('#ffe2b0', 2.4);
     dl.position.set(1, 2, 2); sc.add(new THREE.HemisphereLight('#fff6dc', '#86995c', 1.5), dl);
-    sc.add(person(q.spec).g);
+    const pp = person(q.spec);
+    if (pp.glb) pp.g.position.y = .55;   // 피규어는 머리가 커서 얼굴이 화면 가운데 오도록 올린다
+    sc.add(pp.g);
     r.render(sc, cam);
     portraits.set(q.name, r.domElement.toDataURL('image/png'));
   }
@@ -1514,6 +1813,7 @@ async function openStaff() {
       <div class="srole">${esc(x.role)} · ${esc(x.id)}</div><input class="sname" maxlength="12" value="${esc(x.name)}" placeholder="표시 이름">
       <div class="sdesc">${esc(x.desc)}</div>
       <div class="srow"><label>모델 <select class="smodel">${opt(MODELS, x.model, (m) => m === 'inherit' ? '상속(기본)' : m)}</select></label><label>노력 <select class="seffort">${opt(EFFORTS, x.effort, (m) => m || '기본')}</select></label></div>
+      <div class="stok">실제 모델 ${u?.model ? `<b>${esc(u.model)}</b>` : '아직 기록 없음'}</div>
       <div class="stok">${u ? `토큰 오늘 ${fmt(sum(u.today))} · 누적 ${fmt(sum(u.total))}` : '토큰 기록 없음'}</div>
       <div class="sft"><span class="err"></span><button class="primary" data-save>저장</button></div></div></div>`;
   }).join('');
@@ -1543,6 +1843,86 @@ $('staffpage').onclick = async (e) => {
     paint(id); refreshUsage();
   }
 };
+
+// ---------- 스레드(슬랙처럼): 대표 지시 하나와 거기 단 댓글들이 한 스레드. 줄은 hist.thread()가 시간순으로 준다 ----------
+const closedThreads = new Set(), tOpen = new Set();   // tOpen: 펼친 긴 글·도구 목록(새 이벤트마다 다시 그려도 유지)
+const TACT = { read: '읽음', search: '조사', run: '실행', write: '산출물' };
+let openTh = null, tTimer = 0;
+const tsched = () => { tTimer ||= setTimeout(() => { tTimer = 0; renderThreads(); }, 150); };
+const whoName = (n) => n === 'ceo' ? '대표' : people.get(n)?.label || n;
+const avatar = (n) => { const q = people.get(n), src = portraits.get(n), bg = q?.c || '#b9ad95'; return src ? `<img class="av" alt="" src="${src}" style="background:${bg}">` : `<i class="av" style="background:${bg}"></i>`; };
+const ceoText = (s) => String(s).split('\n[대표 댓글]\n')[1] ?? s;   // 맥락을 붙여 보낸 댓글은 댓글만 보인다
+function threadState(id) {
+  const pms = [...hist.tasks.values()].filter((k) => k.agent === 'pm' && k.thread === id);
+  if (pms.some((k) => k.state === '진행 중')) return '진행 중';
+  return closedThreads.has(id) ? '종료' : pms.at(-1)?.state || '완료';
+}
+// 같은 사람의 도구 사용은 그 사람의 마지막 말 아래 한 줄로 모은다
+function threadMsgs(lines) {
+  const msgs = [], lastBy = new Map();
+  for (const x of lines) {
+    if (x.who === 'pm' && x.kind === 'run' && x.text.includes('에게 맡김: ')) continue;   // 바로 뒤 'PM → 직원' 말과 같은 내용
+    if (TACT[x.kind]) {
+      let m = lastBy.get(x.who);
+      if (!m) { m = { t: x.t, who: x.who, text: '', acts: [] }; msgs.push(m); lastBy.set(x.who, m); }
+      m.acts.push(x); continue;
+    }
+    const m = { t: x.t, who: x.who, kind: x.kind, to: x.to, text: x.who === 'ceo' ? ceoText(x.text) : x.text, acts: [] };
+    msgs.push(m); lastBy.set(x.who, m);
+  }
+  return msgs;
+}
+const actSum = (acts) => { const n = {}; for (const a of acts) n[TACT[a.kind]] = (n[TACT[a.kind]] || 0) + 1; return `작업 ${acts.length}건 · ${Object.entries(n).map(([k, v]) => `${k} ${v}`).join(' · ')} — 마지막: ${acts.at(-1).text}`; };
+const stCls = (st) => st === '진행 중' ? 'run' : st === '실패' || st === '중단' ? 'bad' : '';
+// 목록 미리보기: 가장 최근 말(말이 없으면 마지막 작업)과 그 사람
+const preview = (msgs) => { const m = msgs.at(-1); if (!m) return ''; const t = m.text ? plain(m.text) : `작업 중 · ${m.acts.at(-1)?.text || ''}`;
+  return `<b>${esc(whoName(m.who))}</b> ${esc(cut(t.replace(/\s*\n\s*/g, ' '), 140))}`; };
+function renderThreads() {
+  const roots = [...hist.tasks.values()].filter((k) => k.agent === 'pm' && k.run === k.thread);
+  try { portraitsOf([...people.values()]); } catch {}   // 처음 보는 사람만 한 번 그린다(WebGL이 없으면 색 동그라미)
+  const list = roots.map((k) => { const lines = hist.thread(k.run); return { k, msgs: threadMsgs(lines), st: threadState(k.run), last: lines.at(-1)?.t ?? k.start }; })
+    .sort((a, b) => (b.st === '진행 중') - (a.st === '진행 중') || b.last - a.last);
+  if (list.length) $('tlist').innerHTML = list.map(({ k, msgs, st, last }) => `<li class="th-row${st === '종료' ? ' closed' : ''}${openTh === k.run ? ' on' : ''}" data-th="${k.run}">
+    <div class="avs">${[...new Set(msgs.map((m) => m.who))].slice(0, 4).map(avatar).join('')}</div>
+    <div class="tb"><div class="ttl">${esc(plain(k.title))}</div><div class="pv">${preview(msgs)}</div><div class="sub"><span class="badge ${stCls(st)}">${esc(st)}</span>답글 ${msgs.length - 1} · ${hhmm(last)}</div></div></li>`).join('');
+  more('tlist');
+  const cur = list.find((x) => x.k.run === openTh);
+  if (!cur) return;
+  const el = $('tmsgs'), stick = el.scrollHeight - el.scrollTop - el.clientHeight < 60, top = el.scrollTop;
+  $('ttitle').textContent = plain(cur.k.title);
+  $('tmeta').innerHTML = `<span class="badge ${stCls(cur.st)}">${esc(cur.st)}</span>시작 ${hhmm(cur.k.start)} · 참여 ${[...new Set(cur.msgs.map((m) => whoName(m.who)))].map(esc).join(', ')}`;
+  $('tstop').textContent = cur.st === '진행 중' ? '중단·종료' : '종료';
+  $('tstop').disabled = cur.st === '종료';
+  el.innerHTML = cur.msgs.map((m, i) => {
+    const key = `${openTh}:${i}`, prev = cur.msgs[i - 1], cont = prev && prev.who === m.who && !m.to && m.t - prev.t < 300000;
+    const tx = m.text ? `<div class="tx mdx${tOpen.has(key) ? ' open more' : ''}" data-k="${key}">${md(m.kind === 'report' && m.who !== 'pm' ? `**보고** ${m.text}` : m.text)}</div><i class="fold">${tOpen.has(key) ? '▴ 접기' : '▾ 더 보기'}</i>` : '';
+    const acts = m.acts.length ? `<details data-k="d${key}"${tOpen.has('d' + key) ? ' open' : ''}><summary>🔧 ${esc(actSum(m.acts))}</summary><ol>${m.acts.map((a) => `<li>${hhmm(a.t)} ${TACT[a.kind]} · ${esc(a.text)}${a.path ? ` <u data-p="${esc(a.path)}">${esc(a.path)}</u>` : ''}</li>`).join('')}</ol></details>` : '';
+    return (i === 1 ? `<div class="th-sep">답글 ${cur.msgs.length - 1}개</div>` : '') +
+      `<div class="tm ${esc(m.who)}${cont ? ' cont' : ''}">${cont ? '<span class="av"></span>' : avatar(m.who)}<div class="tb">${cont ? '' : `<div class="who">${esc(whoName(m.who))}${m.to ? ` → ${esc(whoName(m.to))}` : ''}<time>${hhmm(m.t)}</time></div>`}${tx}${acts}</div></div>`;
+  }).join('');
+  for (const x of el.querySelectorAll('.tx:not(.open)')) x.classList.toggle('more', x.scrollHeight > x.clientHeight + 1);
+  el.scrollTop = stick ? el.scrollHeight : top;
+}
+function openThread(id) { openTh = id; $('terr').textContent = ''; $('tmsgs').innerHTML = ''; $('thread').classList.add('on'); renderThreads(); $('tmsgs').scrollTop = $('tmsgs').scrollHeight; }
+function closeThread() { openTh = null; $('thread').classList.remove('on'); renderThreads(); }
+$('tlist').onclick = (e) => { const id = e.target.closest('[data-th]')?.dataset.th; if (id) openThread(Number(id)); };
+$('tclose').onclick = closeThread;
+$('tmsgs').addEventListener('toggle', (e) => { const k = e.target.dataset?.k; if (k) e.target.open ? tOpen.add(k) : tOpen.delete(k); }, true);
+async function threadPost(url, body, btn) {
+  btn.disabled = true; $('terr').textContent = '';
+  try {
+    const r = await fetch(url, { method: 'POST', body: JSON.stringify(body) });
+    if (!r.ok) { $('terr').textContent = (await r.json()).error || '실패'; return false; }
+    return true;
+  } finally { btn.disabled = false; }
+}
+$('tsend').onclick = async () => {
+  const text = $('treply').value.trim();
+  if (!text || openTh == null) return;
+  if (await threadPost('/api/comment', { thread: openTh, text }, $('tsend'))) $('treply').value = '';
+};
+$('treply').onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('tsend').click(); } };
+$('tstop').onclick = () => { if (openTh != null) threadPost('/api/cancel', { thread: openTh }, $('tstop')); };
 
 // ---------- boot ----------
 paintAll();
@@ -1591,19 +1971,22 @@ es.onmessage = (m) => {
 function onEvent(e) {
   const t = evTime ?? Date.now();
   if (e.type === '_office') {
-    if (e.prompt) { log(e.prompt, 'ceo', '대표 지시'); hist.run(e._run, e.prompt, t); if (!e._history) perform(instructionMotion(), { paper: { title: '대표 지시', text: e.prompt } }); }
+    if (e.prompt) { log(e.prompt, 'ceo', '대표 지시'); hist.run(e._run, e.prompt, t, e.thread ?? e._run); closedThreads.delete(e.thread); if (!e._history) perform(instructionMotion(), { paper: { title: '대표 지시', text: e.prompt } }); }
     if (e.live) {   // 기록 끝의 현재 상태: 지금 돌지 않는 옛 실행은 끝난 것으로
       for (const k of hist.tasks.values()) if (!e.live.includes(k.run)) hist.end(k.run);
       for (const id of feeds.keys()) if (!e.live.includes(id)) feeds.delete(id);
     }
     if (e.state) setRunning(e.state === 'running', e.runs);
     if (e.live && booting) { booting = false; for (const q of people.values()) settle(q, true); }   // 기록을 다 받은 뒤: 쉬는 사람은 걷지 않고 바로 라운지에
-    if (e.ended) { feeds.delete(e._run); hist.end(e._run); paintAll(); }
+    if (e.ended) { feeds.delete(e._run); hist.end(e._run, e.cancelled ? '중단' : undefined); paintAll(); }
+    if (e.closed != null) closedThreads.add(e.closed);
+    tsched();
     if (e.log) log(e.log);
     if (e.ended && !e._history) refreshBoard();
     return;
   }
   for (const ev of feedOf(e._run)(e)) { hist.feed(ev, t, e._run); handle(ev, !e._history); }
+  tsched();
 }
 es.onerror = () => log('서버 연결 끊김 — 재연결 시도 중', 'bad');
 </script>

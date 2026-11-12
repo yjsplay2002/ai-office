@@ -72,12 +72,13 @@ const office = (o) => broadcast({ type: '_office', ...o });
 const busy = () => runs.size > 0;
 
 // Every instruction / TODO answer starts its own PM run immediately — no queue.
-function startRun(prompt) {
+// thread = the run that started the dashboard thread this run belongs to (a CEO comment); resume = that thread's PM session.
+function startRun(prompt, { thread, resume } = {}) {
   const id = nextRun++, before = todoIds();
   if (replay) {
     const send = (obj) => broadcast({ ...obj, _run: id });
     runs.set(id, null);
-    send({ type: '_office', state: 'running', runs: runs.size, prompt });
+    send({ type: '_office', state: 'running', runs: runs.size, prompt, thread });
     const lines = readFileSync(path.resolve(root, replay), 'utf8').split('\n').filter(Boolean);
     let i = 0;
     const tick = () => {
@@ -96,7 +97,7 @@ function startRun(prompt) {
   const shell = !claudeExe && process.platform === 'win32', q = (a) => (shell ? `"${a}"` : a);   // cmd needs the quotes
   // 토큰·안전: 개인 MCP 커넥터(메일·슬랙·드라이브 등)와 전역 스킬은 bypassPermissions 실행에 싣지 않는다.
   // 그래서 대시보드에서 도는 브라우저 담당은 CLI 브라우저 도구(Bash)를 써야 한다.
-  const child = spawn(claudeExe || 'claude', ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'bypassPermissions', ...pmArgs(pmConf()),   // PM 모델·노력: .claude/ai-office.json(직원 관리), 실행마다 다시 읽음
+  const child = spawn(claudeExe || 'claude', ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'bypassPermissions', ...(resume ? ['--resume', resume] : []), ...pmArgs(pmConf()),   // PM 모델·노력: .claude/ai-office.json(직원 관리), 실행마다 다시 읽음
     '--allowedTools', q('WebSearch,WebFetch,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*)'),
     // Telegram plugin tools are blocked: the office reaches its owner only through its own bot (tools/tg-send.mjs).
     '--disallowedTools', q('mcp__plugin_telegram_telegram')],
@@ -105,7 +106,7 @@ function startRun(prompt) {
   child.on('error', () => {});   // a spawn failure shows up as an already-dead pid below
   child.stdin.end(prompt);
   child.unref();
-  const meta = { id, pid: child.pid, prompt, t: Date.now(), before };
+  const meta = { id, pid: child.pid, prompt, t: Date.now(), before, thread };
   writeFileSync(base + '.json', JSON.stringify(meta));
   attach(meta);
 }
@@ -118,7 +119,7 @@ const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); ret
 
 // Follow a run's output files until its process is gone, then finish it and delete the files.
 // shortcut: liveness is by pid only; a pid reused while the server was down would look alive until it exits.
-function attach({ id, pid, prompt, t: started, before = [] }) {
+function attach({ id, pid, prompt, t: started, before = [], thread }) {
   const base = path.join(runDir, String(id));
   const send = (obj) => broadcast({ ...obj, _run: id });
   // 중간 보고: PM이 팀원을 부르고 돌려받을 때마다 텔레그램에 무음으로 알린다. LLM을 안 써서 토큰이 들지 않는다.
@@ -173,7 +174,7 @@ function attach({ id, pid, prompt, t: started, before = [] }) {
     }
   };
   runs.set(id, { pid });
-  send({ type: '_office', state: 'running', runs: runs.size, prompt, _t: started });
+  send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, _t: started });
   const poll = setInterval(() => {
     const live = alive(pid);   // checked before reading, so everything written before exit is read
     pump();
@@ -187,17 +188,52 @@ function attach({ id, pid, prompt, t: started, before = [] }) {
   runs.get(id).poll = poll;
 }
 
-function cancel() {
-  for (const [id, c] of runs) {
-    if (!c) continue;
-    if (c.timer) { clearTimeout(c.timer); continue; }
-    clearInterval(c.poll);
-    if (process.platform === 'win32') execFile('taskkill', ['/pid', String(c.pid), '/T', '/F']); // shell:true needs a tree kill
-    else try { process.kill(-c.pid); } catch {}   // detached: kill the whole group
-    for (const ext of RUN_FILES) rmSync(path.join(runDir, id + ext), { force: true });
+// only = run ids to stop (one dashboard thread); none = every run.
+function cancel(only) {
+  const ids = [...runs.keys()].filter((id) => !only || only.includes(id));
+  for (const id of ids) {
+    const c = runs.get(id);
+    runs.delete(id);
+    if (c?.timer) clearTimeout(c.timer);
+    else if (c) {
+      clearInterval(c.poll);
+      if (process.platform === 'win32') execFile('taskkill', ['/pid', String(c.pid), '/T', '/F']); // shell:true needs a tree kill
+      else try { process.kill(-c.pid); } catch {}   // detached: kill the whole group
+      for (const ext of RUN_FILES) rmSync(path.join(runDir, id + ext), { force: true });
+    }
+    broadcast({ type: '_office', _run: id, ended: true, cancelled: true, state: busy() ? 'running' : 'idle', runs: runs.size });
   }
-  const n = runs.size; runs.clear();
-  office({ state: 'idle', runs: 0, log: `취소됨 — 작업 ${n}건 모두 중단` });
+  if (!only) office({ state: 'idle', runs: 0, log: `취소됨 — 작업 ${ids.length}건 모두 중단` });
+  return ids.length;
+}
+
+// A dashboard thread = a CEO instruction's run plus the runs started by comments on it. Read back from the event log.
+function threadInfo(thread) {
+  const ids = new Set([thread]);
+  let prompt = '', session = null;
+  for (const l of history) {
+    let o; try { o = JSON.parse(l); } catch { continue; }
+    if (o.type === '_office' && o.prompt && o._run === thread && !prompt) prompt = o.prompt;
+    if (o.type === '_office' && o.prompt && o.thread === thread) ids.add(o._run);
+    if (o.type === 'system' && o.subtype === 'init' && !o.parent_tool_use_id && ids.has(o._run)) session = o.session_id;
+  }
+  // The session id goes on the command line (shell on Windows), so only a plain UUID passes.
+  return { ids: [...ids], prompt, session: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session || '') ? session : null };
+}
+// CEO comment on a thread: continues the thread's PM session when no run of it is still going; otherwise a fresh run quoting the instruction.
+function comment(thread, text) {
+  if (!Number.isInteger(thread) || !text?.trim()) throw new Error('댓글이 비어 있음');
+  const th = threadInfo(thread);
+  if (!th.prompt) throw new Error('스레드를 찾을 수 없음(기록이 지워졌을 수 있음)');
+  const live = th.ids.some((id) => runs.has(id));
+  if (th.session && !live) return startRun(text.trim(), { thread, resume: th.session });
+  startRun(`대표가 아래 지시의 스레드에 댓글을 달았습니다. 지시의 맥락에서 댓글을 처리해.
+
+[원래 지시]
+${th.prompt}
+
+[대표 댓글]
+${text.trim()}`, { thread });
 }
 
 // 직원 관리: PM 설정 파일과 팀원 머리말. 서버는 파일만 고치고 커밋하지 않는다.
@@ -359,6 +395,14 @@ const server = http.createServer(async (req, res) => {
       const team = path.basename(root).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
       return res.end(readFileSync(path.join(here, 'office.html'), 'utf8').replace('<title>AI 오피스</title>', `<title>AI 오피스 · ${team}</title>`));
     }
+    // 3D 캐릭터·소품 모델(tools/chars/*.glb). 이름은 영문·숫자·-만
+    const glb = /^\/chars\/([a-z0-9-]+)\.glb$/.exec(p);
+    if (glb) {
+      const f = path.join(here, 'chars', glb[1] + '.glb');
+      if (!existsSync(f)) { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'content-type': 'model/gltf-binary', 'cache-control': 'no-cache' });
+      return res.end(readFileSync(f));
+    }
     if (p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
       const recent = history.slice(-SEND_LINES);   // shortcut: 새 화면에는 최근 3000줄만. 더 옛날 대화가 필요해지면 위로 스크롤할 때 더 받기
@@ -400,7 +444,19 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/restart') { json(res, 200, { ok: true }); return setTimeout(restart, 100); }
-    if (req.method === 'POST' && p === '/api/cancel') { cancel(); return json(res, 200, { ok: true }); }
+    if (req.method === 'POST' && p === '/api/cancel') {
+      const { thread } = await body(req);
+      if (thread == null) { cancel(); return json(res, 200, { ok: true }); }
+      if (!Number.isInteger(thread)) return json(res, 400, { error: 'thread' });
+      cancel(threadInfo(thread).ids);
+      office({ closed: thread });   // the thread shows as 종료 from now on (kept in the event log)
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && p === '/api/comment') {
+      const { thread, text } = await body(req);
+      try { comment(thread, String(text ?? '')); } catch (err) { return json(res, 400, { error: err.message }); }
+      return json(res, 200, { ok: true });
+    }
     if (req.method === 'POST' && p === '/api/staff') {
       const b = await body(req), str = (v) => (v === undefined ? undefined : String(v));
       try { return json(res, 200, saveStaff({ id: String(b.id || ''), model: str(b.model), effort: str(b.effort), name: str(b.name) })); } catch (err) { return json(res, 400, { error: err.message }); }
