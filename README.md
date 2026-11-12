@@ -1,13 +1,114 @@
 # ai-office — 1인 사업용 AI 오피스
 
-PM(메인 세션)이 대표(나)의 목표를 받아 팀원(subagent)에게 일을 나누고, 결과와 대표가 할 일을 `board/`에 쌓는 구성을 프로젝트에 한 번에 차려 주는 Claude Code · Codex 플러그인입니다.
+Claude Code 안에 **PM 한 명과 역할별 팀원**을 두고, 대표(나)는 지시하고 결정만 하게 만들어 주는 플러그인입니다. 프로젝트 폴더에서 `/ai-office:init` 한 번이면 팀 구성, 업무 규칙, 할 일 보드, 3D 대시보드가 모두 깔립니다.
 
-- `/ai-office:init` 한 번으로 인터뷰 → 팀 구성 → 파일 생성.
-- 역할마다 **위임 수준**을 고릅니다.
-  - AI 전적 위임: 팀원이 끝까지 하고 TODO를 올리지 않음.
-  - 일부 위임: 되돌리기 어려운 마지막 버튼 직전까지 하고 `승인` TODO를 올림.
-  - 사람만: 팀원 없음. 그 일은 `실행` TODO로 대표에게.
-- 대표가 할 일은 `board/todos.md`에 `결정`·`승인`·`입력`·`실행` 네 가지 형식으로 쌓이고, 대시보드에서 버튼으로 답합니다.
+![작업 중인 AI 오피스: 왼쪽은 숲속 3D 오피스, 오른쪽은 지시·대표 TODO·보고함 패널](docs/readme/office.png)
+
+*대표가 "경쟁 앱을 research에게 조사시키고, plan이 가격 선택지를 만들어 줘"라고 지시한 직후의 화면입니다. PM이 일을 나누고, 팀원은 책상에서 일하거나 서류를 들고 오가며, 대표가 결정할 일은 오른쪽 `대표 TODO`에 쌓입니다.*
+
+---
+
+## 왜 필요한가
+
+혼자 사업하면서 AI를 쓰면 이런 일이 반복됩니다.
+
+- **매번 처음부터 설명합니다.** 조사, 기획, 개발, 홍보를 같은 대화창에서 하다 보니 역할과 규칙을 매번 다시 말해야 합니다.
+- **AI가 어디까지 해도 되는지 애매합니다.** 조사와 초안은 끝까지 맡기고 싶지만, 배포, 게시, 결제처럼 되돌리기 어려운 일은 내가 확인하고 싶습니다. 그 경계를 매번 말로 정해야 합니다.
+- **내가 해야 할 일이 대화 속에 묻힙니다.** "가격을 골라 주세요", "계정 이메일을 알려 주세요" 같은 요청이 긴 답변 중간에 섞여 있어 놓치기 쉽습니다.
+- **무슨 일이 진행 중인지 안 보입니다.** 여러 작업을 돌리면 누가 무엇을 하고 있는지, 어디까지 됐는지 터미널 로그를 뒤져야 합니다.
+
+ai-office는 이것을 **회사처럼** 정리합니다. PM이 지시를 받아 팀원에게 나누고, 팀원은 정해진 권한 안에서 끝까지 일합니다. 대표가 직접 해야 할 일만 `board/todos.md`에 정해진 형식으로 올라오고, 대표는 그것만 처리하면 됩니다.
+
+## 무엇을 하나
+
+### 1. 인터뷰로 팀을 꾸립니다 (`/ai-office:init`)
+사업을 한 줄로 설명하고 주요 업무 영역을 말하면, 팀 구성안을 표 하나로 제안합니다. 역할별로 **위임 수준**과 **모델**을 고칠 수 있습니다.
+
+| 역할(예) | 하는 일 | 기본 모델 |
+|---|---|---|
+| `research` | 시장, 경쟁, 고객 반응 조사 | sonnet |
+| `plan` | 타겟, 가격, 로드맵 선택지 | opus |
+| `dev` | 개발, 빌드, 배포 | opus |
+| `design` | UI, 레이아웃, 비주얼 | opus |
+| `marketing` | 홍보 전략, 게시글 초안 | sonnet |
+| `bm` | 수익모델 설계 | sonnet |
+| `console` | 웹 콘솔, 관리 화면 조작 | sonnet |
+
+템플릿에 없는 일(고객 응대, 회계 정리 등)은 새 역할로 만들어 줍니다.
+
+### 2. 역할마다 위임 수준을 정합니다
+
+| 위임 수준 | 팀원이 하는 일 | 대표에게 오는 것 |
+|---|---|---|
+| **AI 전적 위임** | 끝까지 합니다 | 없음(결제, 서명, 본인 확인만 `실행` TODO) |
+| **일부 위임** | 되돌리기 어려운 마지막 버튼 직전까지 합니다 | `승인` TODO. 승인하면 팀원이 누릅니다 |
+| **사람만** | 팀원을 만들지 않습니다 | 그 일은 `실행` TODO로 |
+
+조사, 기획, 초안 같은 내부 작업은 전적 위임, 배포나 게시처럼 밖으로 나가는 일은 일부 위임, 법무나 세무처럼 사람이 책임지는 일은 사람만으로 추천합니다.
+
+### 3. 대표가 할 일은 TODO 하나로 받습니다
+대표가 해야 할 일은 `board/todos.md`에 다섯 가지 형식으로만 올라옵니다.
+
+| 유형 | 언제 | 대표가 하는 일 |
+|---|---|---|
+| `결정` | 선택지 중 하나를 골라야 할 때 | 보기 버튼을 누름 |
+| `승인` | 되돌리기 어려운 일 직전 | 승인 / 반려 |
+| `입력` | 대표만 아는 정보가 필요할 때 | 답을 적음 |
+| `실행` | 사람이 직접 해야 할 때(결제, 서명 등) | 하고 나서 "했어요" |
+| `확인` | 작업이 끝나 보고가 왔을 때 | 종료, 또는 이어서 시킬 일을 "추가 지시" |
+
+**하나의 일은 한 번만 보고합니다.** 작업 중에 PM이 이미 `결정`이나 `승인` TODO를 올렸다면, 끝날 때 `확인`을 따로 만들지 않고 최종 보고를 그 TODO에 붙입니다(`📄 보고 보기`). 결정할 것이 없이 끝난 작업만 `확인`으로 옵니다.
+
+<table><tr>
+<td width="50%"><img src="docs/readme/todo-decision.png" alt="결정 TODO: 보기 버튼 3개와 보고 보기 링크"></td>
+<td width="50%"><img src="docs/readme/todo-check.png" alt="확인 TODO: 보고 전문이 표와 목록으로 보임"></td>
+</tr><tr>
+<td><b>결정</b>: 작업 중에 올라온 가격 결정. 최종 보고가 이 카드에 붙어 있어 따로 <code>확인</code>이 오지 않습니다.</td>
+<td><b>확인</b>: 결정할 것 없이 끝난 작업의 보고. 보고 전문이 노션처럼 정리돼 보이고, 종료하거나 추가 지시를 내립니다.</td>
+</tr></table>
+
+입력칸에서 **Ctrl+Enter**(맥은 Cmd+Enter)를 누르면 바로 제출됩니다.
+
+### 4. 모든 결과는 `board/`에 남습니다
+팀원의 결과물은 `board/<역할>/날짜-주제.md`에, 결정 기록은 `board/decisions.md`에, 작업 로그는 `board/log.md`에, 최종 보고 전문은 `board/reports/`에 쌓입니다. 대화가 끝나도 회사의 기록은 파일로 남습니다.
+
+---
+
+## 대시보드 둘러보기
+
+`node tools/office.mjs`로 여는 로컬 웹 화면입니다(http://127.0.0.1:4747). 지시를 보내면 `claude -p`로 PM 세션이 돌고, 그 과정이 숲속 3D 오피스에 실시간으로 그려집니다.
+
+**3D 오피스**
+- 팀원은 `.claude/agents/*.md`를 읽어 자기 책상에 앉습니다. 머리 위 말풍선에 지금 하는 일이 보입니다.
+- PM이 일을 맡기면 서류를 들고 걸어가 전달하고, 끝나면 보고서를 들고 돌아옵니다.
+- 일이 없는 팀원은 가운데 라운지나 **나선 계단을 올라 나무 위 2층 데크**에서 쉽니다. 일이 오면 책상으로 돌아갑니다.
+- 표정이 상태에 따라 바뀝니다. 쉴 때는 웃고, 일할 때는 집중하고, 대표의 답을 기다릴 때는 걱정합니다.
+
+![직원 표정: 왼쪽부터 기본, 일할 때 집중, 대표 답 기다릴 때 걱정, 쉴 때 웃음](docs/readme/faces.png)
+
+**히스토리 카드**: 팀원을 누르면 그 사람이 맡은 일의 진행 기록(지시, 조사, 산출물, 보고)이 시간순으로 열립니다.
+
+![조사 담당의 히스토리 카드](docs/readme/history.png)
+
+**대화 내역과 문서 뷰어**: PM과 팀원이 주고받은 말이 오른쪽에 쌓입니다. 마크다운(굵게, 표, 목록, 코드)은 노션처럼 정리해서 보여 주고, `board/` 문서는 눌러서 바로 읽습니다.
+
+<table><tr>
+<td width="40%"><img src="docs/readme/chat.png" alt="대화 내역: PM 보고 속 표와 목록"></td>
+<td width="60%"><img src="docs/readme/viewer.png" alt="문서 뷰어: board/plan의 가격 선택지 표"></td>
+</tr></table>
+
+**직원 관리**: 직원마다 얼굴, 역할, 이름, 모델, 노력 수준, 쓴 토큰을 봅니다. 바꾸면 `.claude/agents/*.md`(PM은 `.claude/ai-office.json`)에 저장되고 다음 실행부터 적용됩니다.
+
+![직원 관리 화면](docs/readme/staff.png)
+
+**그 밖에**
+- `오늘 우리 회사가 한 일` 카드: 오늘 만든 문서 수, 쓴 토큰, 가장 바쁜 직원, 대표 결정 수를 보여 줍니다. PNG로 저장하거나 복사해서 공유할 수 있습니다. `–`를 누르면 이미지 없이 숫자만 남습니다.
+- 상단 게이지: Claude 구독의 5시간, 7일 사용량입니다.
+- `🔄 서버 재시작`: 대시보드 서버를 같은 포트로 다시 켭니다. 진행 중인 작업은 끊기지 않습니다.
+- `🖥 오피스 끄기`: 3D 렌더링을 멈추고 패널만 크게 봅니다.
+- 휴대폰 화면에서도 패널을 쓸 수 있습니다.
+
+---
 
 ## 설치
 
@@ -16,7 +117,7 @@ Claude Code:
 /plugin marketplace add <owner>/ai-office
 /plugin install ai-office@ai-office
 ```
-그다음 차릴 프로젝트 폴더에서 `/ai-office:init`.
+그다음 오피스를 차릴 프로젝트 폴더에서 `/ai-office:init`.
 
 Codex:
 ```
@@ -26,6 +127,16 @@ codex plugin add ai-office@ai-office
 그다음 Codex에서 `$ai-office:init`(또는 "AI 오피스 만들어 줘").
 
 로컬 폴더로 써 보기: `<owner>/ai-office` 자리에 이 저장소 경로를 넣습니다.
+
+## 시작하기
+1. 프로젝트 폴더에서 `/ai-office:init`을 실행하고 질문에 답합니다.
+2. Claude Code를 그 폴더에서 새로 열고 목표를 말합니다. PM이 팀원에게 나눠 맡깁니다.
+3. 대시보드를 쓰려면:
+   ```
+   node tools/office.mjs                                          # http://127.0.0.1:4747 — 지시하면 claude -p 실행(구독 사용량 소모)
+   node tools/office.mjs --replay tools/fixtures/demo-run.jsonl   # 사용량 0, 예시 실행 재생
+   ```
+   한 PC에 오피스가 여럿이면 4747부터 비어 있는 포트를 씁니다.
 
 ## init이 만드는 것
 | 파일 | 내용 |
@@ -40,20 +151,18 @@ codex plugin add ai-office@ai-office
 
 이미 있는 파일은 묻지 않고 덮어쓰지 않습니다. 다시 실행해도 안전합니다.
 
-## 대시보드 (Claude Code 전용)
-```
-node tools/office.mjs                                          # http://127.0.0.1:4747 — 지시하면 claude -p 실행(구독 사용량 소모)
-node tools/office.mjs --replay tools/fixtures/demo-run.jsonl   # 사용량 0, 예시 실행 재생
-```
-- 팀원 책상은 `.claude/agents/*.md`에서 자동 배치됩니다.
-- **업데이트**: 플러그인을 업데이트하면(`/plugin marketplace update ai-office`), 다음에 대시보드를 켜거나 상단의 `🔄 서버 재시작`을 누를 때 프로젝트의 `tools/`가 새 버전으로 맞춰집니다. 설치된 플러그인 버전이 `tools/.plugin-version`보다 높을 때만 덮어쓰고, `tools/`에 직접 고친 내용이 있으면 그 파일은 새 버전으로 바뀝니다. 이 기능이 들어가기 전(0.1.0)에 init한 프로젝트는 한 번만 `tools/`를 새로 복사하고 서버를 껐다 켜야 합니다.
-- 배포하는 쪽: 대시보드를 바꿔 내보낼 때는 `.claude-plugin/plugin.json`(과 `.codex-plugin/plugin.json`)의 `version`을 올려야 사용자에게 전달됩니다.
-- 서버는 127.0.0.1에만 열리고, 문서 열람은 `board/` 안 파일만 됩니다.
+## 업데이트
+- 플러그인을 업데이트하면(`/plugin marketplace update ai-office`) 다음에 대시보드를 켜거나 `🔄 서버 재시작`을 누를 때 프로젝트의 `tools/`가 새 버전으로 맞춰집니다.
+- 설치된 플러그인 버전이 `tools/.plugin-version`보다 높을 때만 덮어씁니다(옛 버전으로 내려가지 않음). `tools/`를 직접 고친 내용은 새 버전으로 바뀝니다.
+- 0.1.0 시절에 init한 프로젝트는 한 번만 `tools/`를 새로 복사하고 서버를 껐다 켜야 합니다. 그 뒤로는 자동입니다.
+- 배포하는 쪽: 대시보드를 바꿔 내보낼 때는 `.claude-plugin/plugin.json`과 `.codex-plugin/plugin.json`의 `version`을 올려야 사용자에게 전달됩니다.
+
+## 안전과 권한
+- 서버는 127.0.0.1에만 열리고, 문서 열람은 `board/` 안 파일만 됩니다. 결과물 미리보기(HTML, SVG)는 샌드박스 안에서 열립니다.
 - 대시보드에서 실행되는 PM은 `--permission-mode bypassPermissions`로 돕니다. 믿을 수 있는 프로젝트에서만 쓰세요.
-- 대시보드에서 도는 실행은 `--strict-mcp-config --disable-slash-commands`로 MCP 서버·스킬을 싣지 않습니다(토큰 절약, 권한 우회 실행에 개인 커넥터를 넣지 않기 위해). 그래서 대시보드 경유의 브라우저 담당(`console`)은 Bash로 부르는 CLI 브라우저 도구가 필요합니다. 대화형 Claude Code 세션에서는 평소 MCP·스킬을 그대로 씁니다.
-- init이 만드는 `.claude/settings.json`에는 권한 우회 모드가 없습니다. 대화형 세션에서 `dev`·`console`의 Bash 호출은 승인을 물어봅니다.
-- 원격으로 열 때 텔레그램 메시지에 넣을 주소는 `.office-telegram.env`에 `OFFICE_URL=https://...` 한 줄을 넣거나 `OFFICE_URL` 환경 변수로 바꿉니다.
-- Codex 사용자는 `AGENTS.md`·팀원 정의·`board/`를 그대로 쓰지만, v1의 실시간 대시보드는 `claude -p`만 지원합니다.
+- 대시보드에서 도는 실행은 `--strict-mcp-config --disable-slash-commands`로 MCP 서버와 스킬을 싣지 않습니다(토큰 절약, 그리고 권한 우회 실행에 개인 커넥터를 넣지 않기 위해). 그래서 대시보드 경유의 브라우저 담당(`console`)은 Bash로 부르는 CLI 브라우저 도구가 필요합니다. 대화형 Claude Code 세션에서는 평소 MCP와 스킬을 그대로 씁니다.
+- init이 만드는 `.claude/settings.json`에는 권한 우회 모드가 없습니다. 대화형 세션에서 `dev`, `console`의 Bash 호출은 승인을 물어봅니다.
+- Codex 사용자는 `AGENTS.md`, 팀원 정의, `board/`를 그대로 쓰지만, 실시간 대시보드는 `claude -p`만 지원합니다.
 
 ## 텔레그램 알림 (선택)
 프로젝트 폴더에 `.office-telegram.env`를 만듭니다(`.gitignore`에 포함):
@@ -61,22 +170,29 @@ node tools/office.mjs --replay tools/fixtures/demo-run.jsonl   # 사용량 0, �
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 ```
-대시보드가 새 TODO·최종 보고를 이 오피스 전용 봇으로 보내고, 답장으로 TODO에 답하거나 지시를 내릴 수 있습니다. 파일이 없으면 꺼져 있습니다.
+- 새 TODO와 최종 보고가 오피스 전용 봇으로 옵니다. 최종 보고는 그 보고가 붙은 TODO와 **한 메시지**로 오고, 버튼으로 바로 답할 수 있습니다.
+- 답장으로 TODO에 답하거나 새 지시를 내릴 수 있습니다. 팀원이 일을 시작하고 끝낼 때는 무음 알림이 옵니다.
+- 원격으로 열 때 메시지에 넣을 주소는 `.office-telegram.env`에 `OFFICE_URL=https://...` 한 줄을 넣거나 `OFFICE_URL` 환경 변수로 바꿉니다.
+- 파일이 없으면 꺼져 있습니다.
 
 ## 자체 점검
 ```
 for f in tools/*.test.mjs skills/init/*.test.mjs; do node "$f"; done
 ```
-빌드 단계·npm 의존성 없음. Node 18+.
+빌드 단계와 npm 의존성이 없습니다. Node 18+.
 
 ---
 
 ## English
 
-**ai-office** is a Claude Code / Codex plugin that sets up an "AI office" in your project: a PM main session that delegates to persona subagents, and a `board/` folder holding a TODO queue, decision log and work log.
+**ai-office** is a Claude Code / Codex plugin that runs a one-person business like a small company: a PM main session takes your goal and delegates it to persona subagents, and you only handle the decisions that reach `board/todos.md`.
 
-- Run `/ai-office:init` (Claude Code) or `$ai-office:init` (Codex). It interviews you about your business, proposes a team (research, plan, dev, console, marketing, BM, design, or custom roles), and lets you set each role's delegation level (full / partial: approve the final irreversible step / human only) and model (`opus` / `sonnet` / `haiku`, with effort).
-- It writes `CLAUDE.md`, `AGENTS.md`, `.claude/agents/*.md`, `board/`, merges `.claude/settings.json` (keeps a `git push` deny), and optionally copies the local dashboard to `tools/`. Existing files are never overwritten without asking.
-- Install: `/plugin marketplace add <owner>/ai-office` then `/plugin install ai-office@ai-office`; for Codex, `codex plugin marketplace add <owner>/ai-office` then `codex plugin add ai-office@ai-office`.
-- The live 3D dashboard (`node tools/office.mjs`, 127.0.0.1:4747) drives `claude -p` only. After a plugin update, starting the dashboard (or its restart button) syncs the project's `tools/` when the installed plugin version is newer than `tools/.plugin-version`; bump `version` in `.claude-plugin/plugin.json` when releasing. Codex users get the board and agent files, not the dashboard, in v1.
-- Templates and prompts are Korean in v1. MIT licensed.
+**Why.** Using one chat for research, planning, coding and marketing means re-explaining roles every time, no clear line for what the AI may do on its own (deploys, posts, payments), requests to you buried in long answers, and no view of what is running.
+
+**What it does.**
+- `/ai-office:init` (or `$ai-office:init` in Codex) interviews you, proposes a team (research, plan, dev, design, marketing, BM, console, or custom roles), and lets you set each role's delegation level (full / partial: stop before the irreversible step and ask / human only) and model (`opus` / `sonnet` / `haiku`, with effort).
+- It writes `CLAUDE.md`, `AGENTS.md`, `.claude/agents/*.md`, `board/`, merges `.claude/settings.json` (keeps a `git push` deny), and optionally copies the dashboard to `tools/`. Existing files are never overwritten without asking.
+- Your work queue is `board/todos.md` with five types: decide, approve, input, do-it-yourself, and review. One job reports once: if a run already raised a decision or approval, its final report is attached to that TODO instead of a separate review item.
+- The local 3D dashboard (`node tools/office.mjs`, 127.0.0.1:4747, `claude -p` only) shows the team working in a forest office, with speech bubbles, task history, Notion-style markdown in chat, TODOs and reports, a staff editor, usage gauges and a restart button. Idle staff rest in the lounge or on the tree-house deck, and their faces change with their state. See the screenshots above.
+- After a plugin update, starting the dashboard (or its restart button) syncs the project's `tools/` when the installed plugin version is newer than `tools/.plugin-version`. Bump `version` in `.claude-plugin/plugin.json` when releasing.
+- Optional Telegram bot for TODOs, reports and replies. Templates and prompts are Korean in v1. MIT licensed.
