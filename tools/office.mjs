@@ -13,12 +13,31 @@ import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
 import { loadLog, lastRun, KEEP_LINES, SEND_LINES } from './eventlog.mjs';
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
+import { updateTools } from './update.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const board = path.join(root, 'board');
 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : null; };
 const replay = arg('--replay');
+// 감독 프로세스: 서버는 자식으로 돈다. 띄울 때마다 설치된 플러그인의 tools/를 이 프로젝트에 맞추고(플러그인 업데이트 반영),
+// 대시보드 재시작 버튼(자식 종료 코드 75)이면 같은 포트로 다시 띄운다. Ctrl+C는 둘 다에 간다.
+const RESTART = 75;
+if (!process.env.OFFICE_CHILD) {
+  const argv = process.argv.slice(1).concat(arg('--port') ? [] : ['--port', String(await freePort(4747))]);
+  const run = () => {
+    if (!existsSync(path.join(root, '.claude-plugin'))) {   // 플러그인 저장소 자체에서는 맞추지 않는다(그곳이 원본)
+      try {
+        const u = updateTools(here);
+        if (u) console.log(`플러그인 ${u.version} 반영: tools/ ${u.changed.join(', ') || '(바뀐 파일 없음)'}`);
+      } catch (e) { console.error('플러그인 tools/ 맞추기 실패(지금 코드로 계속):', e.message); }
+    }
+    spawn(process.execPath, argv, { stdio: 'inherit', env: { ...process.env, OFFICE_CHILD: '1' } })
+      .on('exit', (code) => (code === RESTART ? run() : process.exit(code ?? 1)));
+  };
+  run();
+  await new Promise(() => {});   // 아래는 자식(서버)만 실행한다
+}
 // 한 PC에 팀(프로젝트)이 여럿일 수 있어, --port가 없으면 4747부터 비어 있는 포트를 쓴다.
 const port = arg('--port') ? Number(arg('--port')) : await freePort(4747);
 // shortcut: 확인과 실제 listen 사이에 다른 프로세스가 끼어들 수 있음, 그때는 아래 listen 오류로 종료되니 다시 실행.
@@ -315,11 +334,10 @@ console.log(tg ? '텔레그램: 오피스 봇으로 알림 + 답장·지시 받�
 // Re-attach to runs that kept going while this server was down (finished ones are read to the end, then closed).
 for (const meta of reattach) attach(meta);
 
-// 대시보드의 재시작 버튼: 포트를 비운 뒤 같은 인자(같은 포트)로 새 서버를 띄우고 이 프로세스는 끝난다.
+// 대시보드의 재시작 버튼: 포트를 비우고 종료 코드 75로 끝나면 감독 프로세스가 (플러그인 tools/를 맞춘 뒤) 다시 띄운다.
 // 실행 중인 claude는 분리된 프로세스라 계속 돌고, 새 서버가 부팅 때 다시 붙는다.
 function restart() {
-  const argv = process.argv.slice(1).concat(arg('--port') ? [] : ['--port', String(port)]);
-  server.close(() => spawn(process.execPath, argv, { stdio: 'inherit', detached: true, windowsHide: true }).once('spawn', () => process.exit(0)));
+  server.close(() => process.exit(RESTART));
   server.closeAllConnections();   // SSE 연결이 남아 있으면 close가 끝나지 않는다
 }
 

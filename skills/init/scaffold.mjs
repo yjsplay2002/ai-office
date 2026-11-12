@@ -115,6 +115,8 @@ export function scaffold(answers, target, overwrite = []) {
       put(path.join('tools', rel).replace(/\\/g, '/'), readFileSync(src));
     };
     copy('');
+    // 대시보드가 플러그인 업데이트를 알아보는 기준(tools/update.mjs): 이 tools/를 받은 플러그인 버전
+    put('tools/.plugin-version', JSON.parse(readFileSync(path.resolve(here, '..', '..', '.claude-plugin', 'plugin.json'), 'utf8')).version + '\n');
   }
   const gi = path.join(target, '.gitignore'), want = ['.office-runs/', '.office-telegram.env'];
   const have = existsSync(gi) ? readFileSync(gi, 'utf8') : '';

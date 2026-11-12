@@ -46,6 +46,8 @@ node tools/office.mjs                                          # http://127.0.0.
 node tools/office.mjs --replay tools/fixtures/demo-run.jsonl   # 사용량 0, 예시 실행 재생
 ```
 - 팀원 책상은 `.claude/agents/*.md`에서 자동 배치됩니다.
+- **업데이트**: 플러그인을 업데이트하면(`/plugin marketplace update ai-office`), 다음에 대시보드를 켜거나 상단의 `🔄 서버 재시작`을 누를 때 프로젝트의 `tools/`가 새 버전으로 맞춰집니다. 설치된 플러그인 버전이 `tools/.plugin-version`보다 높을 때만 덮어쓰고, `tools/`에 직접 고친 내용이 있으면 그 파일은 새 버전으로 바뀝니다. 이 기능이 들어가기 전(0.1.0)에 init한 프로젝트는 한 번만 `tools/`를 새로 복사하고 서버를 껐다 켜야 합니다.
+- 배포하는 쪽: 대시보드를 바꿔 내보낼 때는 `.claude-plugin/plugin.json`(과 `.codex-plugin/plugin.json`)의 `version`을 올려야 사용자에게 전달됩니다.
 - 서버는 127.0.0.1에만 열리고, 문서 열람은 `board/` 안 파일만 됩니다.
 - 대시보드에서 실행되는 PM은 `--permission-mode bypassPermissions`로 돕니다. 믿을 수 있는 프로젝트에서만 쓰세요.
 - 대시보드에서 도는 실행은 `--strict-mcp-config --disable-slash-commands`로 MCP 서버·스킬을 싣지 않습니다(토큰 절약, 권한 우회 실행에 개인 커넥터를 넣지 않기 위해). 그래서 대시보드 경유의 브라우저 담당(`console`)은 Bash로 부르는 CLI 브라우저 도구가 필요합니다. 대화형 Claude Code 세션에서는 평소 MCP·스킬을 그대로 씁니다.
@@ -76,5 +78,5 @@ for f in tools/*.test.mjs skills/init/*.test.mjs; do node "$f"; done
 - Run `/ai-office:init` (Claude Code) or `$ai-office:init` (Codex). It interviews you about your business, proposes a team (research, plan, dev, console, marketing, BM, design, or custom roles), and lets you set each role's delegation level (full / partial: approve the final irreversible step / human only) and model (`opus` / `sonnet` / `haiku`, with effort).
 - It writes `CLAUDE.md`, `AGENTS.md`, `.claude/agents/*.md`, `board/`, merges `.claude/settings.json` (keeps a `git push` deny), and optionally copies the local dashboard to `tools/`. Existing files are never overwritten without asking.
 - Install: `/plugin marketplace add <owner>/ai-office` then `/plugin install ai-office@ai-office`; for Codex, `codex plugin marketplace add <owner>/ai-office` then `codex plugin add ai-office@ai-office`.
-- The live 3D dashboard (`node tools/office.mjs`, 127.0.0.1:4747) drives `claude -p` only. Codex users get the board and agent files, not the dashboard, in v1.
+- The live 3D dashboard (`node tools/office.mjs`, 127.0.0.1:4747) drives `claude -p` only. After a plugin update, starting the dashboard (or its restart button) syncs the project's `tools/` when the installed plugin version is newer than `tools/.plugin-version`; bump `version` in `.claude-plugin/plugin.json` when releasing. Codex users get the board and agent files, not the dashboard, in v1.
 - Templates and prompts are Korean in v1. MIT licensed.
