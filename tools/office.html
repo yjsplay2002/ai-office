@@ -34,7 +34,7 @@
   .gauge { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); }
   .gauge div { width:66px; height:8px; border-radius:4px; background:var(--well); overflow:hidden; }
   .gauge span { display:block; height:100%; width:0; background:var(--accent); transition:width .4s; }
-  #bell, #viewbtn { font-size:12px; padding:2px 9px; }
+  #bell, #viewbtn, #restartbtn { font-size:12px; padding:2px 9px; }
   #bell.on { background:var(--accent); color:#fff; border-color:transparent; }
   /* 태스크 히스토리 카드 */
   #hist { right:16px; top:14px; width:336px; max-height:calc(100% - 28px); overflow:auto; display:none; padding:12px 14px; }
@@ -91,6 +91,18 @@
   .todo .hd { display:flex; gap:8px; align-items:center; font-size:11px; color:var(--dim); margin-bottom:3px; }
   .todo .ty { background:var(--t1,#d9b25a); color:#1d1b2e; border-radius:6px; padding:0 7px; font-weight:700; }
   .todo .desc { white-space:pre-wrap; font-size:14px; font-weight:600; }
+  /* TODO 설명·보고 전문: 마크다운을 카드 크기에 맞게(굵게·목록·표·코드) */
+  .mdx { white-space:normal; } .mdx > :first-child { margin-top:0; } .mdx > :last-child { margin-bottom:0; }
+  .mdx p, .mdx ul, .mdx ol, .mdx blockquote, .mdx pre { margin:.35em 0; } .mdx ul, .mdx ol { padding-left:1.3em; } .mdx li { margin:.1em 0; }
+  .mdx h1, .mdx h2, .mdx h3, .mdx h4 { font:700 1.05em var(--serif); margin:.6em 0 .25em; }
+  .mdx strong { font-weight:800; }
+  .mdx code { font:.9em ui-monospace,Consolas,monospace; background:var(--well); border-radius:4px; padding:0 .3em; }
+  .mdx pre { background:var(--well); border-radius:6px; padding:6px 8px; overflow:auto; } .mdx pre code { padding:0; }
+  .mdx blockquote { padding-left:.7em; border-left:2px solid var(--line); color:var(--dim); }
+  .mdx hr { border:0; border-top:1px solid var(--line); margin:.6em 0; }
+  .mdx .tbl { overflow-x:auto; margin:.4em 0; } .mdx table { border-collapse:collapse; font-size:12px; font-weight:400; }
+  .mdx th, .mdx td { border:1px solid var(--line); padding:3px 7px; text-align:left; vertical-align:top; } .mdx th { background:var(--well); font-weight:700; }
+  .todo .rep.tx:not(.open) { display:block; -webkit-line-clamp:none; max-height:6.2em; }   /* 블록(표·목록)이 섞여도 접힌 높이로 자른다 */
   .todo .refs { margin-top:4px; font-size:11px; overflow-wrap:anywhere; } .todo .refs a { color:var(--link); cursor:pointer; margin-right:6px; }
   .todo .opts { display:flex; flex-wrap:wrap; gap:7px; margin-top:7px; }
   .todo .opts button.sel { background:var(--sel); border-color:transparent; }
@@ -251,6 +263,7 @@
     <div class="gauge">7일 <div><span id="g7"></span></div> <em id="t7">–</em></div>
     <button id="bell" title="TODO·보고 알림 소리 / 브라우저 알림">🔔 알림 켜기</button>
     <button id="staffbtn" title="직원의 이름·모델·노력 수준 보기와 바꾸기">👥 직원 관리</button>
+    <button id="restartbtn" title="서버를 다시 켜고 화면을 새로 고쳐 바뀐 코드를 반영합니다(진행 중인 작업은 이어집니다)">🔄 서버 재시작</button>
     <button id="viewbtn" title="3D 오피스를 끄면 렌더링을 멈추고 패널을 화면 전체로 봅니다">🖥 오피스 끄기</button>
   </div>
   <div class="ov" id="shareBox">
@@ -281,7 +294,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { createMapper, createHistory, motionOf, instructionMotion, todoMotion, gridPath, seatPlan } from '/map.mjs';
+import { createMapper, createHistory, motionOf, instructionMotion, todoMotion, gridPath } from '/map.mjs';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -312,36 +325,26 @@ stage.prepend(renderer.domElement);
 const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(34, 1, 0.1, 200);
 scene.background = new THREE.Color('#e6ecc8'); scene.fog = new THREE.Fog('#e6ecc8', 28, 66);
 
-// 직원 명단 = .claude/agents/*.md + pm. 자리는 아래 SLOTS(라운지 둘레 고리 + 뒤쪽 빈 책상), 다 차면 라운지 소파.
+// 직원 명단 = .claude/agents/*.md + pm. 알려진 역할은 시안 자리, 나머지는 빈 책상(EXTRA), 그것도 다 차면 라운지 소파.
 const agents = await (await fetch('/api/agents')).json();
 const pmInfo = (await (await fetch('/api/staff')).json())[0] || { name: '지휘' };
 const ROSTER = [{ name: 'pm', title: `PM 「${pmInfo.name}」`, sub: [pmInfo.model, pmInfo.effort].filter((x) => x && x !== 'inherit').join('·') || '메인 세션' }, ...agents.map((a) => ({ name: a.name, title: a.title || a.name, sub: [a.model, a.effort].filter(Boolean).join('·') }))];
 const ALIAS = { research: 'scout' };   // 플러그인 기본 팀의 research = 시안의 조사 스카우트
-const DESK = { scout: 'map', plan: 'board', dev: 'dual', console: 'triple', bm: 'ledger', design: 'tablet' };   // 역할별 책상(시안)
-// 자리: 대표는 앞 가운데 단상(기본 카메라에서 잘 보이게), PM은 대표 옆, 나머지는 라운지를 둘러싼 고리.
-// PM과 자주 주고받는 역할일수록 PM에 가까운 자리(map.mjs seatPlan). 고리가 다 차면 뒤쪽 빈 책상, 그다음 라운지 소파.
-const ringAt = (deg, r = 5.4) => [1.4 + Math.cos(deg * Math.PI / 180) * r, 2.5 + Math.sin(deg * Math.PI / 180) * r];
-const facing = ([x, z]) => { const dx = 1.4 - x, dz = 2.5 - z, d = Math.hypot(dx, dz); return Math.atan2(dx / d, dz / d + 1.2); };   // 라운지 쪽, 조금 카메라 쪽
-const CEO_AT = [1.4, 7.4], PM_AT = ringAt(50);
-const SLOTS = [15, -20, 125, 150, 178, -155, -125, -97].map((d) => ringAt(d)).concat([[-4.4, -5.6], [-1.4, -7.2], [3.3, -6.9], [-7.0, -2.6]]);
+const SPOT = { ceo: [-0.9, -7.0, .1, 'ceo'], pm: [-2.3, -3.6, .7], scout: [-6.7, -2.1, .95, 'map'], plan: [-5.0, -6.3, .35, 'board'], dev: [-3.9, 2.3, 1.05, 'dual'], console: [-1.0, 6.7, 1.15, 'triple'], bm: [3.6, 6.9, -.8, 'ledger'], design: [6.3, 2.1, -.95, 'tablet'] };   // [x, z, 회전, 책상 종류]
+const EXTRA = [[2.2, -7.0, -.1], [6.0, -5.6, -.82], [6.5, 5.0, -1.25], [-6.3, 3.7, 1.3]];
 const SOFA = [4, 2, 6, 0, 8, 3, 5, 1, 7];   // 소파 9칸을 가운데부터
 const roleOf = (name) => ALIAS[name] || name;
-const seatOf = new Map(), usedSlots = new Set();
-let sofaNext = 0;
-const deskAt = (xz, name) => [xz[0], xz[1], facing(xz), DESK[roleOf(name)]];
-// 나중에 처음 보는 이름: PM에 가장 가까운 빈 책상, 없으면 소파. shortcut: 소파 9칸을 넘으면 같은 칸에 겹쳐 앉는다
-function seatFor(name) {
-  const i = SLOTS.map((_, k) => k).filter((k) => !usedSlots.has(k)).sort((a, b) => Math.hypot(SLOTS[a][0] - PM_AT[0], SLOTS[a][1] - PM_AT[1]) - Math.hypot(SLOTS[b][0] - PM_AT[0], SLOTS[b][1] - PM_AT[1]))[0];
-  if (i == null) return { sofa: SOFA[sofaNext++ % SOFA.length] };
-  usedSlots.add(i); return deskAt(SLOTS[i], name);
+const deskUsed = new Set(), seatOf = new Map();
+let extraNext = 0, sofaNext = 0;
+// shortcut: 소파 9칸을 넘으면 같은 칸에 겹쳐 앉는다. 팀이 그만큼 커지면 EXTRA 책상을 늘린다.
+function seatFor(name, boot) {
+  const r = roleOf(name);
+  if (SPOT[r] && !deskUsed.has(r)) { deskUsed.add(r); return SPOT[r]; }
+  if (boot && extraNext < EXTRA.length) return EXTRA[extraNext++];   // 빈 책상 자리는 부팅 때만(근처 화분을 미리 치운다)
+  return { sofa: SOFA[sofaNext++ % SOFA.length] };
 }
-const CEO = { name: 'ceo', title: '대표 (나)', sub: '결정·승인' };
-seatOf.set('ceo', [CEO_AT[0], CEO_AT[1], 0, 'ceo']);   // 대표는 카메라를 보고 앉는다
-seatOf.set('pm', deskAt(PM_AT, 'pm'));
-for (const [name, i] of seatPlan(ROSTER.filter((p) => p.name !== 'pm').map((p) => p.name), SLOTS, PM_AT)) {
-  if (i < 0) seatOf.set(name, { sofa: SOFA[sofaNext++ % SOFA.length] });
-  else { usedSlots.add(i); seatOf.set(name, deskAt(SLOTS[i], name)); }
-}
+const CEO = { name: 'ceo', title: '대표 (나)', sub: '결정·승인' };   // 대표 책상은 뒤쪽 가운데, 카메라를 보고 앉는다
+for (const p of [CEO, ...ROSTER]) seatOf.set(p.name, seatFor(p.name, true));
 const desks = [...seatOf.values()].filter(Array.isArray);
 const blocked = (x, z, r = 1.9) => desks.some(([a, b]) => Math.hypot(a - x, b - z) < r);   // 책상 자리와 겹치는 화분·화단·등은 놓지 않는다
 // 사람이 걸을 때 돌아가야 하는 것들(원: x, z, 반지름). 바닥을 0.4m 칸으로 나눠 길을 찾는다(map.mjs gridPath)
@@ -637,7 +640,7 @@ let built = false;          // 부팅 중에는 책상을 정적 장면(world)�
 LOOK.ceo = { hair: '#2a211c', style: 'plain', top: 'suit', c: '#8a2f3a', pants: '#2a2622', shoes: '#2a2622' };   // 대표: 버건디 정장
 TINT.ceo = ['#8a2f3a', '#f0c4a0'];
 // 대표 책상: 금 명패, 초록 갓 스탠드, 찻잔, 높은 등받이 의자
-PROPS.ceo = (w) => { P(w,G.cyl(1.75,1.75,.12,28),WOOD2,0,-.06,.1);P(w,G.cyl(1.5,1.5,.012,28),'#8a2f3a',0,.006,.1);P(w,G.cyl(1.3,1.3,.014,28),'#c9a46a',0,.008,.1);P(w,G.box(.95,.06,1.5),WOOD,1.48,.75,.2);P(w,G.box(.06,.72,1.4),WOOD2,1.92,.36,.2);P(w,G.box(.85,.62,.06),WOOD2,1.48,.41,.92);P(w,G.cyl(.18,.14,.36,7),'#b5533c',1.6,.96,.6);P(w,G.ico(.3),'#6fa344',1.6,1.32,.6);P(w,G.box(.42,.09,.05),GOLD,0,.83,.36);P(w,G.box(.3,.03,.052),INK,0,.84,.363);P(w,G.cyl(.09,.1,.025,8),'#b08d3a',.75,.79,.25);limb(w,[.75,.8,.25],[.75,1.12,.25],.012,.012,'#b08d3a',4);P(w,G.cyl(.08,.08,.28,6,1),'#2f7d5a',.72,1.14,.25,0,0,PI/2,[1,1,.7]);mug(w,'#f4efe2',-.75,.78,.2);P(w,G.box(.46,.5,.07),'#5a2a2a',0,1.3,-1.06,-.1); };
+PROPS.ceo = (w) => { P(w,G.box(.42,.09,.05),GOLD,0,.83,.36);P(w,G.box(.3,.03,.052),INK,0,.84,.363);P(w,G.cyl(.09,.1,.025,8),'#b08d3a',.75,.79,.25);limb(w,[.75,.8,.25],[.75,1.12,.25],.012,.012,'#b08d3a',4);P(w,G.cyl(.08,.08,.28,6,1),'#2f7d5a',.72,1.14,.25,0,0,PI/2,[1,1,.7]);mug(w,'#f4efe2',-.75,.78,.2);P(w,G.box(.46,.5,.07),'#5a2a2a',0,1.3,-1.06,-.1); };
 // ---------- 라운지 쉬는 자리: 소파, 이끼 빈백·푸프(앉아서), 찻상 둘레·계단 턱(서서) ----------
 const SPOTS = [];
 {
@@ -649,11 +652,48 @@ const SPOTS = [];
   for (const a of [90, 15, 165]) { const x = tea[0] + Math.cos(a * PI / 180) * 1.35, z = tea[1] + Math.sin(a * PI / 180) * 1.35; SPOTS.push({ sit: false, x, y: .4, z, ry: toTea(x, z), walk: [x, z] }); }
   for (const a of [60, 120, 35, 145, 10, 170, 80, 100]) { const x = L[0] + Math.cos(a * PI / 180) * 2.85, z = L[1] + Math.sin(a * PI / 180) * 2.85; SPOTS.push({ sit: false, x, y: .7, z, ry: Math.atan2(L[0] - x, L[1] - z), walk: [x, z] }); }
 }
-// 바닥 높이: 라운지는 한 단(-0.3) 두 단(-0.6) 내려가고, 대표 단상은 0.12 올라간다. 걷는 사람의 발 높이에 쓴다
+// ---------- 나무 위 2층 데크도 쉬는 곳: 나무 앞 나선 계단으로 올라가 안락의자에 앉거나 난간에 서서 쉰다 ----------
+const DECK = 4.6, STH = 2.95, TURN = 1.6 * PI, deckPt = (th, r) => [T[0] + Math.cos(th) * r, T[1] + Math.sin(th) * r];
+const S = deckPt(STH, 6.25), A1 = STH + PI, A0 = A1 - TURN;   // 계단은 데크 바깥에 서고, 꼭대기는 나무(데크) 쪽을 본다
+const onStair = (a, r = .55) => [S[0] + Math.cos(a) * r, S[1] + Math.sin(a) * r], STAIR_IN = new THREE.Vector3(onStair(A0, 1.6)[0], 0, onStair(A0, 1.6)[1]);   // 계단 입구 앞 바닥
+{
+  const g = at(S[0], 0, S[1]), N = 18; world.add(g);
+  P(g, G.cyl(.09, .09, DECK + 1, 8), WOOD3, 0, (DECK + 1) / 2, 0);
+  let prev;
+  for (let i = 0; i < N; i++) {
+    const a = A0 + (i + .5) / N * TURN, y = (i + 1) / N * DECK, top = [Math.cos(a) * 1.0, y + .9, Math.sin(a) * 1.0];
+    P(g, G.box(.95, .06, .36), i % 2 ? WOOD : WOOD2, Math.cos(a) * .55, y - .03, Math.sin(a) * .55, 0, -a, 0);
+    limb(g, [top[0], y, top[2]], top, .015, .015, DARK, 4);
+    if (prev) limb(g, prev, top, .025, .025, WOOD3, 4);
+    prev = top;
+  }
+}
+block(S[0], S[1], 1.1);
+for (const th of [1.0, 1.85, 2.75, .15]) { const [x, z] = deckPt(th, 4.65); SPOTS.push({ deck: true, th, sit: true, x, y: DECK + .47, z, ry: Math.atan2(-Math.cos(th), -Math.sin(th)), walk: deckPt(th, 4.2) }); }   // 데크 안락의자
+for (const th of [1.25, 1.6, 2.05, 2.5]) { const [x, z] = deckPt(th, 5.0); SPOTS.push({ deck: true, th, sit: false, x, y: DECK + 1, z, ry: Math.atan2(Math.cos(th), Math.sin(th)), walk: [x, z] }); }   // 난간에 서서 밖을 본다
+// 2층에 있는 사람의 발 높이: 계단 위는 돈 각도만큼, 데크 고리 위는 DECK, 그 밖은 바닥
+function upY(x, z) {
+  if (Math.hypot(x - S[0], z - S[1]) < 1.35) {
+    const a = ((Math.atan2(z - S[1], x - S[0]) - A0) % (2 * PI) + 2 * PI) % (2 * PI);
+    return a <= TURN ? DECK * a / TURN : a < TURN + (2 * PI - TURN) / 2 ? DECK : 0;
+  }
+  const d = Math.hypot(x - T[0], z - T[1]);
+  return d > 3.8 && d < 5.6 ? DECK : 0;
+}
+// 계단을 한 바퀴 가까이 돌아 오르고, 데크 안쪽 길을 따라 쉴 자리까지(내려올 때는 거꾸로)
+function upPath(sp) {
+  const pts = [];
+  for (let k = 0; k <= 12; k++) pts.push(onStair(A0 + k / 12 * TURN));
+  const d = ((sp.th - STH + PI) % (2 * PI) + 2 * PI) % (2 * PI) - PI, n = Math.max(1, Math.ceil(Math.abs(d) / .2));
+  for (let k = 0; k <= n; k++) pts.push(deckPt(STH + d * k / n, 4.2));
+  pts.push(sp.walk);
+  return pts.map(([x, z]) => new THREE.Vector3(x, 0, z));
+}
+// 바닥 높이: 라운지는 한 단(-0.3) 두 단(-0.6) 내려간다. 걷는 사람의 발 높이에 쓴다
 function floorY(x, z) {
   const d = Math.hypot(x - L[0], z - L[1]);
   if (d < 3.3) return d < 2.45 ? -.6 : d < 2.6 ? -.6 + (d - 2.45) / .15 * .3 : d < 3.15 ? -.3 : -.3 + (d - 3.15) / .15 * .3;
-  return Math.hypot(x - CEO_AT[0], z - CEO_AT[1] - .1) < 1.75 ? .12 : 0;
+  return 0;
 }
 const deskBlocks = (host, list) => { host.updateMatrixWorld(true); for (const [x, z, r] of list) { const v = host.localToWorld(new THREE.Vector3(x, 0, z)); block(v.x, v.z, r); } };
 function addPerson(info) {
@@ -665,11 +705,11 @@ function addPerson(info) {
   const p = person(s);
   let host = scene;
   if (desk_) {
-    const [x, z, ry, kind] = seat, y0 = kind === 'ceo' ? .12 : 0, w = at(x, y0, z, ry);   // 대표 책상은 단상 위
-    host = at(x, y0, z, ry);
+    const [x, z, ry, kind] = seat, w = at(x, 0, z, ry);
+    host = at(x, 0, z, ry);
     scene.add(host);
     if (kind === 'board') { whiteboard(w, p, host); deskBlocks(host, [[-.6, 0, .5], [.6, 0, .5]]); }
-    else { desk(w, s, kind === 'ceo' ? undefined : kind); chair(w, 0, -.8, kind === 'ceo' ? 0 : rnd(-.15, .15)); p.g.position.set(0, .61, -.75); sit(p); host.add(p.g); deskBlocks(host, kind === 'ceo' ? [[-.55, 0, .7], [.55, 0, .7], [1.45, .25, .75], [0, -.8, .4]] : [[-.55, 0, .7], [.55, 0, .7], [0, -.8, .4]]); }
+    else { desk(w, s, kind === 'ceo' ? undefined : kind); chair(w, 0, -.8, kind === 'ceo' ? 0 : rnd(-.15, .15)); p.g.position.set(0, .61, -.75); sit(p); host.add(p.g); deskBlocks(host, [[-.55, 0, .7], [.55, 0, .7], [0, -.8, .4]]); }
     PROPS[role]?.(w, p);
     if (built) { scene.add(bake(w)); buildNav(); } else world.add(w);
   } else {
@@ -790,13 +830,15 @@ const localPt = (q, x, z) => { q.host.updateMatrixWorld(); return q.host.localTo
 const standPt = (q) => (q.standAt ||= nearestFree(q.stand ? floorOf(q) : localPt(q, 1.15, -.75)));   // 자리에서 일어나 설 곳
 function visitPt(host, i) {   // 손님이 와서 설 곳(여럿이면 옆으로 줄)
   if (host.sofa) { const c = new THREE.Vector3(L[0], 0, L[1]); return nearestFree(c.clone().add(floorOf(host).sub(c).setLength(3.8))); }
-  if (host.name === 'ceo') return nearestFree(localPt(host, (i % 2 ? 1 : -1) * (1.9 + Math.floor(i / 2) * .6) + (i % 2 ? .9 : 0), -.5));   // 대표 책상 양옆
+  if (host.name === 'ceo') return nearestFree(localPt(host, -.5 + (i % 3) * .7, 1.45 + Math.floor(i / 3) * .6));
   if (host.stand) return nearestFree(localPt(host, -1.0 + i * .6, 1.7));
   return nearestFree(localPt(host, 1.65, .2 + i * .6));
 }
-const walkTo = (q, dest) => new Promise((done) => { q.path = findPath(floorOf(q), dest); q.arrive = done; q.mode = 'walk'; });
+const walkPath = (q, pts) => new Promise((done) => { q.path = pts; q.arrive = done; q.mode = 'walk'; });
+const walkTo = (q, dest) => walkPath(q, findPath(floorOf(q), dest));
+const elev = (q, x, z) => (q.up ? upY(x, z) : floorY(x, z));
 function standUp(q) {
-  if (q.mode === 'rest') { leaveSpot(q); const g = q.p.g; g.rotation.set(0, g.rotation.y, 0); g.position.y = 1 + floorY(g.position.x, g.position.z); q.mode = 'stand'; return; }
+  if (q.mode === 'rest') { leaveSpot(q); const g = q.p.g; g.rotation.set(0, g.rotation.y, 0); g.position.y = 1 + elev(q, g.position.x, g.position.z); q.mode = 'stand'; return; }
   if (q.mode !== 'seat') return;
   scene.attach(q.p.g);
   const d = new THREE.Vector3(0, 0, 1).applyQuaternion(q.p.g.quaternion), g = q.p.g;
@@ -809,19 +851,32 @@ function restAt(q, sp) {
   scene.attach(q.p.g);
   q.p.g.position.set(sp.x, sp.y, sp.z); q.p.g.rotation.set(0, sp.ry, 0);
   if (sp.sit) sit(q.p);
-  q.spot = sp; q.mode = 'rest'; q.at = 'lounge'; q.tag.classList.add('rest');
+  q.spot = sp; q.up = !!sp.deck; q.mode = 'rest'; q.at = 'lounge'; q.tag.classList.add('rest');
 }
-const claimSpot = (q) => { const sp = SPOTS.find((x) => !x.who) || SPOTS[SPOTS.length - 1]; sp.who = q.name; return sp; };   // shortcut: 22칸이 다 차면 마지막 칸에 겹쳐 선다
+// 쉴 곳은 무작위: 대략 열에 넷은 2층 데크, 나머지는 라운지. shortcut: 30칸이 다 차면 마지막 칸에 겹쳐 선다
+function claimSpot(q) {
+  const free = SPOTS.filter((x) => !x.who), up = free.filter((x) => x.deck), down = free.filter((x) => !x.deck);
+  const pool = (Math.random() < .4 && up.length) || !down.length ? up : down;
+  const sp = pool[Math.floor(Math.random() * pool.length)] || SPOTS[SPOTS.length - 1];
+  sp.who = q.name; return sp;
+}
+// 쉬던 자리에서 일어난다. 2층이면 계단을 내려와 바닥에 선다
+async function getUp(q) {
+  const sp = q.spot;
+  standUp(q);
+  if (q.up) { await walkPath(q, [...upPath(sp).reverse(), STAIR_IN.clone()]); q.up = false; }
+}
 async function goLounge(q) {
   if (q.busy || q.at === 'lounge') return;
   const sp = claimSpot(q);
   standUp(q);
-  await walkTo(q, new THREE.Vector3(sp.walk[0], 0, sp.walk[1]));
+  if (sp.deck) { await walkTo(q, STAIR_IN); q.up = true; await walkPath(q, upPath(sp)); }
+  else await walkTo(q, new THREE.Vector3(sp.walk[0], 0, sp.walk[1]));
   restAt(q, sp);
 }
 async function goDesk(q) {
   if (q.at === 'desk') return;
-  standUp(q);
+  await getUp(q);
   await walkTo(q, standPt(q));
   sitDown(q);
 }
@@ -842,7 +897,7 @@ async function visit(q, host, walk, paper) {
       q.stack = q.stack.filter((x) => !x.userData.path); placeStack(q);
       carry(q, [...mine, newPaper(paper)]);
     } else if (walk.give) carry(q, [newPaper(paper)]);
-    standUp(q);
+    await getUp(q);
     await walkTo(q, visitPt(host, i));
     face(q, host); q.mode = 'stand';
     await wait(900);
@@ -888,7 +943,7 @@ function move(q, dt, t) {
   for (const [a, sx] of [[p.L, -1], [p.R, 1]]) { a.sh.rotation.set(held ? -.95 : sx * sw * .45, 0, -sx * .08); a.el.rotation.x = held ? -.75 : -.2; a.hand.rotation.set(0, 0, 0); }
   p.head.rotation.set(held ? .15 : 0, 0, 0);
   g.rotation.x = g.rotation.z = 0;
-  g.position.y = 1 + floorY(g.position.x, g.position.z) + (moving ? Math.abs(Math.cos(t * 9)) * .04 : 0);   // 라운지 계단을 내려가고 올라온다
+  g.position.y = 1 + elev(q, g.position.x, g.position.z) + (moving ? Math.abs(Math.cos(t * 9)) * .04 : 0);   // 라운지 계단을 내려가고 올라온다
 }
 
 // ---------- 머리 위 말풍선: 앞사람(화면 아래쪽)부터 자리를 잡고, 겹치는 뒤쪽 말풍선은 위로 밀어 올린다 ----------
@@ -1267,7 +1322,7 @@ function renderTodos(open) {
     if (t.type === '확인') {   // 끝난 실행의 보고: 전문은 접어 두고, 종료 또는 추가 지시
       const ref = t.refs[0] || '', on = repOpen.has(t.id);
       return `<div class="todo t-확인" data-id="${t.id}"><div class="hd"><span class="ty">확인</span> T${t.id} · ${esc(t.by)}</div>
-      <div class="desc">${inline(t.desc)}</div><div class="tx rep${on ? ' open more' : ''}" data-rep="${esc(ref)}">${esc(repText.get(ref) ?? '')}</div><i class="fold">${on ? '▴ 접기' : '▾ 더 보기'}</i>
+      <div class="desc mdx">${md(t.desc)}</div><div class="tx rep mdx${on ? ' open more' : ''}" data-rep="${esc(ref)}">${md(repText.get(ref) ?? '')}</div><i class="fold">${on ? '▴ 접기' : '▾ 더 보기'}</i>
       ${ref ? `<div class="refs"><a data-p="${esc(ref)}">보고 보기</a></div>` : ''}
       <textarea placeholder="이어서 시킬 일이 있으면 적고 [추가 지시]">${esc(texts.get(t.id + ':t') || '')}</textarea>
       <div class="files"><label>📎 파일 첨부<input type="file" multiple data-files></label> ${(picked.get(t.id) || []).map((f) => esc(f.name)).join(', ')}</div>
@@ -1277,7 +1332,7 @@ function renderTodos(open) {
       ? `<div class="opts">${t.options.map((o) => `<button data-pick="${esc(o)}" class="${pick === o ? 'sel' : ''}">${esc(o)}</button>`).join('')}</div><input placeholder="메모 (선택)" value="${esc(texts.get(t.id + ':n') || '')}">`
       : t.type === '입력' ? `<textarea placeholder="답을 입력하세요">${esc(texts.get(t.id + ':t') || '')}</textarea>` : `<input placeholder="메모 (선택) — 예: 세무사 통화 완료" value="${esc(texts.get(t.id + ':n') || '')}">`;
     return `<div class="todo t-${t.type}" data-id="${t.id}"><div class="hd"><span class="ty ${t.type}">${t.type}</span> T${t.id} · ${esc(t.by)}</div>
-      <div class="desc">${inline(t.desc)}</div>${refsEl(t.refs)}${control}
+      <div class="desc mdx">${md(t.desc)}</div>${refsEl(t.refs)}${control}
       <div class="files"><label>📎 파일 첨부<input type="file" multiple data-files></label> ${(picked.get(t.id) || []).map((f) => esc(f.name)).join(', ')}</div>
       <div class="ft"><span class="err"></span><button class="primary" data-submit>${t.type === '실행' ? '했어요' : '제출'}</button></div></div>`;
   }).join('') : '<div class="meta">할 일 없음</div>');
@@ -1288,7 +1343,7 @@ const repText = new Map(), repOpen = new Set();
 function loadReps() {
   for (const el of $('todos').querySelectorAll('.rep[data-rep]')) {
     const ref = el.dataset.rep;
-    const show = () => { el.textContent = repText.get(ref) || ''; if (!el.classList.contains('open')) el.classList.toggle('more', el.scrollHeight > el.clientHeight + 1); };
+    const show = () => { el.innerHTML = md(repText.get(ref) || ''); if (!el.classList.contains('open')) el.classList.toggle('more', el.scrollHeight > el.clientHeight + 1); };
     if (!ref) continue;
     if (repText.has(ref)) { show(); continue; }
     fetch('/api/file?path=' + encodeURIComponent(ref)).then((r) => (r.ok ? r.text() : '')).then((txt) => { repText.set(ref, txt.split(/\n---\n/).slice(1).join('\n---\n').trim() || txt.trim()); show(); }).catch(() => {});
@@ -1391,6 +1446,15 @@ function setOffice(on) {
   try { localStorage.setItem('office-view', on ? 'on' : 'off'); } catch {}
   if (on) { resize(); if (!looping) { clock.getDelta(); frame(); } }
 }
+$('restartbtn').onclick = async () => {
+  const b = $('restartbtn'); b.disabled = true; b.textContent = '🔄 재시작 중…';
+  try { await fetch('/api/restart', { method: 'POST' }); } catch {}
+  for (let i = 0; i < 60; i++) {   // 새 서버가 뜰 때까지(최대 30초) 기다렸다가 새로 고침
+    await new Promise((ok) => setTimeout(ok, 500));
+    try { if ((await fetch('/api/agents', { cache: 'no-store' })).ok) return location.reload(); } catch {}
+  }
+  b.disabled = false; b.textContent = '🔄 서버 재시작'; log('서버가 다시 켜지지 않았습니다 — 터미널에서 node tools/office.mjs를 실행해 주세요', 'bad');
+};
 $('viewbtn').onclick = () => setOffice(document.body.classList.contains('panelonly'));
 let viewPref = 'on'; try { viewPref = localStorage.getItem('office-view') || 'on'; } catch {}
 

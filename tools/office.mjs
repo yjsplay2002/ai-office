@@ -315,7 +315,15 @@ console.log(tg ? '텔레그램: 오피스 봇으로 알림 + 답장·지시 받�
 // Re-attach to runs that kept going while this server was down (finished ones are read to the end, then closed).
 for (const meta of reattach) attach(meta);
 
-http.createServer(async (req, res) => {
+// 대시보드의 재시작 버튼: 포트를 비운 뒤 같은 인자(같은 포트)로 새 서버를 띄우고 이 프로세스는 끝난다.
+// 실행 중인 claude는 분리된 프로세스라 계속 돌고, 새 서버가 부팅 때 다시 붙는다.
+function restart() {
+  const argv = process.argv.slice(1).concat(arg('--port') ? [] : ['--port', String(port)]);
+  server.close(() => spawn(process.execPath, argv, { stdio: 'inherit', detached: true, windowsHide: true }).once('spawn', () => process.exit(0)));
+  server.closeAllConnections();   // SSE 연결이 남아 있으면 close가 끝나지 않는다
+}
+
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   try {
@@ -366,6 +374,7 @@ http.createServer(async (req, res) => {
       try { startInstruction(prompt, Array.isArray(files) ? files : []); } catch (err) { return json(res, 400, { error: err.message }); }
       return json(res, 200, { ok: true });
     }
+    if (req.method === 'POST' && p === '/api/restart') { json(res, 200, { ok: true }); return setTimeout(restart, 100); }
     if (req.method === 'POST' && p === '/api/cancel') { cancel(); return json(res, 200, { ok: true }); }
     if (req.method === 'POST' && p === '/api/staff') {
       const b = await body(req), str = (v) => (v === undefined ? undefined : String(v));
