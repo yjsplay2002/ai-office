@@ -309,8 +309,8 @@ const json = (res, code, obj) => { res.writeHead(code, { 'content-type': 'applic
 const body = (req) => new Promise((ok) => { let s = ''; req.on('data', (d) => (s += d)); req.on('end', () => { try { ok(JSON.parse(s || '{}')); } catch { ok({}); } }); });
 
 // ---------- 대표 텔레그램: 알림 + 답장·지시·첨부 (tools/telegram.mjs) ----------
-const officeUrl = process.env.OFFICE_URL || `http://127.0.0.1:${port}`;
 const tgCfg = replay ? null : telegramConfig(root);
+const officeUrl = tgCfg?.url || process.env.OFFICE_URL || `http://127.0.0.1:${port}`;
 const tg = tgCfg && createTelegram({
   cfg: tgCfg, url: officeUrl, runDir, todos: () => todos().filter((t) => !t.done),
   status: () => (runs.size ? `작업 ${runs.size}건 진행 중` : '진행 중인 작업 없음') + ` · 열린 TODO ${todos().filter((t) => !t.done).length}건\n${officeUrl}`,

@@ -56,3 +56,14 @@ assert.deepEqual(parseCommand('종료', { replyTodo: 12, todos: ct }), { kind: '
 assert.deepEqual(parseCommand('추천안으로 진행해', { replyTodo: 12, todos: ct }), { kind: 'answer', id: 12, answer: '추가 지시', note: '추천안으로 진행해' });
 assert.deepEqual(parseCommand('T12 추가 지시 표로 정리', { todos: ct }), { kind: 'answer', id: 12, answer: '추가 지시', note: '표로 정리' });
 console.log('telegram ok');
+
+// 알림 링크 주소는 .office-telegram.env의 OFFICE_URL에서도 읽는다(환경 변수가 우선)
+{
+  const { telegramConfig } = await import('./telegram.mjs');
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const os = await import('node:os'), path = await import('node:path');
+  const d = mkdtempSync(path.join(os.tmpdir(), 'tg-'));
+  writeFileSync(path.join(d, '.office-telegram.env'), 'TELEGRAM_BOT_TOKEN=x\nTELEGRAM_CHAT_ID=1\nOFFICE_URL=https://a.example\n');
+  assert.equal(telegramConfig(d, {}).url, 'https://a.example');
+  assert.equal(telegramConfig(d, { OFFICE_URL: 'https://b' }).url, 'https://b');
+}

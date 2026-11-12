@@ -13,7 +13,8 @@ export function telegramConfig(root, env = process.env) {
   try { pluginChat = JSON.parse(readFileSync(path.join(os.homedir(), '.claude', 'channels', 'telegram', 'access.json'), 'utf8')).allowFrom?.[0]; } catch {}
   const chat = String(env.OFFICE_TG_CHAT || own.TELEGRAM_CHAT_ID || pluginChat || '');
   const token = env.OFFICE_TG_TOKEN || own.TELEGRAM_BOT_TOKEN;
-  return token && chat ? { token, chat, inbound: true } : null;
+  // url: 알림 링크 주소. .office-telegram.env에 두면 tools/가 플러그인 업데이트로 덮여도 남는다
+  return token && chat ? { token, chat, inbound: true, url: env.OFFICE_URL || own.OFFICE_URL } : null;
 }
 
 // Send files to the CEO: images as albums (10 per message), anything else as documents. Caption goes on the first.

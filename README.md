@@ -52,7 +52,7 @@ node tools/office.mjs --replay tools/fixtures/demo-run.jsonl   # 사용량 0, �
 - 대시보드에서 실행되는 PM은 `--permission-mode bypassPermissions`로 돕니다. 믿을 수 있는 프로젝트에서만 쓰세요.
 - 대시보드에서 도는 실행은 `--strict-mcp-config --disable-slash-commands`로 MCP 서버·스킬을 싣지 않습니다(토큰 절약, 권한 우회 실행에 개인 커넥터를 넣지 않기 위해). 그래서 대시보드 경유의 브라우저 담당(`console`)은 Bash로 부르는 CLI 브라우저 도구가 필요합니다. 대화형 Claude Code 세션에서는 평소 MCP·스킬을 그대로 씁니다.
 - init이 만드는 `.claude/settings.json`에는 권한 우회 모드가 없습니다. 대화형 세션에서 `dev`·`console`의 Bash 호출은 승인을 물어봅니다.
-- 원격으로 열 때 텔레그램 메시지에 넣을 주소는 `OFFICE_URL` 환경 변수로 바꿉니다.
+- 원격으로 열 때 텔레그램 메시지에 넣을 주소는 `.office-telegram.env`에 `OFFICE_URL=https://...` 한 줄을 넣거나 `OFFICE_URL` 환경 변수로 바꿉니다.
 - Codex 사용자는 `AGENTS.md`·팀원 정의·`board/`를 그대로 쓰지만, v1의 실시간 대시보드는 `claude -p`만 지원합니다.
 
 ## 텔레그램 알림 (선택)
