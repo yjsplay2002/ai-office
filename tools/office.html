@@ -102,7 +102,8 @@
   .mdx hr { border:0; border-top:1px solid var(--line); margin:.6em 0; }
   .mdx .tbl { overflow-x:auto; margin:.4em 0; } .mdx table { border-collapse:collapse; font-size:12px; font-weight:400; }
   .mdx th, .mdx td { border:1px solid var(--line); padding:3px 7px; text-align:left; vertical-align:top; } .mdx th { background:var(--well); font-weight:700; }
-  .todo .rep.tx:not(.open) { display:block; -webkit-line-clamp:none; max-height:6.2em; }   /* 블록(표·목록)이 섞여도 접힌 높이로 자른다 */
+  .tx.mdx:not(.open) { display:block; -webkit-line-clamp:none; max-height:6.2em; }   /* 블록(표·목록)이 섞여도 접힌 높이로 자른다 */
+  #hist .tx.mdx:not(.open) { max-height:4.7em; }
   .todo .refs { margin-top:4px; font-size:11px; overflow-wrap:anywhere; } .todo .refs a { color:var(--link); cursor:pointer; margin-right:6px; }
   .todo .opts { display:flex; flex-wrap:wrap; gap:7px; margin-top:7px; }
   .todo .opts button.sel { background:var(--sel); border-color:transparent; }
@@ -129,16 +130,16 @@
   .msg { display:grid; grid-template-columns:auto 1fr; column-gap:8px; padding:5px 0; font-size:13px; line-height:1.55; }
   .msg time { grid-row:span 2; color:var(--dim); font:11px/1.9 ui-monospace,Consolas,monospace; font-variant-numeric:tabular-nums; }
   .msg b { font-size:12px; font-weight:600; color:var(--dim); }
-  .msg p { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
-  .msg.ceo p { background:#f3e3c4; border:1px solid rgba(168,97,47,.28); border-radius:4px 10px 10px 10px; padding:6px 10px; margin-top:2px; }
+  .msg .mb { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .msg.ceo .mb { background:#f3e3c4; border:1px solid rgba(168,97,47,.28); border-radius:4px 10px 10px 10px; padding:6px 10px; margin-top:2px; }
   .msg.ceo b { color:var(--ceo); }
   .msg.pm b, .msg.go b { color:var(--link); }
   .msg.done b { color:var(--ok); }
   .msg.tool { padding:1px 0; font-size:12px; color:var(--dim); }
   .msg.tool b { display:none; }
-  .msg.tool p { grid-row:span 2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .msg.sys p { color:var(--dim); font-size:12px; }
-  .msg.bad p { color:var(--bad); }
+  .msg.tool .mb { grid-row:span 2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .msg.sys .mb { color:var(--dim); font-size:12px; }
+  .msg.bad .mb { color:var(--bad); }
   .msg a { color:var(--link); cursor:pointer; }
   .msg code { font:.9em ui-monospace,Consolas,monospace; background:rgba(90,70,40,.1); border-radius:3px; padding:0 .3em; }
   .msg strong { color:#1d160e; }
@@ -298,6 +299,10 @@ import { createMapper, createHistory, motionOf, instructionMotion, todoMotion, g
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// 한 줄 요약용: 마크다운 기호(**, `, #, >, 표 줄·구분선, 링크)를 걷어 낸 글
+const plain = (s) => String(s ?? '').replace(/\r/g, '').split('\n').filter((l) => !/^\s*\|?\s*:?-{2,}[-|: ]*$/.test(l))
+  .map((l) => l.replace(/^\s*(#{1,6}|>)\s*/, '').replace(/^\s*\|(.*?)\|?\s*$/, (_, c) => c.split('|').map((x) => x.trim()).join(' · ')))
+  .join('\n').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
 const cut = (s, n) => (s = String(s || '')).length > n ? s.slice(0, n - 1) + '…' : s;
 // kind: ceo | pm | go | tool | done | sys | bad. who = 말한 사람. Keeps the last 400 lines.
 let evTime = null;   // time of the server event being handled right now (history replays keep their real times)
@@ -309,7 +314,7 @@ function log(text, kind = 'sys', who = '', report = null) {
   const m = document.createElement('div');
   m.className = 'msg ' + kind;
   m.dataset.raw = text.trim().slice(0, 60);
-  m.innerHTML = `<time>${hhmm(evTime ?? Date.now())}</time><b>${esc(who)}</b><p>${inline(text, kind !== 'tool')}${report != null ? ` <a data-r="${report}">전체 보기</a>` : ''}</p>`;
+  m.innerHTML = `<time>${hhmm(evTime ?? Date.now())}</time><b>${esc(who)}</b><div class="mb${kind === 'tool' ? '' : ' mdx'}">${kind === 'tool' ? inline(text, false) : md(text)}${report != null ? ` <a data-r="${report}">전체 보기</a>` : ''}</div>`;
   el.append(m);
   while (el.children.length > 400) el.firstElementChild.remove();
   if (stick) el.scrollTop = el.scrollHeight;
@@ -972,7 +977,7 @@ function paint(name) {
     const t0 = openTodos[0];
     q.busy = !!t0;
     q.bub.className = 'bub' + (q.busy ? '' : ' idle');
-    q.bub.innerHTML = t0 ? `<strong>결정 기다리는 TODO ${openTodos.length}건</strong><small>${esc(cut(`T${t0.id} ${t0.desc.split('\n')[0]}`, 32))}</small>` : '<strong>결정·승인</strong>';
+    q.bub.innerHTML = t0 ? `<strong>결정 기다리는 TODO ${openTodos.length}건</strong><small>${esc(cut(`T${t0.id} ${plain(t0.desc).split('\n')[0]}`, 32))}</small>` : '<strong>결정·승인</strong>';
     return;
   }
   const k = hist.latest(name), last = k?.ev.at(-1);
@@ -981,7 +986,7 @@ function paint(name) {
   if (q.busy) { head = k?.title || '작업 중'; sub = !last ? '' : last[1] === 'say' ? last[2] : `${VERB[last[1]]} · ${last[2]}`; }
   else if (askCeo.has(name)) head = `대표 답 기다림 · T${askCeo.get(name)}`;
   q.bub.className = 'bub' + (q.busy ? '' : ' idle');
-  q.bub.innerHTML = `<strong>${esc(cut(head, 24))}</strong>${sub ? `<small>${esc(cut(sub, 32))}</small>` : ''}`;
+  q.bub.innerHTML = `<strong>${esc(cut(plain(head), 24))}</strong>${sub ? `<small>${esc(cut(plain(sub).replace(/\s*\n\s*/g, ' '), 32))}</small>` : ''}`;
   if (focusId === name) openHist(name, true);
   settle(q);
 }
@@ -998,9 +1003,9 @@ function openHist(name, keep) {
   if (!keep) unfolded.clear();
   focusId = name;
   const key = (t, kind, text) => esc(`${t}|${kind}|${String(text).slice(0, 80)}`);
-  el.innerHTML = `<div class="hh"><b>${esc(k ? k.title : '대기')}</b><button data-x>닫기</button></div>
+  el.innerHTML = `<div class="hh"><b>${esc(k ? plain(k.title) : '대기')}</b><button data-x>닫기</button></div>
     <div class="meta"><i class="dot" style="background:${q.c}"></i>${esc(q.label)}${k ? ` · 시작 ${hhmm(k.start)} · ${esc(k.state)} · 이벤트 ${k.ev.length}건` : ''}</div>` +
-    (k ? `<ol>${k.ev.map(([t, kind, text, path]) => `<li style="--k:${(KIND[kind] || KIND.run)[1]}"><time>${hhmm(t)}</time><em>${(KIND[kind] || KIND.run)[0]}</em><span class="tx${unfolded.has(key(t, kind, text)) ? ' open more' : ''}" data-k="${key(t, kind, text)}">${esc(text)}</span><i class="fold">${unfolded.has(key(t, kind, text)) ? '▴ 접기' : '▾ 더 보기'}</i>${path ? `<u data-p="${esc(path)}">${esc(path)}</u>` : ''}</li>`).join('')}</ol>`
+    (k ? `<ol>${k.ev.map(([t, kind, text, path]) => `<li style="--k:${(KIND[kind] || KIND.run)[1]}"><time>${hhmm(t)}</time><em>${(KIND[kind] || KIND.run)[0]}</em><div class="tx mdx${unfolded.has(key(t, kind, text)) ? ' open more' : ''}" data-k="${key(t, kind, text)}">${md(text)}</div><i class="fold">${unfolded.has(key(t, kind, text)) ? '▴ 접기' : '▾ 더 보기'}</i>${path ? `<u data-p="${esc(path)}">${esc(path)}</u>` : ''}</li>`).join('')}</ol>`
       : '<div class="empty">최근 작업 기록이 없습니다. 오피스가 쉬다가 새 지시를 받으면 기록을 새로 모읍니다.</div>');
   el.classList.add('open');
   for (const x of el.querySelectorAll('.tx:not(.open)')) x.classList.toggle('more', x.scrollHeight > x.clientHeight + 1);
@@ -1221,7 +1226,7 @@ const reports = [];
 function addReport(ev) {
   reports.unshift({ title: `${hhmm(evTime ?? Date.now())} 최종 보고${ev.error ? ' (오류)' : ''}`, text: ev.text });
   $('nrep').textContent = reports.length;
-  $('reports').innerHTML = reports.map((r, i) => `<li><a data-r="${i}">${esc(r.title)}</a><div class="meta">${esc(r.text.slice(0, 70))}</div></li>`).join(''); more('reports');
+  $('reports').innerHTML = reports.map((r, i) => `<li><a data-r="${i}">${esc(plain(r.title))}</a><div class="meta">${esc(plain(r.text).replace(/\s*\n\s*/g, ' ').slice(0, 70))}</div></li>`).join(''); more('reports');
   // reports are unshifted, so the newest is index 0. The result text usually repeats PM's last message.
   const last = $('log').lastElementChild;
   if (last?.classList.contains('pm') && last.dataset.raw === (ev.text || '').trim().slice(0, 60)) last.remove();
@@ -1297,7 +1302,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) { un
 let knownTodos = null;   // ids already on screen; the first load never chimes
 function noticeTodos(open) {
   if (knownTodos) for (const t of open) if (!knownTodos.has(t.id)) {
-    alertCeo('todo', `대표 TODO T${t.id} · ${t.type}`, `${t.by}: ${t.desc.split('\n')[0]}`);
+    alertCeo('todo', `대표 TODO T${t.id} · ${t.type}`, `${t.by}: ${plain(t.desc).split('\n')[0]}`);
     perform(todoMotion(t, [...people.keys()]), { paper: { title: `T${t.id} ${t.type}`, text: t.desc } });   // 물어본 사람이 대표에게 서류를 가져간다
   }
   knownTodos = new Set([...(knownTodos || []), ...open.map((t) => t.id)]);
@@ -1537,7 +1542,7 @@ function handle(ev, live) {
     case 'limit': gauge('5', ev.five); gauge('7', ev.seven); break;
     case 'result':
       addReport(ev);
-      if (live) { alertCeo('report', ev.error ? '최종 보고 (오류)' : '최종 보고', (ev.text || '').split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').slice(0, 120) || ''); refreshBoard(); }
+      if (live) { alertCeo('report', ev.error ? '최종 보고 (오류)' : '최종 보고', plain(ev.text).split('\n').find((l) => l.trim())?.slice(0, 120) || ''); refreshBoard(); }
       break;
   }
   if (ev.agent) paint(ev.agent);
