@@ -1156,7 +1156,7 @@ function mediaEl(rel, thumbs = true) {
 }
 // TODO 근거·파일·QR (서버 parseTodos가 board/ 경로로 풀어 줌): .md는 문서 링크, 이미지는 썸네일
 const refsEl = (refs = []) => refs.length ? `<div class="refs">${refs.map((p) => /\.md$/i.test(p)
-  ? `<a data-p="${esc(p)}">${esc(p.split('/').pop())}</a>` : mediaEl(p)).join(' ')}</div>` : '';
+  ? `<a data-p="${esc(p)}">${p.startsWith('board/reports/') ? '📄 보고 보기' : esc(p.split('/').pop())}</a>` : mediaEl(p)).join(' ')}</div>` : '';
 // 썸네일 → 크게, HTML 미리보기 → sandbox iframe. 문서 뷰어 위에 겹쳐 열려서 닫으면 읽던 문서로 돌아간다.
 function zoom(title, url, frame) {
   Object.assign($('ztitle'), { href: url, textContent: title + ' — 새 탭으로 열기' });

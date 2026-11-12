@@ -22,7 +22,7 @@ export function parseTodos(text) {
     if (type === '확인') options = CHECK;
     const status = field('상태') || '대기';
     const desc = lines.filter((l) => l.trim() && !l.startsWith('- ') && !l.startsWith('  ')).join('\n').trim();
-    const refs = refPaths(lines.filter((l) => /^- (근거|파일|QR):/.test(l)));
+    const refs = refPaths(lines.filter((l) => /^- (근거|파일|QR|보고):/.test(l)));
     return { id: Number(m[1]), type, by: m[3], desc, options, ref: field('근거'), refs, status, done: status.startsWith('완료'), answer: field('답') };
   }).filter(Boolean);
 }
@@ -65,6 +65,23 @@ export function answerTodo(text, id, answer, note, today) {
   block.push(`- 상태: 완료 ${today}`, `- 답: ${first}`, ...rest.map((l) => '  ' + l), '');
   lines.splice(start, end - start, ...block);
   return { text: lines.join('\n'), todo, full };
+}
+
+// 끝난 실행의 보고는 대표에게 한 번만 간다. 실행 중에 새로 올라온 미처리 TODO(결정·승인 등)가 있으면 '확인'을 따로 만들지 않고
+// 그 TODO들에 '- 보고:' 줄로 붙인다. 없거나 오류로 끝났으면 '확인' TODO 하나. before = 실행을 시작할 때 있던 TODO 번호들.
+// -> { text, ids(보고가 실린 TODO), check(확인을 새로 만들었나) }
+export function addRunReport(text, { summary, ref, error, before = [] }) {
+  const fresh = error ? [] : parseTodos(String(text)).filter((t) => !t.done && t.type !== '확인' && !before.includes(t.id));
+  if (!fresh.length) { const r = addCheckTodo(text, { summary, ref, error }); return { text: r.text, ids: [r.id], check: true }; }
+  const nl = /\r\n/.test(text) ? '\r\n' : '\n', lines = String(text).split(/\r?\n/);
+  for (const t of fresh) {
+    const start = lines.findIndex((l) => new RegExp(`^### T${t.id}\\s*·`).test(l));
+    let end = lines.findIndex((l, i) => i > start && l.startsWith('### '));
+    if (end < 0) end = lines.length;
+    const st = lines.findIndex((l, i) => i > start && i < end && l.startsWith('- 상태:'));
+    lines.splice(st >= 0 ? st : end, 0, `- 보고: ${ref}`);
+  }
+  return { text: lines.join(nl), ids: fresh.map((t) => t.id), check: false };
 }
 
 // A finished dashboard run -> one '확인' TODO at the end of todos.md. Numbered from the text passed in, so read the file

@@ -118,7 +118,7 @@ export function createTelegram({ cfg, url, runDir, todos, status, onRun, onAnswe
     : `${t.type === '실행' ? '했으면 [완료]를' : t.type === '승인' ? '승인/반려를' : '보기 버튼을'} 누르세요. 이유·메모·파일은 누른 뒤 바로 보내면 함께 기록돼요. 이 메시지에 답장해도 돼요.`);
   const todoText = (t) => `📋 대표 TODO T${t.id} · ${t.type} · ${t.by}\n${t.desc}${t.ref ? `\n근거: ${t.ref}` : ''}\n\n${howTo(t)}`;
 
-  async function notifyTodo(t) { const m = await send(`${todoText(t)}\n${url}`, buttons(t)); if (m) remember(m.message_id, t.id); }
+  async function notifyTodo(t, pre = '') { const m = await send(`${pre ? pre + '\n\n' : ''}${todoText(t)}\n${url}`, buttons(t)); if (m) remember(m.message_id, t.id); }   // pre: 함께 보낼 최종 보고
   const notify = (text) => send(`${text}\n\n${url}`);
   const progress = (text) => send(text, { disable_notification: true });   // 중간 보고는 무음
 

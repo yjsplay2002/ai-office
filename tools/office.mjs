@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, exi
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseTodos, answerTodo, uploadPlan, addCheckTodo, followUp } from './todos.mjs';
+import { parseTodos, answerTodo, uploadPlan, addRunReport, followUp } from './todos.mjs';
 import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
@@ -73,7 +73,7 @@ const busy = () => runs.size > 0;
 
 // Every instruction / TODO answer starts its own PM run immediately — no queue.
 function startRun(prompt) {
-  const id = nextRun++;
+  const id = nextRun++, before = todoIds();
   if (replay) {
     const send = (obj) => broadcast({ ...obj, _run: id });
     runs.set(id, null);
@@ -85,7 +85,7 @@ function startRun(prompt) {
       if (i >= lines.length) { runs.delete(id); return send({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, ended: true }); }
       const obj = JSON.parse(lines[i++]);
       send(obj);
-      if (obj.type === 'result') reportTodo(id, prompt, obj);
+      if (obj.type === 'result') reportTodo(id, prompt, obj, before);
       runs.set(id, { timer: setTimeout(tick, 700) });
     };
     return tick();
@@ -105,7 +105,7 @@ function startRun(prompt) {
   child.on('error', () => {});   // a spawn failure shows up as an already-dead pid below
   child.stdin.end(prompt);
   child.unref();
-  const meta = { id, pid: child.pid, prompt, t: Date.now() };
+  const meta = { id, pid: child.pid, prompt, t: Date.now(), before };
   writeFileSync(base + '.json', JSON.stringify(meta));
   attach(meta);
 }
@@ -118,7 +118,7 @@ const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); ret
 
 // Follow a run's output files until its process is gone, then finish it and delete the files.
 // shortcut: liveness is by pid only; a pid reused while the server was down would look alive until it exits.
-function attach({ id, pid, prompt, t: started }) {
+function attach({ id, pid, prompt, t: started, before = [] }) {
   const base = path.join(runDir, String(id));
   const send = (obj) => broadcast({ ...obj, _run: id });
   // 중간 보고: PM이 팀원을 부르고 돌려받을 때마다 텔레그램에 무음으로 알린다. LLM을 안 써서 토큰이 들지 않는다.
@@ -163,8 +163,12 @@ function attach({ id, pid, prompt, t: started }) {
         if (fresh) progress(obj, ts);
         // 직원별 토큰은 이 오피스가 띄운 세션만 센다(같은 폴더의 다른 Claude 작업과 섞이지 않게). tools/usage.mjs가 읽는다.
         if (fresh && obj.type === 'system' && obj.subtype === 'init' && obj.session_id) appendFileSync(path.join(runDir, 'sessions.txt'), obj.session_id + '\n');
-        if (fresh && obj.type === 'result') reportTodo(id, prompt, obj);
-        if (fresh && obj.type === 'result') tg?.notify(`${obj.is_error ? '⚠️ 최종 보고 (오류)' : '✅ 최종 보고'}\n${String(obj.result || '').trim().slice(0, 600)}`);
+        if (fresh && obj.type === 'result') {   // 텔레그램도 한 번만: 최종 보고를 그 보고가 실린 TODO(버튼 포함)와 한 메시지로
+          const ids = reportTodo(id, prompt, obj, before), msg = `${obj.is_error ? '⚠️ 최종 보고 (오류)' : '✅ 최종 보고'}\n${String(obj.result || '').trim().slice(0, 600)}`;
+          const list = todos().filter((t) => ids.includes(t.id));
+          for (const t of list) seenTodos?.add(t.id);
+          if (list.length) list.forEach((t, i) => tg?.notifyTodo(t, i ? '' : msg)); else tg?.notify(msg);
+        }
       }
     }
   };
@@ -238,21 +242,24 @@ function listBoard(dir = board) {
 
 const todosFile = path.join(board, 'todos.md');
 const todos = () => (existsSync(todosFile) ? parseTodos(readFileSync(todosFile, 'utf8')) : []);
+const todoIds = () => { try { return todos().map((t) => t.id); } catch { return []; } };
 
-// 실행이 최종 보고로 끝나면 보고 전문을 board/reports/에 남기고 대표 TODO에 '확인'을 올린다(오류로 끝나도 올린다. 취소된 실행은 결과가 없어 올리지 않음).
+// 실행이 최종 보고로 끝나면 보고 전문을 board/reports/에 남기고, 그 실행이 올린 TODO에 붙이거나(없으면) '확인'을 올린다(addRunReport).
+// 오류로 끝나도 올린다. 취소된 실행은 결과가 없어 올리지 않음. -> 보고가 실린 TODO 번호들
 // board/가 없는 폴더(플러그인 저장소에서 리플레이 등)에는 쓰지 않는다.
-function reportTodo(run, prompt, obj) {
-  if (!existsSync(board)) return;
+function reportTodo(run, prompt, obj, before = []) {
+  if (!existsSync(board)) return [];
   try {
     const d = new Date(), day = d.toLocaleDateString('sv'), hm = d.toTimeString().slice(0, 8).replace(/:/g, '');
     const rel = `board/reports/${day}-${hm}-run${run}.md`, text = String(obj.result || '').trim();
     mkdirSync(path.join(board, 'reports'), { recursive: true });
     const ask = String(prompt || '').split('\n')[0].slice(0, 300);
     writeFileSync(path.join(root, rel), `# 최종 보고 · 대시보드 실행 ${run}\n\n- 시각: ${day} ${d.toTimeString().slice(0, 5)}\n- 결과: ${obj.is_error ? '오류' : '완료'}\n- 지시: ${ask}\n\n---\n\n${text}\n`);
-    const r = addCheckTodo(existsSync(todosFile) ? readFileSync(todosFile, 'utf8') : '', { summary: text, ref: rel, error: !!obj.is_error });   // 다른 PM 세션도 쓰므로 바로 직전에 읽는다
+    const r = addRunReport(existsSync(todosFile) ? readFileSync(todosFile, 'utf8') : '', { summary: text, ref: rel, error: !!obj.is_error, before });   // 다른 PM 세션도 쓰므로 바로 직전에 읽는다
     writeFileSync(todosFile, r.text);
-    office({ log: `보고 확인 TODO T${r.id} 추가` });
-  } catch (err) { office({ log: '보고 TODO 추가 실패: ' + err.message }); }
+    office({ log: r.check ? `보고 확인 TODO T${r.ids[0]} 추가` : `보고를 T${r.ids.join(', T')}에 붙임` });
+    return r.ids;
+  } catch (err) { office({ log: '보고 TODO 추가 실패: ' + err.message }); return []; }
 }
 
 function checkUploads(dir, files) {

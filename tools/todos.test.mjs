@@ -1,6 +1,6 @@
 // node tools/todos.test.mjs
 import assert from 'node:assert/strict';
-import { parseTodos, answerTodo, uploadPlan, addCheckTodo, followUp } from './todos.mjs';
+import { parseTodos, answerTodo, uploadPlan, addCheckTodo, addRunReport, followUp } from './todos.mjs';
 
 const src = `# 대표 TODO\r\n\r\n### T1 · 결정 · plan\r\n가격을 골라 주세요\r\n- 옵션: $14.99 / $19.99\r\n- 근거: board/plans/p.md\r\n- 상태: 대기\r\n\r\n### T2 · 입력 · research\r\n서비스 아이디어를 알려 주세요\r\n\r\n### T3 · 승인 · legal\r\n약관 초안 승인\r\n### 잘못된 머리글\r\n`;
 const t = parseTodos(src);
@@ -54,6 +54,19 @@ assert.equal(followUp(closed.todo, closed.full), null);   // 종료: 새 PM 실�
 const more = answerTodo(c.text, 42, '추가 지시', '추천안으로 세부 계획까지', '2026-11-12');
 assert.ok(more.text.includes('- 답: 추가 지시: 추천안으로 세부 계획까지'));
 assert.equal(followUp(more.todo, more.full), '- T42 [확인 · pm] 보고를 확인해 주세요: 조사와 가격 선택지를 board/에 남겼습니다. → 추가 지시: 추천안으로 세부 계획까지 (보고 전문: board/reports/2026-11-12-081000-run3.md)');
+// 하나의 일은 한 번만 보고: 실행 중 새로 올라온 결정 TODO가 있으면 거기에 보고를 붙이고 '확인'은 만들지 않는다
+const run0 = '# 대표 TODO\n\n### T1 · 결정 · plan\n옛 결정\n- 상태: 대기\n\n### T2 · 결정 · plan\n가격을 골라 주세요\n- 옵션: A / B\n- 근거: board/plan/p.md\n- 상태: 대기\n\n### T3 · 입력 · dev\n계정 이메일\n- 상태: 대기\n';
+const rr = addRunReport(run0, { summary: '가격 결정은 TODO로 올렸습니다.', ref: 'board/reports/r1.md', before: [1] });
+assert.deepEqual([rr.ids, rr.check], [[2, 3], false]);
+const rt = parseTodos(rr.text);
+assert.equal(rt.length, 3);   // 확인 TODO 없음
+assert.deepEqual(rt.find((x) => x.id === 2).refs, ['board/plan/p.md', 'board/reports/r1.md']);
+assert.deepEqual(rt.find((x) => x.id === 3).refs, ['board/reports/r1.md']);
+assert.deepEqual(rt.find((x) => x.id === 1).refs, []);   // 실행 전부터 있던 TODO는 그대로
+assert.ok(rr.text.includes('- 보고: board/reports/r1.md\n- 상태: 대기'));
+// 새 TODO가 없거나 오류로 끝나면 지금처럼 확인 TODO 하나
+assert.equal(addRunReport(run0, { summary: 'x', ref: 'board/r.md', before: [1, 2, 3] }).check, true);
+assert.equal(addRunReport(run0, { summary: 'x', ref: 'board/r.md', error: true, before: [1] }).check, true);
 assert.equal(followUp(t[0], '$19.99'), '- T1 [결정 · plan] 가격을 골라 주세요 → $19.99');
 console.log('todos ok');
 
