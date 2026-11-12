@@ -60,6 +60,8 @@
   .tag.rest .bub { display:none; }   /* 라운지에서 쉬는 사람은 이름표만(말풍선이 겹치지 않게) */
   .share { border-radius:12px; overflow:hidden; background:var(--card); border:var(--bd); }
   .sh-top { padding:7px 10px 5px; } .sh-top b, .sh-top span { display:block; } .sh-top b { font:700 15px var(--serif); } .sh-top span { font-size:10px; opacity:.8; }
+  .sh-top { position:relative; } #shmin { position:absolute; right:6px; top:6px; font-size:11px; padding:0 7px; }
+  #shareBox.min .sh-shot { display:none; }   /* 최소화: 장면 스냅샷 없이 숫자만 */
   .sh-shot { display:block; width:100%; height:118px; background:var(--sky); }
   .sh-grid { display:grid; grid-template-columns:repeat(4,auto); gap:2px; text-align:center; padding:6px 6px 2px; }
   .sh-grid b { display:block; font:700 21px/1.2 var(--serif); color:var(--accent); white-space:nowrap; } .sh-grid div:nth-child(3) b { font-size:14px; line-height:1.6; }
@@ -252,7 +254,7 @@
     <button id="viewbtn" title="3D 오피스를 끄면 렌더링을 멈추고 패널을 화면 전체로 봅니다">🖥 오피스 끄기</button>
   </div>
   <div class="ov" id="shareBox">
-    <div class="share"><div class="sh-top"><b>오늘 우리 회사가 한 일</b><span id="shdate"></span></div><canvas class="sh-shot" id="shshot" width="580" height="236"></canvas>
+    <div class="share"><div class="sh-top"><button id="shmin" title="장면 이미지 숨기고 숫자만 보기">–</button><b>오늘 우리 회사가 한 일</b><span id="shdate"></span></div><canvas class="sh-shot" id="shshot" width="580" height="236"></canvas>
       <div class="sh-grid"><div><b id="sh1">–</b><span>오늘 만든 문서</span></div><div><b id="sh2">–</b><span>쓴 토큰</span></div><div><b id="sh3">–</b><span>가장 바쁜 직원</span></div><div><b id="sh4">–</b><span>대표 결정</span></div></div>
       <div class="sh-foot" id="shfoot"></div></div>
     <div class="sh-btns"><button class="primary" id="shsave">PNG 저장</button><button id="shcopy">복사</button></div>
@@ -1000,7 +1002,7 @@ function frame() {
   camera.lookAt(LK);
   renderer.render(scene, camera);
   placeLabels();
-  if (++frames % 90 === 3) snap();
+  if (++frames % 90 === 3 && !$('shareBox').classList.contains('min')) snap();   // 최소화 중엔 스냅샷을 찍지 않는다
   requestAnimationFrame(frame);
 }
 function resize() {
@@ -1031,6 +1033,9 @@ function cardBlob() {
   g.textAlign = 'right'; g.fillStyle = '#8a7a62'; g.font = '18px "Gowun Dodum", sans-serif'; g.fillText($('shfoot').textContent, W - 30, H - 30);
   return new Promise((ok) => c.toBlob(ok, 'image/png'));
 }
+function shMin(on) { $('shareBox').classList.toggle('min', on); $('shmin').textContent = on ? '+' : '–'; $('shmin').title = on ? '장면 이미지 보기' : '장면 이미지 숨기고 숫자만 보기'; if (!on) snap(); }
+try { shMin(localStorage.getItem('ai-office.shmin') === '1'); } catch {}
+$('shmin').onclick = () => { const on = !$('shareBox').classList.contains('min'); shMin(on); try { localStorage.setItem('ai-office.shmin', on ? '1' : '0'); } catch {} };
 $('shsave').onclick = async () => {
   const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(await cardBlob()), download: `ai-office-${new Date().toLocaleDateString('sv')}.png` });
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
