@@ -502,7 +502,15 @@ const LOOK={pm:{hair:'#3b2a20',style:'part',top:'vest',pants:'#3d4654',shoes:'#6
   plan:{hair:'#4a2f25',style:'bun',top:'sweater',c:'#34373f',pants:'#585c66',shoes:'#e9e2d0'},dev:{hair:'#2a211c',style:'hood',top:'hoodie',pants:'#2f3442',shoes:'#f1f1f1'},
   console:{hair:'#5a3a26',style:'short',top:'polo',pants:'#3d4654',shoes:'#f1f1f1',roll:true},marketing:{hair:'#a2542f',style:'ponytail',top:'jacket',pants:'#f4efe2',shoes:'#ffd24a'},
   bm:{hair:'#b9b4aa',style:'slick',top:'suit',c:'#2f4670',pants:'#2a3348',shoes:'#2a2622'},design:{hair:'#2c2433',style:'bob',top:'apron',pants:'#5a4636',shoes:'#c8324f',roll:true}};
-function person(s){const k=s.look,top=k.c||s.c,top2=shade(top),skin=s.skin,skin2=shade(skin,.86),h=k.hair,g=new THREE.Group(),tg=new THREE.Group(),
+// 피부: 바닥 반사광(풀색)에 턱·볼 아래가 초록으로 물들지 않게 피부색으로 살짝 스스로 빛난다
+const SKM=(c)=>mats['skin'+c]||=new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.22,roughness:.88,flatShading:true});
+// 표정: 눈썹 기울기(k, +면 안쪽이 올라감)·높이, 입 모양, 눈 세로 크기. 쉴 때 웃는 눈, 일할 때 집중, 대표 답을 기다릴 때 걱정
+const EXPR={normal:{k:.18,y:.07,m:'smile',ey:1},focus:{k:-.28,y:.062,m:'line',ey:.72},worry:{k:.45,y:.08,m:'frown',ey:1.05},happy:{k:.18,y:.08,m:'smile',ey:1}};
+function faceTo(p,e,blink){const f=p.fx,x=EXPR[e]||EXPR.normal,happy=e==='happy';
+  f.brows.forEach((b,i)=>{b.rotation.z=-(i?1:-1)*x.k;b.position.y=f.cy+x.y});
+  for(const o of f.eyes){o.visible=!happy;o.scale.y=blink?.12:x.ey}for(const o of f.arcs)o.visible=happy;
+  for(const m of['smile','line','frown'])f[m].visible=x.m===m;f.smile.scale.setScalar(happy?1.3:1)}
+function person(s){const k=s.look,top=k.c||s.c,top2=shade(top),skinC=s.skin,skin=SKM(skinC),skin2=SKM(shade(skinC,.86)),h=k.hair,g=new THREE.Group(),tg=new THREE.Group(),
     body=k.top==='apron'?'#f1e8d6':top,shl={vest:W,safari:'#7d8a55',apron:'#f1e8d6'}[k.top]||top;   // shl = 어깨·소매 색(조끼류는 안에 입은 셔츠 색)
   P(tg,G.box(.36,.2,.22),k.pants);P(tg,G.box(.37,.035,.23),INK,0,.1,0);P(tg,G.box(.05,.04,.01),'#d9b25a',0,.1,.118);
   P(tg,G.cyl(.2,.18,.5,6),body,0,.36,0,0,PI/6,0,[1.25,1,.72]);P(tg,G.box(.54,.1,.2),shl,0,.57,0);P(tg,G.box(.5,.04,.17),shl,0,.63,0);P(tg,G.cyl(.058,.07,.12,6),skin,0,.67,0);
@@ -534,9 +542,15 @@ function person(s){const k=s.look,top=k.c||s.c,top2=shade(top),skin=s.skin,skin2
     P(kn,G.box(.13,.09,.27),k.shoes,0,-.43,.05);P(kn,G.box(.135,.03,.285),'#f4efe2',0,-.485,.05);P(kn,G.box(.1,.02,.1),shade(k.shoes,.8),0,-.38,.09);g.add(hip);fuse(hip);fuse(kn);return{hip,kn}};
   // 머리
   const head=new THREE.Group(),hg=new THREE.Group(),cy=.2;head.position.y=.72;
-  P(hg,G.ico(.19,1),skin,0,cy,0,0,0,0,[1,1.1,1.02]);P(hg,G.box(.16,.08,.1),skin,0,cy-.15,.07);
-  for(const sx of[-1,1]){P(hg,G.box(.03,.07,.05),skin2,sx*.188,cy-.01,0);P(hg,G.box(.04,.052,.02),'#2a2320',sx*.072,cy+.012,.178);P(hg,G.box(.012,.014,.01),'#fff',sx*.072+.008,cy+.026,.19);P(hg,G.box(.078,.02,.02),h,sx*.072,cy+.075,.176,0,0,-sx*.14);P(hg,G.box(.05,.035,.01),'#f0a9a0',sx*.115,cy-.05,.165)}
-  P(hg,G.cone(.028,.075,4),skin2,0,cy-.02,.2,PI/2);P(hg,G.box(.075,.016,.02),'#a3564a',0,cy-.095,.168);
+  const hgeo=G.ico(.2,1),hp=hgeo.attributes.position;
+  for(let i=0;i<hp.count;i++){const y=hp.getY(i);if(y<0){hp.setX(i,hp.getX(i)*(1+y*1.25));hp.setZ(i,hp.getZ(i)*(1+y*.5))}}hgeo.computeVertexNormals();
+  P(hg,hgeo,skin,0,cy,0,0,0,0,[1.02,1.08,1]);P(hg,G.ico(.016),skin2,0,cy-.03,.19);
+  for(const sx of[-1,1]){P(hg,G.box(.03,.07,.05),skin2,sx*.2,cy,-.01);P(hg,G.cyl(.032,.032,.006,10),'#f5a397',sx*.118,cy-.052,.16,PI/2,sx*.5,0,[1.2,1,.8])}
+  const F=new THREE.Group(),fx={cy};head.add(F);
+  fx.eyes=[-1,1].map(sx=>{const e=new THREE.Group();e.position.set(sx*.074,cy,.17);F.add(e);P(e,new THREE.SphereGeometry(.032,8,6),'#2a2320',0,0,0,0,0,0,[.8,1.15,.45]);P(e,new THREE.SphereGeometry(.01,6,4),'#fff',.01,.016,.015);return e});
+  fx.arcs=[-1,1].map(sx=>P(F,new THREE.TorusGeometry(.024,.007,4,8,PI),'#2a2320',sx*.074,cy-.008,.172));   // 웃는 눈 ∩
+  fx.brows=[-1,1].map(sx=>P(F,G.box(.06,.014,.014),h,sx*.076,cy+.07,.178));
+  fx.smile=P(F,new THREE.TorusGeometry(.026,.007,4,10,PI),'#9a4a42',0,cy-.072,.168,0,0,PI);fx.line=P(F,G.box(.036,.009,.012),'#9a4a42',0,cy-.078,.17);fx.frown=P(F,new THREE.TorusGeometry(.02,.006,4,10,PI),'#9a4a42',0,cy-.09,.168);
   const cap=(sy=.75)=>P(hg,G.ico(.205,1),h,0,cy+.09,-.045,0,0,0,[1.04,sy,1]);
   const specs=(c,sq)=>{for(const sx of[-1,1]){P(hg,new THREE.TorusGeometry(sq?.06:.052,.01,4,sq?4:7),c,sx*.074,cy+.012,.19,0,0,sq?PI/4:0);limb(hg,[sx*.125,cy+.02,.19],[sx*.195,cy+.03,.0],.006,.006,c,3)}P(hg,G.box(.05,.012,.012),c,0,cy+.02,.19)};
   // 헤드셋: 머리띠 + 귀덮개(양쪽 또는 왼쪽만) + 입 앞 마이크
@@ -549,7 +563,7 @@ function person(s){const k=s.look,top=k.c||s.c,top2=shade(top),skin=s.skin,skin2
   if(k.style==='hood'){cap(.7);for(const x of[-.08,0,.08])P(hg,G.ico(.06),x?h:shade(h,1.35),x,cy+.15,.13,x*9,1,0);   // 뒤집어쓴 후드(얼굴만 뚫림) + 그 위 헤드폰 + 수염 자국
     P(hg,new THREE.SphereGeometry(.25,8,5,0,PI*2,.85,PI-.85),top,0,cy+.03,-.035,PI/2,0,0,[1,1.05,1.08]);P(hg,new THREE.TorusGeometry(.19,.032,4,8),top2,0,cy+.03,.135,0,0,PI/8,[1,1.08,1]);P(hg,G.cone(.07,.12,4),top,0,cy+.2,-.24,-1.9);
     P(hg,new THREE.TorusGeometry(.275,.02,4,10,PI),HS,0,cy+.03,-.03);for(const sx of[-1,1]){P(hg,G.box(.07,.15,.13),HS,sx*.275,cy,-.03);P(hg,G.box(.02,.09,.08),'#9fe870',sx*.315,cy,-.03)}
-    P(hg,G.box(.166,.05,.106),shade(skin,.7),0,cy-.168,.072);for(const sx of[-1,1])P(hg,G.box(.03,.05,.02),shade(skin,.7),sx*.06,cy-.115,.166);P(hg,G.box(.05,.012,.01),shade(skin,.75),-.072,cy-.03,.186);P(hg,G.box(.05,.012,.01),shade(skin,.75),.072,cy-.03,.186)}
+    P(hg,G.box(.166,.05,.106),shade(skinC,.7),0,cy-.168,.072);for(const sx of[-1,1])P(hg,G.box(.03,.05,.02),shade(skinC,.7),sx*.06,cy-.115,.166);P(hg,G.box(.05,.012,.01),shade(skinC,.75),-.072,cy-.03,.186);P(hg,G.box(.05,.012,.01),shade(skinC,.75),.072,cy-.03,.186)}
   if(k.style==='short'){cap();P(hg,G.box(.27,.055,.05),h,0,cy+.125,.15);for(const sx of[-1,1])P(hg,G.box(.03,.12,.1),h,sx*.186,cy+.03,.03);headset('#e9e9ee','#3c403a','#f08a3c',true)}
   if(k.style==='ponytail'){cap();P(hg,G.box(.24,.05,.05),h,-.02,cy+.125,.145,0,0,-.12);limb(hg,[0,cy+.13,-.2],[0,cy-.16,-.33],.075,.025,h,5);P(hg,G.box(.07,.04,.07),'#ffd24a',0,cy+.12,-.21);   // 머리 위에 올린 선글라스
     for(const sx of[-1,1])P(hg,G.box(.1,.07,.02),'#22201e',sx*.064,cy+.225,.125,-.7);P(hg,G.box(.24,.016,.026),'#ff5fa0',0,cy+.252,.15,-.7);for(const sx of[-1,1])limb(hg,[sx*.12,cy+.24,.12],[sx*.19,cy+.12,-.03],.007,.007,'#ff5fa0',3)}
@@ -558,7 +572,7 @@ function person(s){const k=s.look,top=k.c||s.c,top2=shade(top),skin=s.skin,skin2
   if(k.style==='bob'){cap();for(const sx of[-1,1])P(hg,G.box(.05,.24,.2),h,sx*.186,cy-.04,-.03);P(hg,G.box(.32,.26,.06),h,0,cy-.05,-.175);P(hg,G.box(.27,.055,.05),h,0,cy+.118,.155);
     P(hg,G.cyl(.25,.2,.07,7),'#c8324f',.04,cy+.22,-.01,0,0,-.22);P(hg,G.cyl(.02,.02,.05,4),'#c8324f',.05,cy+.275,-.01)}
   head.add(bake(hg));g.add(head);
-  return{g,head,L:arm(-1),R:arm(1),lL:leg(-1),lR:leg(1),s}}
+  const out={g,head,fx,L:arm(-1),R:arm(1),lL:leg(-1),lR:leg(1),s};faceTo(out,'normal');return out}
 function sit(p){for(const l of[p.lL,p.lR]){l.hip.rotation.x=-PI/2+.04;l.kn.rotation.x=PI/2-.04}for(const[a,sx]of[[p.L,-1],[p.R,1]]){a.sh.rotation.set(-.35,0,-sx*.1);a.el.rotation.x=-1.08}}
 // 손에 든 소품: 한 덩어리로 만들어 손(또는 다른 관절)에 붙인다. 앉아 팔을 굽힌 자세에서 손의 -y가 앞, +z가 위
 const held=(hand,build,x=0,y=0,z=0,rx=0)=>{const t=new THREE.Group();build(t);const b=bake(t);b.position.set(x,y,z);b.rotation.x=rx;hand.add(b);return b};
@@ -927,6 +941,7 @@ function perform(m, ev = {}) {
 }
 const WV = new THREE.Vector3();
 function move(q, dt, t) {
+  faceTo(q.p, q.mode === 'rest' ? 'happy' : askCeo.has(q.name) ? 'worry' : q.busy ? 'focus' : 'normal', t % 4.4 < .13);
   if (q.mode === 'seat') return pose(q, t);
   if (q.mode === 'rest') return restPose(q, t);
   const g = q.p.g, p = q.p;
@@ -1411,6 +1426,12 @@ $('todos').onclick = async (e) => {
   log(answer === '종료' ? `T${id} 보고 확인 · 종료` : `T${id} 제출 → PM이 이어서 진행`, 'ceo', '대표');
   card.remove();
   refreshBoard();
+};
+// TODO 입력칸에서 Ctrl(맥은 Cmd)+Enter = 그 카드의 기본 버튼(제출·했어요·추가 지시)
+$('todos').onkeydown = (e) => {
+  if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || !e.target.matches('textarea,input')) return;
+  e.preventDefault();
+  e.target.closest('.todo')?.querySelector('button.primary:not(:disabled)')?.click();
 };
 // 휴대폰에서 긴 목록은 8개만 보이고 '더 보기'로 펼친다 (CSS가 데스크톱에선 버튼을 숨김)
 function more(id) { const l = $(id), b = l.nextElementSibling, n = l.children.length; b.hidden = n <= 8; b.textContent = l.classList.contains('open') ? '접기' : `더 보기 (${n - 8}개 더)`; }
