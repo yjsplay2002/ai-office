@@ -11,7 +11,7 @@ import { parseTodos, answerTodo, uploadPlan, addRunReport, followUp } from './to
 import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
-import { loadLog, lastRun, KEEP_LINES, SEND_LINES } from './eventlog.mjs';
+import { loadLog, lastRun, KEEP_LINES, SEND_LINES, todoThread, linkAnswers, ANSWER_HEAD } from './eventlog.mjs';
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
 
@@ -278,6 +278,7 @@ function listBoard(dir = board) {
 
 const todosFile = path.join(board, 'todos.md');
 const todos = () => (existsSync(todosFile) ? parseTodos(readFileSync(todosFile, 'utf8')) : []);
+try { history = linkAnswers(history, todos()); } catch {}   // 옛 기록의 TODO 답 실행도 원래 작업 스레드로(부팅마다 다시 계산)
 const todoIds = () => { try { return todos().map((t) => t.id); } catch { return []; } };
 
 // 실행이 최종 보고로 끝나면 보고 전문을 board/reports/에 남기고, 그 실행이 올린 TODO에 붙이거나(없으면) '확인'을 올린다(addRunReport).
@@ -319,7 +320,7 @@ function submitTodo(id, answer, note, files) {
   // shortcut: 대기 중 서버가 재시작되면 묶음이 사라진다(답 자체는 todos.md에 저장됨). 자주 생기면 runDir에 대기 목록을 저장.
   const line = followUp(r.todo, r.full);
   if (!line) return r.full;   // 확인 TODO를 '종료'로 닫음: 이어서 할 일 없음
-  pendingAnswers.push(line);
+  pendingAnswers.push({ line, todo: r.todo });
   clearTimeout(answerTimer);
   answerTimer = setTimeout(flushAnswers, ANSWER_BATCH_MS);
   return r.full;
@@ -329,9 +330,16 @@ const ANSWER_BATCH_MS = 60e3;
 let pendingAnswers = [], answerTimer = null;
 function flushAnswers() {
   const list = pendingAnswers; pendingAnswers = [];
-  if (!list.length) return;
-  startRun(`대표가 TODO에 답했습니다:\n${list.join('\n')}\n\n` +
-    'board/todos.md와 근거 파일을 확인하고, 이 답들을 반영해 남은 작업을 이어서 진행해. 서로 관계없는 답은 팀원을 동시에 불러 처리해. 대표가 할 일이 새로 생기면 todos.md에 형식대로 추가해.');
+  // 스레드 = 작업 하나: 답은 그 TODO를 올린 작업의 스레드에서 이어 간다(작업별로 묶음). 출처를 모르는 답만 새 스레드.
+  const groups = new Map();
+  for (const a of list) { const th = todoThread(a.todo, history, todos()); groups.set(th, [...(groups.get(th) || []), a.line]); }
+  for (const [thread, lines] of groups) {
+    const prompt = `${ANSWER_HEAD}\n${lines.join('\n')}\n\n` +
+      'board/todos.md와 근거 파일을 확인하고, 이 답들을 반영해 남은 작업을 이어서 진행해. 서로 관계없는 답은 팀원을 동시에 불러 처리해. 대표가 할 일이 새로 생기면 todos.md에 형식대로 추가해.';
+    if (thread == null) { startRun(prompt); continue; }
+    const th = threadInfo(thread);
+    startRun(prompt, { thread, resume: th.ids.some((id) => runs.has(id)) ? undefined : th.session || undefined });
+  }
 }
 
 // A new CEO instruction (dashboard or Telegram). files = [{ name, data(base64) }].

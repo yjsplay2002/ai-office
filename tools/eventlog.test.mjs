@@ -1,6 +1,6 @@
 // node tools/eventlog.test.mjs — the saved dashboard log: trim by age and size, drop re-attached runs, next run id.
 import assert from 'node:assert/strict';
-import { loadLog, lastRun } from './eventlog.mjs';
+import { loadLog, lastRun, todoThread, linkAnswers } from './eventlog.mjs';
 
 const now = Date.parse('2026-11-12T00:00:00Z'), day = 864e5;
 const L = (o) => JSON.stringify(o);
@@ -22,3 +22,29 @@ assert.equal(lastRun(loadLog(text, { now, days: 30 })), 3);
 assert.equal(lastRun([]), 0);
 assert.deepEqual(loadLog(''), []);
 console.log('eventlog ok:', kept.length, 'kept');
+
+// TODO 답 실행은 그 TODO를 올린 작업의 스레드에 붙는다(보고·근거 줄의 -run<N>.md = 올린 실행)
+{
+  const log = [
+    L({ _run: 5, type: '_office', prompt: '빌드 올려' }),
+    L({ _run: 6, type: '_office', prompt: '댓글', thread: 5 }),
+    L({ _run: 7, type: '_office', prompt: '대표가 TODO에 답했습니다:\n- T20 [실행 · dev] 폰으로 확인 → 완료' }),
+    L({ _run: 8, type: '_office', prompt: '대표가 TODO에 답했습니다:\n- T21 [승인 · dev] 올릴까요? → 승인' }),
+    L({ _run: 9, type: '_office', prompt: '대표가 TODO에 답했습니다:\n- T99 [실행 · dev] 모름 → 완료' }),
+  ];
+  const todos = [{ id: 20, refs: ['board/dev/x.md', 'board/reports/2026-11-13-0900-run6.md'] }, { id: 21, refs: ['board/reports/a-run7.md'] }];
+  assert.equal(todoThread(todos[0], log), 5);          // run 6 belongs to thread 5
+  assert.equal(todoThread({ id: 1, refs: [] }, log), null);
+  const out = linkAnswers(log, todos).map((l) => JSON.parse(l).thread);
+  assert.deepEqual(out, [undefined, 5, 5, 5, undefined]);   // run 8's TODO came from run 7, which now sits in thread 5
+}
+// "(T20 후속)"은 T20을 따라가고, 옮겨진 실행에 달린 댓글 실행도 함께 옮긴다
+{
+  const log = [
+    L({ _run: 5, type: '_office', prompt: '빌드 올려' }),
+    L({ _run: 7, type: '_office', prompt: '대표가 TODO에 답했습니다:\n- T22 [실행 · dev] (T20 후속) 다시 확인 → 완료' }),
+    L({ _run: 8, type: '_office', prompt: '댓글', thread: 7 }),
+  ];
+  const todos = [{ id: 20, refs: ['board/reports/a-run5.md'] }, { id: 22, desc: '(T20 후속) 다시 확인', refs: [] }];
+  assert.deepEqual(linkAnswers(log, todos).map((l) => JSON.parse(l).thread), [undefined, 5, 5]);
+}

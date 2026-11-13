@@ -79,8 +79,8 @@ h4.feed({ kind: 'result', text: `${long}
 
 둘째 줄` }, 4, 1);
 h4.feed({ kind: 'result', text: '새 결론' }, 5, 1);
-assert.deepEqual(h4.latest('pm').ev.map((e) => e[1]), ['order', 'say', 'say', 'report']);
-assert.equal(h4.latest('pm').ev[1][2], long);   // not cut
+assert.deepEqual(h4.latest('pm').ev.map((e) => e[1]), ['order', 'report', 'report']);   // the memos it repeats become the final report
+assert.ok(h4.latest('pm').ev[1][2].startsWith(long) && h4.latest('pm').ev[1][2].endsWith('둘째 줄'));   // not cut
 assert.equal(h4.latest('pm').ev.at(-1)[2], '새 결론');
 // Threads: a comment run joins its thread; lines come back in time order with their speaker; a cancelled run says 중단.
 const th = h.thread(1);

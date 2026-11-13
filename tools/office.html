@@ -349,8 +349,7 @@
     <div class="row"><button class="primary" id="send">지시하기</button><button id="cancel" disabled>취소</button></div>
   </section>
   <section id="sec-todo"><h2>대표 TODO <span id="ntodo">0건 대기</span></h2><div id="todos"><div class="meta">할 일 없음</div></div></section>
-  <section id="threads"><h2>스레드 <span>지시 하나 = 스레드 하나 · 눌러서 열기</span></h2><ul class="list" id="tlist"><li class="meta">지시를 보내면 스레드가 생깁니다</li></ul><button class="more" data-l="tlist" hidden></button></section>
-  <section id="sec-reports"><h2>보고함 <span id="nrep">0</span></h2><ul class="list" id="reports"><li class="meta">아직 보고 없음</li></ul><button class="more" data-l="reports" hidden></button></section>
+  <section id="threads"><h2>스레드 <span>작업 하나 = 스레드 하나 · TODO 답과 보고도 여기에</span></h2><ul class="list" id="tlist"><li class="meta">지시를 보내면 스레드가 생깁니다</li></ul><button class="more" data-l="tlist" hidden></button></section>
   <section><h2>문서 (board/) <span id="ndocs">0</span></h2><ul class="list" id="docs"></ul><button class="more" data-l="docs" hidden></button></section>
   <section id="chat"><h2>대화 내역 <button id="chatfull">크게 보기</button></h2><div id="log" aria-live="polite"><div class="empty">지시를 보내면 PM과 직원들의 대화가 여기에 쌓입니다.</div></div></section>
 </aside>
@@ -359,7 +358,6 @@
   <a href="#sec-todo" data-sec="sec-todo"><i data-ic="todo"></i>TODO<span class="badge" id="tabtodo"></span></a>
   <a href="#sec-order" data-sec="sec-order"><i data-ic="send"></i>지시</a>
   <a href="#threads" data-sec="threads"><i data-ic="threads"></i>스레드</a>
-  <a href="#sec-reports" data-sec="sec-reports"><i data-ic="inbox"></i>보고</a>
   <a href="#chat" data-sec="chat"><i data-ic="chat"></i>대화</a>
 </nav>
 <div id="thread" role="dialog" aria-labelledby="ttitle"><header><div><div id="ttitle"></div><div id="tmeta"></div></div><button id="tstop" title="진행 중인 작업을 멈추고 스레드를 닫습니다">종료</button><button id="tclose">닫기</button></header>
@@ -380,7 +378,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { HorizontalTiltShiftShader } from 'three/addons/shaders/HorizontalTiltShiftShader.js';
 import { VerticalTiltShiftShader } from 'three/addons/shaders/VerticalTiltShiftShader.js';
-import { createMapper, createHistory, motionOf, instructionMotion, todoMotion, gridPath } from '/map.mjs';
+import { createMapper, createHistory, todoAnswers, motionOf, instructionMotion, todoMotion, gridPath } from '/map.mjs';
 
 const $ = (id) => document.getElementById(id);
 // 선 아이콘(Lucide 모양, 24 격자·2px 선): 이모지 대신 한 벌로
@@ -1395,7 +1393,7 @@ function pickPerson(e) {
 }
 document.addEventListener('click', (e) => {
   // 스레드 패널 바깥을 누르면 닫는다(목록에서 여는 클릭, 패널에서 연 문서·이미지 창, 다시 그려져 떨어진 요소는 제외)
-  if (openTh != null && e.target.isConnected && !e.target.closest('#thread, .th-row, #viewer, #zoom, #staffpage')) closeThread();
+  if (openTh != null && e.target.isConnected && !e.target.closest('#thread, .th-row, #log a[data-r], #viewer, #zoom, #staffpage')) closeThread();
   const pp = e.target === renderer.domElement && pickPaper(e);
   if (pp) return openPaper(pp.userData);   // 책상 위 서류 → 그 문서(또는 지시·보고 내용)
   const tag = e.target.closest('.tag'), id = tag ? tag.dataset.id : e.target === renderer.domElement ? pickPerson(e) : null;
@@ -1628,19 +1626,15 @@ $('viewer').onclick = (e) => { if (e.target.id === 'viewer') closeViewer(); };
 const setChatFull = (on) => { $('chat').classList.toggle('full', on); $('chatfull').textContent = on ? '닫기' : '크게 보기'; $('log').scrollTop = $('log').scrollHeight; };
 $('chatfull').onclick = () => setChatFull(!$('chat').classList.contains('full'));
 addEventListener('keydown', (e) => { if (e.key !== 'Escape' || $('zoom').open) return; if ($('staffpage').classList.contains('on')) $('staffpage').classList.remove('on'); else if ($('viewer').classList.contains('on')) closeViewer(); else if (focusId) closeHist(); else if ($('thread').classList.contains('on')) closeThread(); else setChatFull(false); });
-$('log').onclick = (e) => { const i = e.target.dataset.r; if (i != null) openPaper(reports[i]); };
+$('log').onclick = (e) => { const r = e.target.dataset.r; if (r != null) openThread(Number(r)); };
 
-const reports = [];
-function addReport(ev) {
-  reports.unshift({ title: `${hhmm(evTime ?? Date.now())} 최종 보고${ev.error ? ' (오류)' : ''}`, text: ev.text });
-  $('nrep').textContent = reports.length;
-  $('reports').innerHTML = reports.map((r, i) => `<li><a data-r="${i}">${esc(plain(r.title))}</a><div class="meta">${esc(plain(r.text).replace(/\s*\n\s*/g, ' ').slice(0, 70))}</div></li>`).join(''); more('reports');
-  // reports are unshifted, so the newest is index 0. The result text usually repeats PM's last message.
+// 최종 보고는 스레드 안에 남는다(보고함 없음). 대화 내역에는 첫 줄과 그 스레드로 가는 링크만.
+function addReport(ev, run) {
+  // The result text usually repeats PM's last message.
   const last = $('log').lastElementChild;
   if (last?.classList.contains('pm') && last.dataset.raw === (ev.text || '').trim().slice(0, 60)) last.remove();
-  log((ev.text || '').split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').slice(0, 140) || '최종 보고', ev.error ? 'bad' : 'done', 'PM 최종 보고', 0);
+  log((ev.text || '').split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').slice(0, 140) || '최종 보고', ev.error ? 'bad' : 'done', 'PM 최종 보고', hist.tasks.get(`run:${run}`)?.thread ?? run);
 }
-$('reports').onclick = (e) => { const i = e.target.closest('[data-r]')?.dataset.r; if (i != null) openPaper(reports[i]); };
 
 const docName = (p) => { const r = p.replace(/^board\//, ''), k = r.lastIndexOf('/'); return (k > 0 ? `<span class="dir">${esc(r.slice(0, k))}/</span>` : '') + esc(r.slice(k + 1)); };
 async function refreshBoard() {
@@ -1947,7 +1941,8 @@ let openTh = null, tTimer = 0;
 const tsched = () => { tTimer ||= setTimeout(() => { tTimer = 0; renderThreads(); }, 150); };
 const whoName = (n) => n === 'ceo' ? '대표' : people.get(n)?.label || n;
 const avatar = (n) => { const q = people.get(n), src = portraits.get(n), bg = q?.c || '#b9ad95'; return src ? `<img class="av" alt="" src="${src}" style="background:${bg}">` : `<i class="av" style="background:${bg}"></i>`; };
-const ceoText = (s) => String(s).split('\n[대표 댓글]\n')[1] ?? s;   // 맥락을 붙여 보낸 댓글은 댓글만 보인다
+// 맥락을 붙여 보낸 댓글은 댓글만, TODO 답은 '무슨 일 → 답'만 보인다
+const ceoText = (s) => { const a = todoAnswers(s); return a.length ? a.map((x) => `${x.desc}\n→ **${x.answer}**`).join('\n\n') : String(s).split('\n[대표 댓글]\n')[1] ?? s; };
 // 스레드가 진행 중 = 그 스레드의 실행이 아직 살아 있거나(PM이 최종 결과를 낸 뒤에도 백그라운드 직원이 일하면 프로세스는 계속 돈다) 누군가의 일이 안 끝났을 때
 function threadState(id) {
   const ks = [...hist.tasks.values()].filter((k) => k.thread === id), pms = ks.filter((k) => k.agent === 'pm');
@@ -1992,7 +1987,7 @@ function renderThreads() {
   $('tstop').disabled = cur.st === '종료';
   el.innerHTML = cur.msgs.map((m, i) => {
     const key = `${openTh}:${i}`, prev = cur.msgs[i - 1], cont = prev && prev.who === m.who && !m.to && m.t - prev.t < 300000;
-    const tx = m.text ? `<div class="tx mdx${tOpen.has(key) ? ' open more' : ''}" data-k="${key}">${md(m.kind === 'report' && m.who !== 'pm' ? `**보고** ${m.text}` : m.text)}</div><i class="fold">${tOpen.has(key) ? '▴ 접기' : '▾ 더 보기'}</i>` : '';
+    const tx = m.text ? `<div class="tx mdx${tOpen.has(key) ? ' open more' : ''}" data-k="${key}">${md(m.kind === 'report' ? (m.who === 'pm' ? `**최종 보고**\n\n${m.text}` : `**보고** ${m.text}`) : m.text)}</div><i class="fold">${tOpen.has(key) ? '▴ 접기' : '▾ 더 보기'}</i>` : '';
     const acts = m.acts.length ? `<details data-k="d${key}"${tOpen.has('d' + key) ? ' open' : ''}><summary>${ic('tool')} ${esc(actSum(m.acts))}</summary><ol>${m.acts.map((a) => `<li>${hhmm(a.t)} ${TACT[a.kind]} · ${esc(a.text)}${a.path ? ` <u data-p="${esc(a.path)}">${esc(a.path)}</u>` : ''}</li>`).join('')}</ol></details>` : '';
     return (i === 1 ? `<div class="th-sep">답글 ${cur.msgs.length - 1}개</div>` : '') +
       `<div class="tm ${esc(m.who)}${cont ? ' cont' : ''}">${cont ? '<span class="av"></span>' : avatar(m.who)}<div class="tb">${cont ? '' : `<div class="who">${esc(whoName(m.who))}${m.to ? ` → ${esc(whoName(m.to))}` : ''}<time>${hhmm(m.t)}</time></div>`}${tx}${acts}</div></div>`;
@@ -2027,7 +2022,7 @@ setOffice(viewPref !== 'off');   // 켜져 있으면 여기서 frame() 시작
 refreshBoard();
 
 // ---------- 실행 줄 → 사람·말풍선·히스토리·대화 내역 ----------
-function handle(ev, live) {
+function handle(ev, live, run) {
   const p = ev.agent && someone(ev.agent);
   const m = live && motionOf(ev);
   if (m) perform(m, ev);   // 기록 다시 받기(새로고침)에서는 걷지 않는다
@@ -2039,7 +2034,7 @@ function handle(ev, live) {
     case 'say': if (ev.agent === 'pm') log(ev.text, 'pm', 'PM'); break;
     case 'limit': gauge('5', ev.five); gauge('7', ev.seven); break;
     case 'result':
-      addReport(ev);
+      addReport(ev, run);
       if (live) { alertCeo('report', ev.error ? '최종 보고 (오류)' : '최종 보고', plain(ev.text).split('\n').find((l) => l.trim())?.slice(0, 120) || ''); refreshBoard(); }
       break;
   }
@@ -2082,7 +2077,7 @@ function onEvent(e) {
     if (e.ended && !e._history) refreshBoard();
     return;
   }
-  for (const ev of feedOf(e._run)(e)) { hist.feed(ev, t, e._run); handle(ev, !e._history); }
+  for (const ev of feedOf(e._run)(e)) { hist.feed(ev, t, e._run); handle(ev, !e._history, e._run); }
   tsched();
 }
 es.onerror = () => log('서버 연결 끊김 — 재연결 시도 중', 'bad');

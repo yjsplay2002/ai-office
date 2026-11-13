@@ -5,6 +5,13 @@
 const STEP = { Read: 'read', Grep: 'read', Glob: 'read', WebSearch: 'search', WebFetch: 'search', Write: 'write', Edit: 'write', NotebookEdit: 'write' };
 const full = (s) => String(s || '').trim();   // history keeps whole texts; the card clamps them in CSS
 export const line = (s, n = 140) => { const l = String(s || '').split('\n').map((x) => x.trim()).find(Boolean) || ''; return l.length > n ? l.slice(0, n - 1) + '…' : l; };
+// TODO 답 실행의 지시문("- T208 [실행 · console] (T200 후속) 설명 → 답") -> [{ desc, answer }]. 번호·종류 표시는 뺀다.
+export const todoAnswers = (prompt) => [...String(prompt || '').matchAll(/^- T\d+ \[[^\]]*\] (.*)$/gm)].map(([, x]) => {
+  const k = x.lastIndexOf(' → ');
+  return { desc: (k < 0 ? x : x.slice(0, k)).replace(/^\(T\d+ 후속\)\s*/, '').replace(/^보고를 확인해 주세요:\s*/, ''), answer: k < 0 ? '' : x.slice(k + 3).replace(/ \(보고 전문: [^)]*\)$/, '') };
+});
+// 스레드 제목: 무슨 작업인지. TODO 답으로 시작된 실행은 그 TODO 설명을 제목으로(번호 T208이 아니라).
+export const workTitle = (prompt) => todoAnswers(prompt)[0]?.desc || String(prompt || '');
 
 export function createMapper() {
   // Agent tool_use id -> { agent, bg }. Every line a subagent writes carries parent_tool_use_id = that id
@@ -77,7 +84,7 @@ export function createHistory(max = 200) {
   return {
     tasks,
     // thread = the run whose thread this one continues (a CEO comment); a new instruction is its own thread.
-    run(n, prompt, t, thread = n) { tasks.set(runKey(n), { agent: 'pm', run: n, thread, title: line(prompt, 60), start: t, state: '진행 중', ev: [[t, 'order', `대표: ${full(prompt)}`]] }); },
+    run(n, prompt, t, thread = n) { tasks.set(runKey(n), { agent: 'pm', run: n, thread, title: line(workTitle(prompt), 60), start: t, state: '진행 중', ev: [[t, 'order', `대표: ${full(prompt)}`]] }); },
     // Run finished or cancelled (why = '중단'): whatever never reported is closed too.
     end(n, why) { for (const k of tasks.values()) if (k.run === n && k.state === '진행 중') k.state = why || (k.agent === 'pm' ? '완료' : '보고 없이 끝남'); },
     feed(ev, t, n) {
@@ -89,7 +96,16 @@ export function createHistory(max = 200) {
       if (ev.kind === 'tool') push(k, [t, ev.step, ev.detail || ev.tool, ev.path]);
       if (ev.kind === 'say') push(k, [t, 'say', full(ev.text)]);
       if (ev.kind === 'report' && k) { k.state = ev.ok ? '완료' : '실패'; push(k, [t, 'report', ev.summary || k.state]); }
-      if (ev.kind === 'result' && k) { if (ev.error) k.state = '실패'; push(k, [t, 'report', full(ev.text) || '최종 보고']); }
+      if (ev.kind === 'result' && k) {
+        if (ev.error) k.state = '실패';
+        // 최종 보고는 보통 PM의 마지막 말과 같다: 그 말(들)을 최종 보고로 바꿔 스레드에서 보고로 보이게 한다
+        const text = full(ev.text) || '최종 보고', row = [t, 'report', text];
+        let i = k.ev.length; while (i > 0 && k.ev[i - 1][1] === 'say') i--;
+        const hit = k.ev.findLastIndex((e) => e[1] === 'say' && same(e[2], text));
+        if (hit >= 0) k.ev[hit][1] = 'report';
+        else if (i < k.ev.length && same(k.ev.slice(i).map((e) => e[2]).join(' '), text)) k.ev.splice(i, k.ev.length - i, row);
+        else push(k, row);
+      }
     },
     // Every line of a thread in time order, each with its speaker: the CEO gives the PM's orders, the PM gives staff theirs.
     thread(id) {
