@@ -50,6 +50,8 @@ assert.equal(plan.ev[4][3], 'board/plans/p.md');
 assert.equal(h.latest('sound').state, '실패');
 assert.equal(h.latest('general-purpose').ev.at(-1)[2], '효과음 12개 정리');
 const pm = h.latest('pm');
+assert.equal(pm.state, '진행 중');   // result 뒤에도 실행이 끝날 때까지는 진행 중
+h.end(pm.run);
 assert.equal(pm.state, '완료');
 assert.ok(pm.ev.some((e) => e[1] === 'read' && e[3] === 'board/todos.md'));
 assert.ok(pm.ev.some((e) => e[2].startsWith('plan에게 맡김')));
@@ -62,6 +64,7 @@ assert.equal(h2.latest('general-purpose').state, '보고 없이 끝남');
 // Overlapping runs: a newer run that already finished must not hide the one still going.
 const h3 = createHistory();
 h3.run(1, '긴 작업', 1); h3.run(2, '짧은 답', 2); h3.feed({ kind: 'result', text: '끝' }, 3, 2);
+h3.end(2);
 assert.equal(h3.latest('pm').title, '긴 작업');
 h3.end(1);
 assert.equal(h3.latest('pm').title, '짧은 답');

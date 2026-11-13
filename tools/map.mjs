@@ -89,7 +89,7 @@ export function createHistory(max = 200) {
       if (ev.kind === 'tool') push(k, [t, ev.step, ev.detail || ev.tool, ev.path]);
       if (ev.kind === 'say') push(k, [t, 'say', full(ev.text)]);
       if (ev.kind === 'report' && k) { k.state = ev.ok ? '완료' : '실패'; push(k, [t, 'report', ev.summary || k.state]); }
-      if (ev.kind === 'result' && k) { k.state = ev.error ? '실패' : '완료'; push(k, [t, 'report', full(ev.text) || '최종 보고']); }
+      if (ev.kind === 'result' && k) { if (ev.error) k.state = '실패'; push(k, [t, 'report', full(ev.text) || '최종 보고']); }
     },
     // Every line of a thread in time order, each with its speaker: the CEO gives the PM's orders, the PM gives staff theirs.
     thread(id) {
