@@ -7,11 +7,11 @@ import { readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, exi
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseTodos, answerTodo, uploadPlan, addRunReport, followUp } from './todos.mjs';
+import { parseTodos, answerTodo, dismissTodo, uploadPlan, addRunReport, followUp } from './todos.mjs';
 import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
-import { loadLog, lastRun, KEEP_LINES, SEND_LINES, todoThread, linkAnswers, ANSWER_HEAD } from './eventlog.mjs';
+import { loadLog, lastRun, KEEP_LINES, SEND_LINES, todoThread, linkAnswers, ANSWER_HEAD, keepRuns, tail } from './eventlog.mjs';
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
 
@@ -56,7 +56,15 @@ mkdirSync(runDir, { recursive: true });
 const histFile = path.join(runDir, 'history.jsonl');
 const reattach = readdirSync(runDir).filter((f) => /^\d+\.json$/.test(f))
   .map((f) => { try { return JSON.parse(readFileSync(path.join(runDir, f), 'utf8')); } catch { return null; } }).filter(Boolean);
-let history = loadLog(existsSync(histFile) ? readFileSync(histFile, 'utf8') : '', { drop: new Set(reattach.map((m) => m.id)) });
+const todosFile = path.join(board, 'todos.md');
+const todos = () => (existsSync(todosFile) ? parseTodos(readFileSync(todosFile, 'utf8')) : []);
+// 옛 기록의 TODO 답 실행도 원래 작업 스레드로 옮기고(부팅마다 다시 계산), 열린 TODO가 걸린 스레드는 7일·5000줄이 지나도 남긴다.
+// shortcut: keep은 부팅 때만 계산. 서버를 며칠씩 켜 두면 그사이 생긴 TODO의 스레드는 다음 부팅 때부터 지켜진다.
+let history = loadLog(existsSync(histFile) ? readFileSync(histFile, 'utf8') : '', { drop: new Set(reattach.map((m) => m.id)), days: Infinity, max: Infinity });
+try { history = linkAnswers(history, todos()); } catch {}
+let keep = new Set();
+try { keep = keepRuns(history, todos()); } catch {}
+history = loadLog(history.join('\n'), { keep });
 writeFileSync(histFile, history.length ? history.join('\n') + '\n' : '');
 let nextRun = Math.max(lastRun(history), ...reattach.map((m) => m.id)) + 1;   // 옛 기록의 실행 번호와 겹치지 않게
 const clients = new Set();
@@ -64,7 +72,7 @@ const clients = new Set();
 function broadcast(obj) {
   const line = JSON.stringify({ _t: Date.now(), ...obj });   // _t = when it happened, so replayed history keeps real times
   history.push(line);
-  if (history.length > KEEP_LINES * 1.2) history = history.slice(-KEEP_LINES);   // 파일은 다음 부팅 때 줄인다
+  if (history.length > KEEP_LINES * 1.2) history = tail(history, KEEP_LINES, keep);   // 파일은 다음 부팅 때 줄인다
   try { appendFileSync(histFile, line + '\n'); } catch {}
   for (const res of clients) res.write(`data: ${line}\n\n`);
 }
@@ -276,9 +284,6 @@ function listBoard(dir = board) {
   }).sort((a, b) => b.mtime - a.mtime);
 }
 
-const todosFile = path.join(board, 'todos.md');
-const todos = () => (existsSync(todosFile) ? parseTodos(readFileSync(todosFile, 'utf8')) : []);
-try { history = linkAnswers(history, todos()); } catch {}   // 옛 기록의 TODO 답 실행도 원래 작업 스레드로(부팅마다 다시 계산)
 const todoIds = () => { try { return todos().map((t) => t.id); } catch { return []; } };
 
 // 실행이 최종 보고로 끝나면 보고 전문을 board/reports/에 남기고, 그 실행이 올린 TODO에 붙이거나(없으면) '확인'을 올린다(addRunReport).
@@ -297,6 +302,22 @@ function reportTodo(run, prompt, obj, before = []) {
     office({ log: r.check ? `보고 확인 TODO T${r.ids[0]} 추가` : `보고를 T${r.ids.join(', T')}에 붙임` });
     return r.ids;
   } catch (err) { office({ log: '보고 TODO 추가 실패: ' + err.message }); return []; }
+}
+
+// 대표가 TODO를 지운다(답 없이 닫음, 다음 실행 없음). why = 지운 까닭(todos.md의 답 줄에 남는다)
+function dismiss(ids, why) {
+  if (!ids.length) return;
+  const today = new Date().toLocaleDateString('sv');
+  let text = readFileSync(todosFile, 'utf8');
+  for (const id of ids) text = dismissTodo(text, id, why, today).text;
+  writeFileSync(todosFile, text);
+  office({ log: `TODO T${ids.join(', T')} 지움 (${why})` });
+}
+// 스레드 종료: 그 스레드에서 나온 열린 TODO와, 아직 PM에게 안 넘어간 그 스레드의 답도 함께 닫는다(남으면 60초 뒤 스레드가 다시 열린다)
+function closeThreadTodos(thread) {
+  const all = todos(), of = (t) => todoThread(t, history, all) === thread;
+  pendingAnswers = pendingAnswers.filter((a) => !of(a.todo));
+  dismiss(all.filter((t) => !t.done && of(t)).map((t) => t.id), '스레드 종료');
 }
 
 function checkUploads(dir, files) {
@@ -413,7 +434,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
-      const recent = history.slice(-SEND_LINES);   // shortcut: 새 화면에는 최근 3000줄만. 더 옛날 대화가 필요해지면 위로 스크롤할 때 더 받기
+      const recent = tail(history, SEND_LINES, keep);   // shortcut: 새 화면에는 최근 3000줄만. 더 옛날 대화가 필요해지면 위로 스크롤할 때 더 받기
       res.write(`data: ${JSON.stringify({ type: '_office', history: recent.length })}\n\n`);
       for (const l of recent) res.write(`data: ${JSON.stringify({ ...JSON.parse(l), _history: true })}\n\n`);
       // 기록 끝에 지금 상태: 기록 속 옛 실행(서버가 꺼진 사이 사라진 것 포함)은 화면에서 끝난 것으로 정리된다
@@ -458,6 +479,13 @@ const server = http.createServer(async (req, res) => {
       if (!Number.isInteger(thread)) return json(res, 400, { error: 'thread' });
       cancel(threadInfo(thread).ids);
       office({ closed: thread });   // the thread shows as 종료 from now on (kept in the event log)
+      try { closeThreadTodos(thread); } catch (err) { office({ log: 'TODO 정리 실패: ' + err.message }); }
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && p === '/api/reopen') {   // 종료한 스레드 다시 열기: 표시만 바꾼다(지운 TODO는 그대로). 댓글을 달면 PM이 이어 간다
+      const { thread } = await body(req);
+      if (!Number.isInteger(thread)) return json(res, 400, { error: 'thread' });
+      office({ reopened: thread });
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/comment') {
@@ -470,7 +498,8 @@ const server = http.createServer(async (req, res) => {
       try { return json(res, 200, saveStaff({ id: String(b.id || ''), model: str(b.model), effort: str(b.effort), name: str(b.name) })); } catch (err) { return json(res, 400, { error: err.message }); }
     }
     if (req.method === 'POST' && p === '/api/todo') {
-      const { id, answer, note, files } = await body(req);
+      const { id, answer, note, files, dismiss: drop } = await body(req);
+      if (drop) { try { dismiss([Number(id)], '대표가 지움'); } catch (err) { return json(res, 400, { error: err.message }); } return json(res, 200, { ok: true }); }
       try { submitTodo(Number(id), String(answer ?? ''), String(note ?? ''), Array.isArray(files) ? files : []); } catch (err) { return json(res, 400, { error: err.message }); }
       return json(res, 200, { ok: true });
     }

@@ -1,6 +1,6 @@
 // node tools/eventlog.test.mjs — the saved dashboard log: trim by age and size, drop re-attached runs, next run id.
 import assert from 'node:assert/strict';
-import { loadLog, lastRun, todoThread, linkAnswers } from './eventlog.mjs';
+import { loadLog, lastRun, todoThread, linkAnswers, keepRuns } from './eventlog.mjs';
 
 const now = Date.parse('2026-11-12T00:00:00Z'), day = 864e5;
 const L = (o) => JSON.stringify(o);
@@ -59,3 +59,20 @@ console.log('eventlog ok:', kept.length, 'kept');
   assert.equal(todoThread({ id: 30, desc: '배포', refs: [] }, log), 5);
   assert.equal(todoThread({ id: 31, desc: 'x', refs: [] }, log), null);
 }
+// 보관은 스레드 단위: 열린 TODO가 걸린 스레드(실행 1과 거기 붙은 실행 4)는 7일·줄 수를 넘겨도 남는다
+{
+  const log = [
+    L({ _t: now - 9 * day, _run: 1, type: '_office', prompt: '오래된 작업' }),
+    L({ _t: now - 9 * day, _run: 1, type: 'result', result: '보고' }),
+    L({ _t: now - 9 * day, _run: 4, type: '_office', prompt: '댓글', thread: 1 }),
+    L({ _t: now - 9 * day, _run: 2, type: '_office', prompt: '다른 옛 작업' }),
+    L({ _t: now - 10, _run: 3, type: '_office', prompt: '새 작업' }),
+    L({ _t: now - 5, _run: 3, type: 'result', result: '끝' }),
+  ];
+  const todos = [{ id: 30, refs: ['board/reports/x-run4.md'] }, { id: 31, done: true, refs: ['board/reports/x-run2.md'] }];
+  const keep = keepRuns(log, todos);
+  assert.deepEqual([...keep].sort(), [1, 4]);
+  assert.deepEqual(loadLog(log.join('\n'), { now, keep }).map((l) => JSON.parse(l)._run), [1, 1, 4, 3, 3]);
+  assert.deepEqual(loadLog(log.join('\n'), { now, keep, max: 1 }).map((l) => JSON.parse(l)._run), [1, 1, 4, 3]);
+}
+console.log('eventlog keep ok');

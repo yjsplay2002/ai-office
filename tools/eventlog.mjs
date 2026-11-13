@@ -4,16 +4,29 @@
 export const KEEP_DAYS = 7, KEEP_LINES = 5000, SEND_LINES = 3000;
 
 // File text -> lines to keep: parseable, newer than `days`, not from a run in `drop` (runs re-attached on boot re-send
-// all their lines, so their old copies go), at most `max` (newest kept).
-export function loadLog(text, { now = Date.now(), days = KEEP_DAYS, max = KEEP_LINES, drop = new Set() } = {}) {
+// all their lines, so their old copies go), at most `max` (newest kept). Lines of runs in `keep` stay however old.
+export function loadLog(text, { now = Date.now(), days = KEEP_DAYS, max = KEEP_LINES, drop = new Set(), keep = new Set() } = {}) {
   const since = now - days * 864e5, out = [];
   for (const l of String(text || '').split('\n')) {
     if (!l.trim()) continue;
     let o; try { o = JSON.parse(l); } catch { continue; }
-    if (!(o._t >= since) || drop.has(o._run)) continue;
+    if (drop.has(o._run) || !(o._t >= since || (o._t != null && keep.has(o._run)))) continue;
     out.push(l.trim());
   }
-  return out.slice(-max);
+  return tail(out, max, keep);
+}
+// 최근 n줄 + keep에 든 실행의 줄(오래돼도)
+const runOf = (l) => { try { return JSON.parse(l)._run; } catch { return undefined; } };
+export const tail = (lines, n, keep = new Set()) => lines.length <= n ? lines : lines.filter((l, i) => i >= lines.length - n || (keep.size > 0 && keep.has(runOf(l))));
+
+// 보관은 기간이 아니라 스레드 단위로: 열린 TODO가 걸린 스레드의 실행 번호들(그 스레드를 연 실행 + 거기 붙은 실행)
+export function keepRuns(lines, todos) {
+  const threads = new Set(todos.filter((t) => !t.done).map((t) => todoThread(t, lines, todos)).filter((x) => x != null)), out = new Set();
+  for (const l of lines) {
+    let o; try { o = JSON.parse(l); } catch { continue; }
+    if (o.type === '_office' && o.prompt && (threads.has(o._run) || threads.has(o.thread))) out.add(o._run);
+  }
+  return out;
 }
 
 // Highest run id seen, so new runs never reuse an id that old lines (and history cards) are grouped by.

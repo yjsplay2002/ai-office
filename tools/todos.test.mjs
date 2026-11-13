@@ -1,6 +1,6 @@
 // node tools/todos.test.mjs
 import assert from 'node:assert/strict';
-import { parseTodos, answerTodo, uploadPlan, addCheckTodo, addRunReport, followUp } from './todos.mjs';
+import { parseTodos, answerTodo, dismissTodo, uploadPlan, addCheckTodo, addRunReport, followUp } from './todos.mjs';
 
 const src = `# 대표 TODO\r\n\r\n### T1 · 결정 · plan\r\n가격을 골라 주세요\r\n- 옵션: $14.99 / $19.99\r\n- 근거: board/plans/p.md\r\n- 상태: 대기\r\n\r\n### T2 · 입력 · research\r\n서비스 아이디어를 알려 주세요\r\n\r\n### T3 · 승인 · legal\r\n약관 초안 승인\r\n### 잘못된 머리글\r\n`;
 const t = parseTodos(src);
@@ -26,6 +26,10 @@ assert.equal(after[1].answer, '로그라이트');
 assert.ok(r.text.includes('  스팀 PC'));
 assert.equal(after[1].desc, '서비스 아이디어를 알려 주세요');
 assert.equal(after.length, 3);
+// 지우기: 보기 검사 없이 '취소'로 닫힘(승인 TODO도)
+const dis = dismissTodo(r.text, 3, '스레드 종료', '2026-11-14');
+assert.deepEqual([parseTodos(dis.text)[2].done, parseTodos(dis.text)[2].answer], [true, '취소 (스레드 종료)']);
+assert.throws(() => dismissTodo(dis.text, 3, 'x', 'D'), /이미/);
 // 근거·파일·QR 이미지: 이름만 쓴 파일은 앞 경로 폴더로, 절대 경로는 board/부터, board/ 밖은 버림
 const refs = parseTodos(`### T9 · 결정 · design
 고르세요
@@ -74,3 +78,11 @@ const up = uploadPlan('T5', [{ name: '../../evil.png', data: 'aGk=' }, { name: '
 assert.deepEqual(up.map((u) => u.rel), ['board/uploads/T5/evil.png', 'board/uploads/T5/a.png', 'board/uploads/T5/a-2.png', 'board/uploads/T5/_env']);
 assert.equal(up[0].buf.toString(), 'hi');
 console.log('upload ok');
+// 같은 번호가 둘(처리된 확인 T5 + 열린 실행 T5): 답·지우기는 열린 쪽에
+{
+  const dup = `### T5 · 확인 · pm\n보고\n- 상태: 완료 D\n- 답: 종료\n\n### T5 · 실행 · dev\n폰으로 사 보기\n- 상태: 대기\n\n### T6 · 결정 · plan\nx\n- 옵션: A / B\n`;
+  const a = parseTodos(answerTodo(dup, 5, '', '했음', 'E').text);
+  assert.deepEqual(a.map((t) => [t.id, t.done, t.answer]), [[5, true, '종료'], [5, true, '완료 — 했음'], [6, false, '']]);
+  assert.deepEqual(parseTodos(dismissTodo(dup, 5, 'x', 'E').text).map((t) => t.answer), ['종료', '취소 (x)', '']);
+}
+console.log('dup ok');

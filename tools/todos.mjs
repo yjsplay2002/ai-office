@@ -46,16 +46,31 @@ export function refPaths(lines) {
 
 // Returns the new file text, or throws with a message the dashboard can show.
 export function answerTodo(text, id, answer, note, today) {
-  const todo = parseTodos(text).find((t) => t.id === id);
-  if (!todo) throw new Error(`T${id}을 찾을 수 없음`);
-  if (todo.done) throw new Error(`T${id}은 이미 처리됨`);
+  const { todo, nth } = findOpen(text, id);
   if (todo.options.length && !todo.options.includes(answer)) throw new Error('보기 중 하나를 골라 주세요');
   if (todo.type === '입력' && !answer.trim()) throw new Error('답을 입력해 주세요');
   if (todo.type === '확인' && answer === '추가 지시' && !note?.trim()) throw new Error('추가로 시킬 일을 적어 주세요');
   const full = todo.type === '확인' && answer === '추가 지시' ? `추가 지시: ${note.trim()}` : [answer.trim() || '완료', note?.trim()].filter(Boolean).join(' — ');
+  return { text: closeBlock(text, id, nth, full, today), todo, full };
+}
 
-  const lines = text.split(/\r?\n/);
-  const start = lines.findIndex((l) => new RegExp(`^### T${id}\\s*·`).test(l));
+// 대표가 TODO를 지운다(스레드 종료·필요 없어짐): 보기 검사 없이 '취소'로 닫고, 다음 실행은 시작하지 않는다.
+export function dismissTodo(text, id, why, today) {
+  const { todo, nth } = findOpen(text, id);
+  return { text: closeBlock(text, id, nth, `취소 (${why})`, today), todo };
+}
+
+// 같은 번호가 둘일 수 있다(PM 세션과 대시보드가 동시에 다음 번호를 매김): 열린 쪽과, 그게 같은 번호 중 몇 번째(nth)인지
+function findOpen(text, id) {
+  const same = parseTodos(text).filter((t) => t.id === id), nth = Math.max(0, same.findIndex((t) => !t.done));
+  if (!same.length) throw new Error(`T${id}을 찾을 수 없음`);
+  if (same[nth].done) throw new Error(`T${id}은 이미 처리됨`);
+  return { todo: same[nth], nth };
+}
+
+function closeBlock(text, id, nth, full, today) {
+  const lines = text.split(/\r?\n/), head = new RegExp(`^### T${id}\\s*·`);
+  const start = lines.flatMap((l, i) => (head.test(l) ? [i] : []))[nth];
   let end = lines.findIndex((l, i) => i > start && l.startsWith('### '));
   if (end < 0) end = lines.length;
   const block = lines.slice(start, end).filter((l, i, a) =>
@@ -64,7 +79,7 @@ export function answerTodo(text, id, answer, note, today) {
   const [first, ...rest] = full.split(/\r?\n/);
   block.push(`- 상태: 완료 ${today}`, `- 답: ${first}`, ...rest.map((l) => '  ' + l), '');
   lines.splice(start, end - start, ...block);
-  return { text: lines.join('\n'), todo, full };
+  return lines.join('\n');
 }
 
 // 끝난 실행의 보고는 대표에게 한 번만 간다. 실행 중에 새로 올라온 미처리 TODO(결정·승인 등)가 있으면 '확인'을 따로 만들지 않고
