@@ -1,6 +1,6 @@
 {
   "name": "ai-office",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "AI office for a one-person business: a PM main session, persona subagents, a board/ of TODOs and decisions, and a local 3D dashboard.",
   "author": {
     "name": "ai-office contributors"

@@ -424,7 +424,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/usage') return json(res, 200, usage(root));
     if (p === '/api/agents') return json(res, 200, agents().map(({ file, ...a }) => a));
     if (p === '/api/staff' && req.method === 'GET') return json(res, 200, staff());
-    if (p === '/api/board') return json(res, 200, { files: listBoard(), todos: todos(), runs: runs.size });
+    if (p === '/api/board') { const all = todos(); return json(res, 200, { files: listBoard(), todos: all.map((t) => (t.done ? t : { ...t, thread: todoThread(t, history, all) })), runs: runs.size }); }
     if (p === '/api/file') {
       const f = safeBoard(url.searchParams.get('path') || '');
       if (!f) return json(res, 404, { error: 'not found' });

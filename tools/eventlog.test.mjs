@@ -48,3 +48,14 @@ console.log('eventlog ok:', kept.length, 'kept');
   const todos = [{ id: 20, refs: ['board/reports/a-run5.md'] }, { id: 22, desc: '(T20 후속) 다시 확인', refs: [] }];
   assert.deepEqual(linkAnswers(log, todos).map((l) => JSON.parse(l).thread), [undefined, 5, 5]);
 }
+// 실행 중에 올라온 TODO(보고 링크 없음)는 그 머리줄을 처음 쓴 실행의 스레드
+{
+  const log = [
+    L({ _run: 5, type: '_office', prompt: '빌드 올려' }),
+    L({ _run: 6, type: '_office', prompt: '댓글', thread: 5 }),
+    L({ _run: 6, type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: "cat >> board/todos.md <<'EOF'\n### T30 · 승인 · dev\n배포" } }] } }),
+    L({ _run: 9, type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'grep "^### T30" board/todos.md' } }] } }),
+  ];
+  assert.equal(todoThread({ id: 30, desc: '배포', refs: [] }, log), 5);
+  assert.equal(todoThread({ id: 31, desc: 'x', refs: [] }, log), null);
+}

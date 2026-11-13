@@ -24,7 +24,14 @@ export const lastRun = (lines) => lines.reduce((n, l) => { try { return Math.max
 export function todoThread(todo, lines, todos = [], seen = new Set()) {
   if (!todo || seen.has(todo.id)) return null;
   seen.add(todo.id);
-  const run = Number(/-run(\d+)\.md$/.exec(todo.refs?.find((r) => /-run\d+\.md$/.test(r)) || '')?.[1]);
+  let run = Number(/-run(\d+)\.md$/.exec(todo.refs?.find((r) => /-run\d+\.md$/.test(r)) || '')?.[1]);
+  // 실행 중에 올라온 TODO: 그 머리줄("### T212 · 승인")을 처음 쓴 실행
+  const head = new RegExp(`### T${todo.id} · (결정|승인|입력|실행|확인)`);
+  if (!run) for (const l of lines) {
+    if (!l.includes(`### T${todo.id} `)) continue;
+    let o; try { o = JSON.parse(l); } catch { continue; }
+    if (o.type === 'assistant' && o._run && o.message?.content?.some((c) => c.type === 'tool_use' && head.test(JSON.stringify(c.input)))) { run = o._run; break; }
+  }
   if (run) for (const l of lines) {
     let o; try { o = JSON.parse(l); } catch { continue; }
     if (o.type === '_office' && o.prompt && o._run === run) return o.thread ?? run;
