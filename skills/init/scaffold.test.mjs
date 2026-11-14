@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { scaffold, normalize } from './scaffold.mjs';
+import { scaffold, normalize, pmFile } from './scaffold.mjs';
 
 const answers = {
   business: '작은 온라인 서비스 $& $$', areas: ['조사', '개발'],
@@ -39,7 +39,10 @@ assert.match(cs, /model: haiku\neffort: low/);
 assert.match(cs, /위임 수준: 일부 위임/);
 assert.match(readFileSync(path.join(dir, '.claude', 'agents', 'research.md'), 'utf8'), /위임 수준: AI 전적 위임/);
 for (const f of ['board/todos.md', 'board/research/.gitkeep', 'board/cs/.gitkeep', 'board/dev/backlog.md', 'tools/office.mjs', 'tools/fixtures/demo-run.jsonl']) assert.ok(existsSync(path.join(dir, f)), f);
-assert.match(readFileSync(path.join(dir, '.gitignore'), 'utf8'), /\.office-runs\/\n\.office-telegram\.env/);
+assert.match(readFileSync(path.join(dir, '.gitignore'), 'utf8'), /\.office-runs\/\n\.office-telegram\.env\n\.office-slack\.env/);
+assert.ok(!readFileSync(path.join(dir, 'AGENTS.md'), 'utf8').includes('슬랙'));
+assert.match(pmFile(normalize({ ...answers, slack: true })), /오피스 슬랙 채널/);
+assert.equal(normalize({ ...answers, slack: true, dashboard: false }).dashboard, true);
 
 const second = scaffold(answers, dir);
 assert.ok(second.every((l) => l.startsWith('건너뜀') || l.startsWith('그대로')), second.join('\n'));

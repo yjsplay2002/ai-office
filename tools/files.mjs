@@ -6,7 +6,7 @@ export const MEDIA_TYPES = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
   '.mp4': 'video/mp4', '.webm': 'video/webm', '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
 };
-const DENY = /^(\.env.*|\.office-telegram\.env|\.dev\.vars.*|\.git|node_modules|.*\.(key|pem|jks|keystore))$/i;
+const DENY = /^(\.env.*|\.office-telegram\.env|\.office-slack\.env|\.dev\.vars.*|\.git|node_modules|.*\.(key|pem|jks|keystore))$/i;
 
 // rel = URL-decoded path after /files/. Returns { file, type } for an allowed file inside root, else null.
 export function mediaFile(root, rel) {

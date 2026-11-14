@@ -11,6 +11,7 @@ import { parseTodos, answerTodo, dismissTodo, uploadPlan, addRunReport, followUp
 import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
+import { slackConfig, createSlack } from './slack.mjs';
 import { loadLog, lastRun, KEEP_LINES, SEND_LINES, todoThread, linkAnswers, ANSWER_HEAD, keepRuns, tail } from './eventlog.mjs';
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
@@ -82,9 +83,10 @@ const busy = () => runs.size > 0;
 
 // Every instruction / TODO answer starts its own PM run immediately — no queue.
 // thread = the run that started the dashboard thread this run belongs to (a CEO comment); resume = that thread's PM session.
-// title: 목록에 보일 작업 제목(없으면 프롬프트에서), from: 새 주제로 갈라져 나온 원래 스레드
-function startRun(prompt, { thread, resume, title, from } = {}) {
+// title: 목록에 보일 작업 제목(없으면 프롬프트에서), from: 새 주제로 갈라져 나온 원래 스레드, shown: 슬랙에 보일 짧은 글(댓글)
+function startRun(prompt, { thread, resume, title, from, shown } = {}) {
   const id = nextRun++, before = todoIds();
+  slack?.runStarted({ id, thread: thread ?? id, prompt, title, from, shown });
   if (replay) {
     const send = (obj) => broadcast({ ...obj, _run: id });
     runs.set(id, null);
@@ -141,10 +143,12 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from 
         const who = agents().find((a) => a.name === c.input?.subagent_type)?.title || c.input?.subagent_type || '임시 지원';
         if (!c.input?.run_in_background) calls.set(c.id, { who, ts });
         tg?.progress(`▶️ ${who} 시작 — ${c.input?.description || ''}`);
+        slack?.progress(thread ?? id, `▶️ ${who} 시작 — ${c.input?.description || ''}`);
       }
       if (obj.type === 'user' && c.type === 'tool_result' && calls.has(c.tool_use_id)) {
         const { who, ts: t0 } = calls.get(c.tool_use_id); calls.delete(c.tool_use_id);
         tg?.progress(`☑️ ${who} 끝 (${Math.max(1, Math.round((ts - t0) / 60000))}분)`);
+        slack?.progress(thread ?? id, `☑️ ${who} 끝 (${Math.max(1, Math.round((ts - t0) / 60000))}분)`);
       }
     }
   };
@@ -179,6 +183,7 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from 
           const list = todos().filter((t) => ids.includes(t.id));
           for (const t of list) seenTodos?.add(t.id);
           if (list.length) list.forEach((t, i) => tg?.notifyTodo(t, i ? '' : msg)); else tg?.notify(msg);
+          slack?.report(thread ?? id, obj, list);   // 슬랙은 그 스레드에 보고, 이어서 TODO 카드
         }
       }
     }
@@ -236,14 +241,14 @@ function comment(thread, text) {
   const th = threadInfo(thread);
   if (!th.prompt) throw new Error('스레드를 찾을 수 없음(기록이 지워졌을 수 있음)');
   const live = th.ids.some((id) => runs.has(id));
-  if (th.session && !live) return startRun(text.trim(), { thread, resume: th.session });
+  if (th.session && !live) return startRun(text.trim(), { thread, resume: th.session, shown: text.trim() });
   startRun(`대표가 아래 지시의 스레드에 댓글을 달았습니다. 지시의 맥락에서 댓글을 처리해.
 
 [원래 지시]
 ${th.prompt}
 
 [대표 댓글]
-${text.trim()}`, { thread });
+${text.trim()}`, { thread, shown: text.trim() });
 }
 
 // 직원 관리: PM 설정 파일과 팀원 머리말. 서버는 파일만 고치고 커밋하지 않는다.
@@ -416,6 +421,20 @@ const tg = tgCfg && createTelegram({
   onAnswer: (id, answer, note, files) => submitTodo(id, answer, note, files),
   onCancel: () => { const n = runs.size; cancel(); return n; },
 });
+// ---------- 대표 슬랙: 오피스 채널에 스레드 그대로 + 지시·댓글·TODO 답 받기 (tools/slack.mjs) ----------
+// 토큰 파일이 커밋되지 않게: 이 기능 전에 init한 프로젝트의 .gitignore에도 넣는다(PM은 git add를 할 수 있다).
+const gi = path.join(root, '.gitignore');
+if (existsSync(path.join(root, '.office-slack.env')) && !(existsSync(gi) ? readFileSync(gi, 'utf8') : '').split(/\r?\n/).includes('.office-slack.env')) {
+  const have = existsSync(gi) ? readFileSync(gi, 'utf8') : '';
+  appendFileSync(gi, (have && !have.endsWith('\n') ? '\n' : '') + '.office-slack.env\n');
+}
+const slackCfg = slackConfig(root);
+const slack = slackCfg && createSlack({
+  cfg: slackCfg, runDir, todos: () => todos().filter((t) => !t.done), threadPrompt: (th) => threadInfo(th).prompt,
+  onRun: (prompt) => startInstruction(`${prompt}\n\n(슬랙으로 받은 지시)`),
+  onComment: (thread, text) => comment(thread, text),
+  onAnswer: (id, answer, note) => submitTodo(id, answer, note, []),
+});
 // New open TODOs (by id) since the server started. Existing ones at boot are not re-announced.
 let seenTodos = null;
 function checkTodos() {
@@ -424,10 +443,19 @@ function checkTodos() {
   const fresh = seenTodos ? open.filter((t) => !seenTodos.has(t.id)) : [];
   seenTodos = new Set([...(seenTodos || []), ...open.map((t) => t.id)]);
   for (const t of fresh) tg?.notifyTodo(t);
+  if (!slack) return;
+  const all = todos();
+  for (const t of fresh) slack.notifyTodo(t, todoThread(t, history, all));
+  for (const id of slack.openTodos()) {   // 대시보드·텔레그램에서 답한 TODO의 슬랙 카드도 닫는다
+    if (open.some((t) => t.id === id)) continue;
+    const t = all.findLast((x) => x.id === id);
+    if (t) slack.todoDone(t);
+  }
 }
 checkTodos();
 setInterval(checkTodos, 5000);
 console.log(tg ? '텔레그램: 오피스 봇으로 알림 + 답장·지시 받기' : '텔레그램: 꺼짐 (.office-telegram.env에 오피스 전용 봇 토큰 필요)');
+console.log(slack ? '슬랙: 연결 중…' : '슬랙: 꺼짐 (.office-slack.env 필요, README의 슬랙 연동 참고)');
 
 // Re-attach to runs that kept going while this server was down (finished ones are read to the end, then closed).
 for (const meta of reattach) attach(meta);
@@ -505,6 +533,7 @@ const server = http.createServer(async (req, res) => {
       if (!Number.isInteger(thread)) return json(res, 400, { error: 'thread' });
       cancel(threadInfo(thread).ids);
       office({ closed: thread });   // the thread shows as 종료 from now on (kept in the event log)
+      slack?.closed(thread);
       try { closeThreadTodos(thread); } catch (err) { office({ log: 'TODO 정리 실패: ' + err.message }); }
       return json(res, 200, { ok: true });
     }
@@ -512,6 +541,7 @@ const server = http.createServer(async (req, res) => {
       const { thread } = await body(req);
       if (!Number.isInteger(thread)) return json(res, 400, { error: 'thread' });
       office({ reopened: thread });
+      slack?.reopened(thread);
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/comment') {

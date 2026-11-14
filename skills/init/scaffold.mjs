@@ -49,7 +49,7 @@ export function normalize(a) {
       tools: r.tools || t?.fm.tools || DEFAULT_TOOLS, body: (t?.body.trim() || `너는 ${description.split('.')[0]} 담당이다. 결과는 \`board/${r.name}/YYYY-MM-DD-<주제>.md\`에 쓴다.`) + (r.body ? `\n\n${r.body.trim()}` : '') };
   });
   if (new Set(roles.map((r) => r.name)).size !== roles.length) throw new Error('역할 이름이 겹침');
-  return { business: String(a.business || '').trim() || '(미정)', areas: [].concat(a.areas || []).join(', ') || '(미정)', roles, telegram: !!a.telegram, dashboard: a.dashboard !== false };
+  return { business: String(a.business || '').trim() || '(미정)', areas: [].concat(a.areas || []).join(', ') || '(미정)', roles, telegram: !!a.telegram, slack: !!a.slack, dashboard: a.dashboard !== false || !!a.slack };   // 슬랙은 대시보드 서버가 잇는다
 }
 
 export function agentFile(r) {
@@ -60,10 +60,11 @@ export function pmFile(c) {
   const rows = c.roles.map((r) => `| \`${r.level === 'human' ? '대표' : r.name}\` | ${r.title} | ${LEVELS[r.level]} | ${r.level === 'human' ? '—' : `${r.model} / ${r.effort}`} |`);
   const table = ['| 담당 | 하는 일 | 위임 수준 | 모델 / effort |', '|---|---|---|---|', ...rows].join('\n');
   const telegram = c.telegram ? '- 대표와의 텔레그램 채널은 오피스 전용 봇 하나뿐이다(`.office-telegram.env`). 텔레그램 플러그인 도구는 쓰지 않는다. 대표가 이미지·파일을 텔레그램으로 달라고 하면 `node tools/tg-send.mjs "설명" 파일1 파일2 …`로 보낸다(이미지는 10장씩 앨범). 새 TODO와 최종 보고는 대시보드 서버가 알아서 보낸다.' : '';
+  const slack = c.slack ? '- 대표와는 오피스 슬랙 채널로도 이어진다(`.office-slack.env`). 대시보드 스레드가 그 채널의 슬랙 스레드로 그대로 올라가고, 새 TODO·최종 보고도 대시보드 서버가 그 스레드에 알아서 보낸다. 슬랙 MCP 도구로 대표에게 따로 보내지 않는다.' : '';
   const dash = c.dashboard ? '\n## 대시보드\n`node tools/office.mjs` → http://127.0.0.1:4747 . 대시보드에서 내린 지시와 TODO 답은 각각 `claude -p` PM 세션으로 바로 시작된다. 팀원 책상은 `.claude/agents/*.md`에서 자동으로 배치된다.\n' : '';
   return readFileSync(path.join(tpl, 'CLAUDE.md'), 'utf8')
     .replace('{{BUSINESS}}', () => c.business).replace('{{AREAS}}', () => c.areas).replace('{{ROLES}}', () => table)
-    .replace('{{TELEGRAM}}\n', () => (telegram ? telegram + '\n' : '')).replace('{{DASHBOARD}}\n', () => dash);
+    .replace('{{TELEGRAM}}\n', () => (telegram ? telegram + '\n' : '')).replace('{{SLACK}}\n', () => (slack ? slack + '\n' : '')).replace('{{DASHBOARD}}\n', () => dash);
 }
 
 const AGENTS_HEAD = `<!-- /ai-office:init 이 CLAUDE.md와 같은 내용으로 만든 Codex용 사본. 규칙을 바꾸면 두 파일을 같이 고친다. -->
@@ -118,7 +119,7 @@ export function scaffold(answers, target, overwrite = []) {
     // 대시보드가 플러그인 업데이트를 알아보는 기준(tools/update.mjs): 이 tools/를 받은 플러그인 버전
     put('tools/.plugin-version', JSON.parse(readFileSync(path.resolve(here, '..', '..', '.claude-plugin', 'plugin.json'), 'utf8')).version + '\n');
   }
-  const gi = path.join(target, '.gitignore'), want = ['.office-runs/', '.office-telegram.env'];
+  const gi = path.join(target, '.gitignore'), want = ['.office-runs/', '.office-telegram.env', '.office-slack.env'];
   const have = existsSync(gi) ? readFileSync(gi, 'utf8') : '';
   const miss = want.filter((w) => !have.split(/\r?\n/).includes(w));
   if (miss.length) { writeFileSync(gi, have + (have && !have.endsWith('\n') ? '\n' : '') + miss.join('\n') + '\n'); log.push(`추가 .gitignore: ${miss.join(' ')}`); }

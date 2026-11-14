@@ -179,6 +179,30 @@ TELEGRAM_CHAT_ID=...
 - 원격으로 열 때 메시지에 넣을 주소는 `.office-telegram.env`에 `OFFICE_URL=https://...` 한 줄을 넣거나 `OFFICE_URL` 환경 변수로 바꿉니다.
 - 파일이 없으면 꺼져 있습니다.
 
+## 슬랙 연동 (선택)
+init에서 `슬랙 연동: 씀`을 고르거나, 이미 차린 오피스라면 아래만 하면 됩니다. 대시보드의 스레드가 슬랙에 그대로 옮겨집니다.
+- 워크스페이스에 오피스 전용 비공개 채널(`#ai-office-<폴더 이름>`)이 생기고, 대시보드 스레드 하나가 그 채널의 슬랙 스레드 하나가 됩니다. 지시가 스레드 첫 글, 팀원 시작·끝, 최종 보고, TODO 카드가 답글로 붙습니다.
+- 최종 보고와 TODO에는 대표 멘션이 붙어 슬랙 알림이 옵니다. 보고는 슬랙 markdown 블록이라 제목·표·목록이 그대로 보입니다.
+- 채널에 새 글을 쓰면 새 지시, 스레드에 답글을 달면 그 스레드 댓글(PM이 이어 감), TODO 카드 버튼을 누르면 메모 창이 뜨고 보내면 답이 됩니다. 스레드에 `T12 반려 색이 어두움`처럼 써도 답이 됩니다.
+- 대시보드·텔레그램에서 답한 TODO는 슬랙 카드의 버튼이 내려가고 답이 적힙니다. 스레드를 종료·다시 열면 그 스레드에도 남습니다.
+- 슬랙을 켜기 전에 있던 스레드는 그 스레드에 새 일이 생길 때 머리글이 만들어집니다.
+- 대표(`SLACK_USER_ID`) 한 명이 오피스 채널에 쓴 글만 받습니다. 그 글로 권한 우회 PM이 돌기 때문입니다.
+- 받기는 Socket Mode라 공개 주소가 필요 없고 Node 22 이상이 필요합니다(그보다 낮으면 보내기만). 슬랙에서 보낸 파일 첨부는 아직 받지 않습니다.
+
+설정:
+1. https://api.slack.com/apps → **Create New App → From a manifest** → 워크스페이스를 고르고, 이 프로젝트의 `tools/slack-manifest.json` 내용을 붙여 넣어 만든다.
+2. **Install to Workspace**로 설치한 뒤 **OAuth & Permissions**의 *Bot User OAuth Token*(`xoxb-…`)을 복사한다.
+3. **Basic Information → App-Level Tokens**에서 `connections:write` 범위로 토큰(`xapp-…`)을 만든다. 슬랙에서 지시·댓글·TODO 답을 받는 데 쓴다(없으면 보내기만).
+4. 슬랙에서 자기 프로필 → ⋮ → **멤버 ID 복사**(`U…`).
+5. 프로젝트 폴더에 `.office-slack.env`를 만든다(`.gitignore`에 들어 있다):
+   ```
+   SLACK_BOT_TOKEN=xoxb-...
+   SLACK_APP_TOKEN=xapp-...
+   SLACK_USER_ID=U...
+   ```
+   채널 이름을 바꾸려면 `SLACK_CHANNEL=이름`, 이미 있는 채널을 쓰려면 `SLACK_CHANNEL_ID=C...`(봇을 그 채널에 초대).
+6. 대시보드 서버를 켜거나 `서버 재시작`을 누르면 비공개 채널 `#ai-office-<폴더 이름>`이 생기고 대표가 초대된다.
+
 ## 자체 점검
 ```
 for f in tools/*.test.mjs skills/init/*.test.mjs; do node "$f"; done
@@ -199,4 +223,5 @@ for f in tools/*.test.mjs skills/init/*.test.mjs; do node "$f"; done
 - Your work queue is `board/todos.md` with five types: decide, approve, input, do-it-yourself, and review. One job reports once: if a run already raised a decision or approval, its final report is attached to that TODO instead of a separate review item.
 - The local 3D dashboard (`node tools/office.mjs`, 127.0.0.1:4747, `claude -p` only) shows the team working in a forest office, with speech bubbles, task history, Notion-style markdown in chat, TODOs and reports, a staff editor, usage gauges and a restart button. Idle staff rest in the lounge or on the tree-house deck, and their faces change with their state. See the screenshots above.
 - After a plugin update, starting the dashboard (or its restart button) syncs the project's `tools/` when the installed plugin version is newer than `tools/.plugin-version`. Bump `version` in `.claude-plugin/plugin.json` when releasing.
+- Optional Slack integration: a private office channel where every dashboard thread is a Slack thread (instructions, progress, reports, TODO buttons, replies as comments), over Socket Mode. Setup: `tools/slack-manifest.json` and `.office-slack.env`.
 - Optional Telegram bot for TODOs, reports and replies. Templates and prompts are Korean in v1. MIT licensed.

@@ -59,8 +59,9 @@ description: >
 그다음 질문: "이대로 갈까요?" 보기: `이대로` / `역할 추가·삭제` / `위임 수준 바꾸기` / `모델 바꾸기`. 고친 표를 다시 보여 주고 `이대로`가 나올 때까지 반복한다.
 
 ## 4. 옵션
-한 번에 묻는다(Claude Code는 질문 2개짜리 `AskUserQuestion` 한 번).
+한 번에 묻는다(Claude Code는 질문 3개짜리 `AskUserQuestion` 한 번).
 - 텔레그램 알림: `안 씀`(기본) / `씀` — 쓰면 새 TODO·최종 보고가 오피스 전용 봇으로 간다. 토큰은 나중에 대표가 `.office-telegram.env`에 직접 넣는다(이 대화에 토큰을 붙여 넣지 말라고 안내한다).
+- 슬랙 연동: `안 씀`(기본) / `씀` — 쓰면 대시보드 서버가 워크스페이스에 오피스 전용 채널을 만들고, 대시보드 스레드 하나를 그 채널의 슬랙 스레드 하나로 그대로 옮긴다(지시 = 스레드 첫 글, 팀원 진행·최종 보고·TODO 카드 = 답글, 대표 멘션 알림). 채널에 새 글을 쓰면 새 지시, 스레드에 답글을 달면 댓글, TODO 카드 버튼으로 답한다. 대시보드 서버가 켜져 있어야 하므로 고르면 대시보드도 켠다. 토큰은 대표가 `.office-slack.env`에 직접 넣는다(이 대화에 붙여 넣지 말라고 안내한다).
 - 대시보드: `씀`(기본) / `안 씀` — `node tools/office.mjs`로 여는 3D 오피스. Claude Code(`claude -p`) 전용이다.
 
 ## 5. 파일 만들기
@@ -78,6 +79,7 @@ description: >
        { "name": "legal", "level": "human", "description": "법무 검토. 계약서와 약관을 본다." }
      ],
      "telegram": false,
+     "slack": false,
      "dashboard": true
    }
    ```
@@ -96,5 +98,18 @@ description: >
 - 시작하는 법: Claude Code를 이 폴더에서 새로 열고 목표를 말하면 PM이 팀원에게 나눈다. 대표 할 일은 `board/todos.md`에 쌓인다.
 - 대시보드를 골랐으면: `node tools/office.mjs` → http://127.0.0.1:4747 (지시하면 `claude -p`가 돌아 구독 사용량을 쓴다). 써 보기만 하려면 `node tools/office.mjs --replay tools/fixtures/demo-run.jsonl`.
 - 텔레그램을 골랐으면: 프로젝트 폴더에 `.office-telegram.env`를 만들고 `TELEGRAM_BOT_TOKEN=...`, `TELEGRAM_CHAT_ID=...` 두 줄을 넣는다(`.gitignore`에 이미 들어 있다).
+- 슬랙을 골랐으면 아래 순서를 그대로 안내한다(토큰은 대화에 붙여 넣지 말고 파일에만):
+  1. https://api.slack.com/apps → **Create New App → From a manifest** → 워크스페이스를 고르고, 이 프로젝트의 `tools/slack-manifest.json` 내용을 붙여 넣어 만든다.
+  2. **Install to Workspace**로 설치한 뒤 **OAuth & Permissions**의 *Bot User OAuth Token*(`xoxb-…`)을 복사한다.
+  3. **Basic Information → App-Level Tokens**에서 `connections:write` 범위로 토큰(`xapp-…`)을 만든다. 슬랙에서 지시·댓글·TODO 답을 받는 데 쓴다(없으면 보내기만).
+  4. 슬랙에서 자기 프로필 → ⋮ → **멤버 ID 복사**(`U…`).
+  5. 프로젝트 폴더에 `.office-slack.env`를 만든다(`.gitignore`에 들어 있다):
+     ```
+     SLACK_BOT_TOKEN=xoxb-...
+     SLACK_APP_TOKEN=xapp-...
+     SLACK_USER_ID=U...
+     ```
+     채널 이름을 바꾸려면 `SLACK_CHANNEL=이름`, 이미 있는 채널을 쓰려면 `SLACK_CHANNEL_ID=C...`(봇을 그 채널에 초대).
+  6. 대시보드 서버를 켜거나 `서버 재시작`을 누르면 비공개 채널 `#ai-office-<폴더 이름>`이 생기고 대표가 초대된다.
 - Codex: `AGENTS.md`와 `board/`는 그대로 쓰고, 대시보드는 v1에서 Claude Code 전용이다.
 - 아직 커밋하지 않았다. 원하면 `git add`할 파일을 골라 커밋하자고 제안한다(푸시는 하지 않는다).
