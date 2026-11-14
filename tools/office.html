@@ -2139,7 +2139,7 @@ es.onmessage = (m) => {
 function onEvent(e) {
   const t = evTime ?? Date.now();
   if (e.type === '_office') {
-    if (e.prompt) { log(e.prompt, 'ceo', '대표 지시'); hist.run(e._run, e.prompt, t, e.thread ?? e._run); closedThreads.delete(e.thread); if (openTodos.some((x) => x.thread === e._run)) renderTodos(openTodos); if (!e._history) perform(instructionMotion(), { paper: { title: '대표 지시', text: e.prompt } }); }
+    if (e.prompt) { log(e.prompt, 'ceo', '대표 지시'); hist.run(e._run, e.prompt, t, e.thread ?? e._run, e.title); closedThreads.delete(e.thread); if (openTodos.some((x) => x.thread === e._run)) renderTodos(openTodos); if (!e._history) perform(instructionMotion(), { paper: { title: '대표 지시', text: e.prompt } }); }
     if (e.live) {   // 기록 끝의 현재 상태: 지금 돌지 않는 옛 실행은 끝난 것으로
       for (const k of hist.tasks.values()) if (!e.live.includes(k.run)) hist.end(k.run);
       for (const id of feeds.keys()) if (!e.live.includes(id)) feeds.delete(id);

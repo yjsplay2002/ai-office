@@ -14,6 +14,7 @@ import { telegramConfig, createTelegram } from './telegram.mjs';
 import { loadLog, lastRun, KEEP_LINES, SEND_LINES, todoThread, linkAnswers, ANSWER_HEAD, keepRuns, tail } from './eventlog.mjs';
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
+import { judgePrompt, parseVerdict } from './topic.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -81,12 +82,13 @@ const busy = () => runs.size > 0;
 
 // Every instruction / TODO answer starts its own PM run immediately — no queue.
 // thread = the run that started the dashboard thread this run belongs to (a CEO comment); resume = that thread's PM session.
-function startRun(prompt, { thread, resume } = {}) {
+// title: 목록에 보일 작업 제목(없으면 프롬프트에서), from: 새 주제로 갈라져 나온 원래 스레드
+function startRun(prompt, { thread, resume, title, from } = {}) {
   const id = nextRun++, before = todoIds();
   if (replay) {
     const send = (obj) => broadcast({ ...obj, _run: id });
     runs.set(id, null);
-    send({ type: '_office', state: 'running', runs: runs.size, prompt, thread });
+    send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from });
     const lines = readFileSync(path.resolve(root, replay), 'utf8').split('\n').filter(Boolean);
     let i = 0;
     const tick = () => {
@@ -114,7 +116,7 @@ function startRun(prompt, { thread, resume } = {}) {
   child.on('error', () => {});   // a spawn failure shows up as an already-dead pid below
   child.stdin.end(prompt);
   child.unref();
-  const meta = { id, pid: child.pid, prompt, t: Date.now(), before, thread };
+  const meta = { id, pid: child.pid, prompt, t: Date.now(), before, thread, title, from };
   writeFileSync(base + '.json', JSON.stringify(meta));
   attach(meta);
 }
@@ -127,7 +129,7 @@ const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); ret
 
 // Follow a run's output files until its process is gone, then finish it and delete the files.
 // shortcut: liveness is by pid only; a pid reused while the server was down would look alive until it exits.
-function attach({ id, pid, prompt, t: started, before = [], thread }) {
+function attach({ id, pid, prompt, t: started, before = [], thread, title, from }) {
   const base = path.join(runDir, String(id));
   const send = (obj) => broadcast({ ...obj, _run: id });
   // 중간 보고: PM이 팀원을 부르고 돌려받을 때마다 텔레그램에 무음으로 알린다. LLM을 안 써서 토큰이 들지 않는다.
@@ -182,7 +184,7 @@ function attach({ id, pid, prompt, t: started, before = [], thread }) {
     }
   };
   runs.set(id, { pid });
-  send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, _t: started });
+  send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from, _t: started });
   const poll = setInterval(() => {
     const live = alive(pid);   // checked before reading, so everything written before exit is read
     pump();
@@ -221,7 +223,7 @@ function threadInfo(thread) {
   let prompt = '', session = null;
   for (const l of history) {
     let o; try { o = JSON.parse(l); } catch { continue; }
-    if (o.type === '_office' && o.prompt && o._run === thread && !prompt) prompt = o.prompt;
+    if (o.type === '_office' && o.prompt && (o._run === thread || o.thread === thread) && !prompt) prompt = o.prompt;   // 연 지시가 잘렸으면 남은 가장 이른 실행
     if (o.type === '_office' && o.prompt && o.thread === thread) ids.add(o._run);
     if (o.type === 'system' && o.subtype === 'init' && !o.parent_tool_use_id && ids.has(o._run)) session = o.session_id;
   }
@@ -317,6 +319,7 @@ function dismiss(ids, why) {
 function closeThreadTodos(thread) {
   const all = todos(), of = (t) => todoThread(t, history, all) === thread;
   pendingAnswers = pendingAnswers.filter((a) => !of(a.todo));
+  closedNow.add(thread);   // 주제 판단을 기다리는 그 스레드의 답도 버린다
   dismiss(all.filter((t) => !t.done && of(t)).map((t) => t.id), '스레드 종료');
 }
 
@@ -352,15 +355,38 @@ let pendingAnswers = [], answerTimer = null;
 function flushAnswers() {
   const list = pendingAnswers; pendingAnswers = [];
   // 스레드 = 작업 하나: 답은 그 TODO를 올린 작업의 스레드에서 이어 간다(작업별로 묶음). 출처를 모르는 답만 새 스레드.
+  // 답이 그 스레드 주제와 다른 새 일을 시키면(작은 모델이 판단) 새 스레드로 뗀다. 판단이 실패하면 원래 스레드.
   const groups = new Map();
   for (const a of list) { const th = todoThread(a.todo, history, todos()); groups.set(th, [...(groups.get(th) || []), a.line]); }
+  const prompt = (lines) => `${ANSWER_HEAD}\n${lines.join('\n')}\n\n` +
+    'board/todos.md와 근거 파일을 확인하고, 이 답들을 반영해 남은 작업을 이어서 진행해. 서로 관계없는 답은 팀원을 동시에 불러 처리해. 대표가 할 일이 새로 생기면 todos.md에 형식대로 추가해.';
   for (const [thread, lines] of groups) {
-    const prompt = `${ANSWER_HEAD}\n${lines.join('\n')}\n\n` +
-      'board/todos.md와 근거 파일을 확인하고, 이 답들을 반영해 남은 작업을 이어서 진행해. 서로 관계없는 답은 팀원을 동시에 불러 처리해. 대표가 할 일이 새로 생기면 todos.md에 형식대로 추가해.';
-    if (thread == null) { startRun(prompt); continue; }
-    const th = threadInfo(thread);
-    startRun(prompt, { thread, resume: th.ids.some((id) => runs.has(id)) ? undefined : th.session || undefined });
+    if (thread == null) { startRun(prompt(lines)); continue; }
+    closedNow.delete(thread);
+    judgeTopic(threadInfo(thread).prompt, lines).then((v) => {
+      if (closedNow.has(thread)) return;   // 판단하는 사이 대표가 스레드를 종료함
+      const fresh = lines.filter((_, i) => v?.fresh.includes(i)), stay = lines.filter((_, i) => !v?.fresh.includes(i));
+      if (fresh.length) { startRun(prompt(fresh), { title: v.title || undefined, from: thread }); office({ log: `새 주제라 새 스레드로: ${v.title || fresh.length + '건'}` }); }
+      if (!stay.length) return;
+      const th = threadInfo(thread);
+      startRun(prompt(stay), { thread, resume: th.ids.some((id) => runs.has(id)) ? undefined : th.session || undefined });
+    });
   }
+}
+const closedNow = new Set();
+// 토큰(11-14 측정): haiku 한 번에 약 $0.002(입력 대부분은 캐시된 시스템 프롬프트). 프로젝트 CLAUDE.md를 싣지 않게 임시 폴더에서 돈다.
+function judgeTopic(subject, lines) {
+  if (replay || !subject) return Promise.resolve(null);
+  return new Promise((done) => {
+    const child = spawn(claudeExe || 'claude', ['-p', '--model', 'haiku', '--output-format', 'text', '--strict-mcp-config', '--disable-slash-commands'],
+      { cwd: os.tmpdir(), shell: !claudeExe && process.platform === 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    let out = '';
+    const timer = setTimeout(() => child.kill(), 90e3);
+    child.stdout.on('data', (d) => { out += d; });
+    child.on('error', () => {});
+    child.on('close', () => { clearTimeout(timer); let v = null; try { v = parseVerdict(out, lines.length); } catch {} done(v); });
+    child.stdin.end(judgePrompt(subject, lines));
+  });
 }
 
 // A new CEO instruction (dashboard or Telegram). files = [{ name, data(base64) }].

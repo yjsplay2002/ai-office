@@ -66,7 +66,7 @@ export function linkAnswers(lines, todos) {
     let o; try { o = JSON.parse(l); } catch { return; }
     if (o.type !== '_office' || !o.prompt) return;
     if (o.thread != null) { if (moved.has(o.thread)) { out[i] = JSON.stringify({ ...o, thread: moved.get(o.thread) }); moved.set(o._run, moved.get(o.thread)); } return; }
-    if (!String(o.prompt).startsWith(ANSWER_HEAD)) return;
+    if (!String(o.prompt).startsWith(ANSWER_HEAD) || o.from != null) return;   // from: 새 주제라 일부러 뗀 실행
     for (const [, id] of o.prompt.matchAll(/^- T(\d+) /gm)) {
       const th = todoThread(todos.find((t) => t.id === Number(id)), out.slice(0, i), todos);
       if (th != null && th !== o._run) { out[i] = JSON.stringify({ ...o, thread: th }); moved.set(o._run, th); return; }

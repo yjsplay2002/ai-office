@@ -84,7 +84,7 @@ export function createHistory(max = 200) {
   return {
     tasks,
     // thread = the run whose thread this one continues (a CEO comment); a new instruction is its own thread.
-    run(n, prompt, t, thread = n) { tasks.set(runKey(n), { agent: 'pm', run: n, thread, title: line(workTitle(prompt), 60), start: t, state: '진행 중', ev: [[t, 'order', `대표: ${full(prompt)}`]] }); },
+    run(n, prompt, t, thread = n, title) { tasks.set(runKey(n), { agent: 'pm', run: n, thread, title: line(title || workTitle(prompt), 60), start: t, state: '진행 중', ev: [[t, 'order', `대표: ${full(prompt)}`]] }); },
     // Run finished or cancelled (why = '중단'): whatever never reported is closed too.
     end(n, why) { for (const k of tasks.values()) if (k.run === n && k.state === '진행 중') k.state = why || (k.agent === 'pm' ? '완료' : '보고 없이 끝남'); },
     feed(ev, t, n) {

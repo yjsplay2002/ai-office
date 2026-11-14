@@ -89,3 +89,14 @@ console.log('eventlog keep ok');
   assert.deepEqual(tail(L, 1).map((l) => JSON.parse(l)._t), [1, 3, 5]);
   assert.deepEqual(tail(L, 1, new Set([52])).map((l) => JSON.parse(l)._t), [1, 2, 3, 5]);
 }
+
+// 새 주제라 뗀 답 실행(from)은 부팅 때 원래 스레드로 다시 붙이지 않는다
+{
+  const L = [
+    JSON.stringify({ _t: 1, type: '_office', prompt: '옛 작업', _run: 1 }),
+    JSON.stringify({ _t: 2, type: '_office', prompt: '대표가 TODO에 답했습니다:\n- T5 [승인 · m] x → 반려', _run: 2, from: 1 }),
+  ];
+  const out = linkAnswers(L, [{ id: 5, refs: ['board/reports/a-run1.md'], desc: 'x' }]);
+  assert.equal(JSON.parse(out[1]).thread, undefined);
+  assert.equal(JSON.parse(linkAnswers([L[0], L[1].replace(',"from":1', '')], [{ id: 5, refs: ['board/reports/a-run1.md'], desc: 'x' }])[1]).thread, 1);
+}
