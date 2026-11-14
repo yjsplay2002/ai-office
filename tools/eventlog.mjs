@@ -15,9 +15,14 @@ export function loadLog(text, { now = Date.now(), days = KEEP_DAYS, max = KEEP_L
   }
   return tail(out, max, keep);
 }
-// 최근 n줄 + keep에 든 실행의 줄(오래돼도)
-const runOf = (l) => { try { return JSON.parse(l)._run; } catch { return undefined; } };
-export const tail = (lines, n, keep = new Set()) => lines.length <= n ? lines : lines.filter((l, i) => i >= lines.length - n || (keep.size > 0 && keep.has(runOf(l))));
+// 최근 n줄 + keep에 든 실행의 줄(오래돼도) + 스레드 뼈대 줄(지시·종료·다시 열기). 뼈대가 잘리면 그 스레드에 이어 붙은 일이 목록에서 사라진다
+const info = (l) => { try { return JSON.parse(l); } catch { return {}; } };
+const frame = (o) => o.type === '_office' && (o.prompt != null || o.closed != null || o.reopened != null);
+export const tail = (lines, n, keep = new Set()) => lines.length <= n ? lines : lines.filter((l, i) => {
+  if (i >= lines.length - n) return true;
+  if (!keep.size && !l.includes('"_office"')) return false;   // 큰 줄을 매번 JSON.parse하지 않게
+  const o = info(l); return keep.has(o._run) || frame(o);
+});
 
 // 보관은 기간이 아니라 스레드 단위로: 열린 TODO가 걸린 스레드의 실행 번호들(그 스레드를 연 실행 + 거기 붙은 실행)
 export function keepRuns(lines, todos) {

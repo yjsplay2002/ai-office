@@ -1,6 +1,6 @@
 // node tools/eventlog.test.mjs — the saved dashboard log: trim by age and size, drop re-attached runs, next run id.
 import assert from 'node:assert/strict';
-import { loadLog, lastRun, todoThread, linkAnswers, keepRuns } from './eventlog.mjs';
+import { loadLog, lastRun, todoThread, linkAnswers, keepRuns, tail } from './eventlog.mjs';
 
 const now = Date.parse('2026-11-12T00:00:00Z'), day = 864e5;
 const L = (o) => JSON.stringify(o);
@@ -17,7 +17,7 @@ const text = [
 const kept = loadLog(text, { now, drop: new Set([3]) });
 assert.deepEqual(kept.map((l) => JSON.parse(l)._run ?? null), [2, 2, null]);
 assert.equal(loadLog(text, { now }).length, 4);
-assert.deepEqual(loadLog(text, { now, max: 2 }).map((l) => JSON.parse(l)._t), [now - 10, now - 5]);   // newest kept
+assert.deepEqual(loadLog(text, { now, max: 2 }).map((l) => JSON.parse(l)._t), [now - day, now - 10, now - 5]);   // newest kept + 스레드를 연 지시
 assert.equal(lastRun(loadLog(text, { now, days: 30 })), 3);
 assert.equal(lastRun([]), 0);
 assert.deepEqual(loadLog(''), []);
@@ -73,6 +73,19 @@ console.log('eventlog ok:', kept.length, 'kept');
   const keep = keepRuns(log, todos);
   assert.deepEqual([...keep].sort(), [1, 4]);
   assert.deepEqual(loadLog(log.join('\n'), { now, keep }).map((l) => JSON.parse(l)._run), [1, 1, 4, 3, 3]);
-  assert.deepEqual(loadLog(log.join('\n'), { now, keep, max: 1 }).map((l) => JSON.parse(l)._run), [1, 1, 4, 3]);
+  assert.deepEqual(loadLog(log.join('\n'), { now, keep, max: 1 }).map((l) => JSON.parse(l)._run), [1, 1, 4, 3, 3]);   // 3의 지시 줄도 뼈대라 남는다
 }
 console.log('eventlog keep ok');
+
+// 줄 수로 자를 때도 스레드 뼈대(지시·종료)는 남는다: 잘리면 그 스레드에 이어 붙은 일이 목록에서 사라진다
+{
+  const L = [
+    JSON.stringify({ _t: 1, type: '_office', prompt: '홍보 계획', _run: 52 }),
+    JSON.stringify({ _t: 2, type: 'assistant', _run: 52, text: 'x' }),
+    JSON.stringify({ _t: 3, type: '_office', closed: 40 }),
+    JSON.stringify({ _t: 4, type: '_office', log: '로그' }),
+    JSON.stringify({ _t: 5, type: 'assistant', _run: 69 }),
+  ];
+  assert.deepEqual(tail(L, 1).map((l) => JSON.parse(l)._t), [1, 3, 5]);
+  assert.deepEqual(tail(L, 1, new Set([52])).map((l) => JSON.parse(l)._t), [1, 2, 3, 5]);
+}

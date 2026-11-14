@@ -2031,7 +2031,9 @@ const preview = (msgs, st) => {
   const m = msgs.at(-1); if (!m) return ''; const t = m.text ? plain(m.text) : `작업 중 · ${m.acts.at(-1)?.text || ''}`;
   return `<b>${esc(whoName(m.who))}</b> ${esc(cut(t.replace(/\s*\n\s*/g, ' '), 140))}`; };
 function renderThreads() {
-  const roots = [...hist.tasks.values()].filter((k) => k.agent === 'pm' && k.run === k.thread);
+  // 스레드마다 하나: 그 스레드를 연 지시, 그 줄이 기록에서 잘렸으면 거기 이어 붙은 가장 이른 실행(번호는 스레드 번호 그대로)
+  const roots = [...new Map([...hist.tasks.values()].filter((k) => k.agent === 'pm')
+    .sort((a, b) => (a.run === a.thread) - (b.run === b.thread) || b.start - a.start).map((k) => [k.thread, { ...k, run: k.thread }])).values()];
   try { portraitsOf([...people.values()]); } catch {}   // 처음 보는 사람만 한 번 그린다(WebGL이 없으면 색 동그라미)
   const list = roots.map((k) => {
     const lines = hist.thread(k.run), said = lines.findLast((x) => !TACT[x.kind] && x.who !== 'ceo')?.t ?? 0;   // 안 읽음은 남이 한 말만 센다(도구 사용·내 댓글 제외)
