@@ -54,15 +54,15 @@ export function channelName(s) {
 const unescape = (s) => String(s || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
 // Pure: 슬랙 메시지 이벤트 하나가 무엇이 되는지. threadOf(ts) = 그 슬랙 스레드의 대시보드 스레드 번호(없으면 null).
-// members = { 봇 사용자 ID: 팀원 이름 }, self = PM 봇 사용자 ID. 팀원 봇 멘션이 있으면 member = 그 팀원(첫 멘션), 멘션은 글에서 뺀다.
+// members = { 봇 사용자 ID: 팀원 이름 }, self = PM 봇 사용자 ID. 첫 봇 멘션이 member: 팀원 이름, PM 봇이면 ''(그 스레드를 팀원이 맡고 있어도 PM에게). 멘션은 글에서 뺀다.
 export function routeSlack(ev, { owner, channel, threadOf, todos = [], members = {}, self = '' }) {
   if (!ev || ev.type !== 'message' || ev.subtype || ev.bot_id) return { kind: 'none' };   // 편집·입장 알림·봇 글(우리 글 포함)
   if (ev.user !== owner || ev.channel !== channel) return { kind: 'none' };   // trust boundary
   let member = null;
-  const text = unescape(ev.text).replace(/<@(U[A-Z0-9]+)(?:\|[^>]*)?>/g, (m, u) => (u === self ? '' : members[u] ? ((member ??= members[u]), '') : m)).trim();
+  const text = unescape(ev.text).replace(/<@(U[A-Z0-9]+)(?:\|[^>]*)?>/g, (m, u) => (u === self ? ((member ??= ''), '') : members[u] ? ((member ??= members[u]), '') : m)).trim();
   if (!text) return { kind: 'none' };
   const r = routeText(ev, text, threadOf, todos);
-  return member && (r.kind === 'run' || r.kind === 'comment') ? { ...r, member } : r;
+  return member != null && (r.kind === 'run' || r.kind === 'comment') ? { ...r, member } : r;
 }
 function routeText(ev, text, threadOf, todos) {
   if (!ev.thread_ts || ev.thread_ts === ev.ts) return { kind: 'run', prompt: text, ts: ev.ts };
@@ -179,12 +179,12 @@ export function createSlack({ cfg, runDir, todos, threadPrompt, onRun, onComment
   function report(thread, obj, list, as) {
     const body = String(obj.result || '').trim() || '(내용 없음)';
     md(thread, `<@${cfg.owner}> ${obj.is_error ? '⚠️ **최종 보고 (오류)**' : '✅ **최종 보고**'}\n\n${body}`, `${obj.is_error ? '최종 보고(오류)' : '최종 보고'}: ${firstLine(body, 120)}`, as);
-    for (const t of list) notifyTodo(as && t.by === 'pm' ? { ...t, by: as } : t, thread);   // 직접 시킨 일의 '보고 확인' TODO도 그 팀원이
+    for (const t of list) notifyTodo(t, thread);
   }
   function notifyTodo(t, thread) {
     if (st.todos[t.id] || thread == null) return;
     st.todos[t.id] = { thread };
-    queue(async () => { const m = await post({ thread_ts: await root(thread), ...todoCard(t, cfg.owner) }, t.by); st.todos[t.id] = { thread, ts: m.ts, by: t.by }; save(); });   // 올린 팀원 봇이 보낸다
+    queue(async () => { const m = await post({ thread_ts: await root(thread), ...todoCard(t, cfg.owner) }); st.todos[t.id] = { thread, ts: m.ts }; save(); });   // 버튼 누름은 글을 올린 앱으로 가니 카드는 늘 PM 봇이(팀원 앱은 받기가 없다)
   }
   // 답했거나 지운 TODO 카드는 버튼을 내리고 답을 적는다(대시보드·텔레그램에서 답해도).
   function todoDone(t) {
@@ -192,7 +192,7 @@ export function createSlack({ cfg, runDir, todos, threadPrompt, onRun, onComment
     if (!c?.ts) return;
     delete st.todos[t.id]; save();
     queue(() => api('chat.update', { channel: st.channel, ts: c.ts, text: `T${t.id} 처리됨`,
-      blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `~T${t.id} · ${t.type} · ${t.by}~ ${firstLine(t.desc, 150)}\n→ *${t.answer || '완료'}*`.slice(0, 2900) } }] }, bots[c.by]?.token));   // 글은 보낸 봇만 고칠 수 있다
+      blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `~T${t.id} · ${t.type} · ${t.by}~ ${firstLine(t.desc, 150)}\n→ *${t.answer || '완료'}*`.slice(0, 2900) } }] }));
   }
   const closed = (thread) => st.threads[thread] && reply(thread, { text: '🛑 대표가 이 스레드를 종료했어요.' });
   const reopened = (thread) => st.threads[thread] && reply(thread, { text: '↩ 스레드를 다시 열었어요. 답글을 달면 PM이 이어 가요.' });

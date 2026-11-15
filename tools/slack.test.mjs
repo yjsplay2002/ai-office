@@ -32,7 +32,7 @@ assert.equal(routeSlack(ev({ text: 'T99 뭔가', thread_ts: '100.1' }), ctx).kin
 const mctx = { ...ctx, self: 'UPM', members: { UMK: 'marketing', UDV: 'dev' } };
 assert.deepEqual(routeSlack(ev({ text: '<@UMK> 경쟁사 톤 정리해' }), mctx), { kind: 'run', prompt: '경쟁사 톤 정리해', ts: '200.1', member: 'marketing' });
 assert.deepEqual(routeSlack(ev({ text: '<@UDV|dev> 이것도 고쳐 <@UMK>', thread_ts: '100.1' }), mctx), { kind: 'comment', thread: 5, text: '이것도 고쳐', ts: '100.1', member: 'dev' });
-assert.deepEqual(routeSlack(ev({ text: '<@UPM> <@U9> 확인' }), mctx), { kind: 'run', prompt: '<@U9> 확인', ts: '200.1' });
+assert.deepEqual(routeSlack(ev({ text: '<@UPM> <@U9> 확인', thread_ts: '100.1' }), mctx), { kind: 'comment', thread: 5, text: '<@U9> 확인', ts: '100.1', member: '' });
 assert.equal(routeSlack(ev({ text: '<@UMK>' }), mctx).kind, 'none');
 assert.equal(routeSlack(ev({ text: '<@UMK> T7 승인', thread_ts: '100.1' }), mctx).kind, 'answer');
 // 대표가 아니거나, 다른 채널이거나, 봇·편집 글은 무시(신뢰 경계)
@@ -103,12 +103,12 @@ await new Promise((ok) => setTimeout(ok, 20));
 const p2 = calls.filter((c) => c.method === 'chat.postMessage');
 if (process.env.DBG) console.log(p2.map((p) => [p.tok, p.text]), logs2);
 assert.deepEqual(calls.filter((c) => c.method === 'conversations.invite').map((c) => c.users), ['U1', 'UMK']);
-assert.deepEqual(p2.map((p) => p.tok), ['t', 't', 'xoxb-m', 't', 'xoxb-m', 'xoxb-m']);
+assert.deepEqual(p2.map((p) => p.tok), ['t', 't', 'xoxb-m', 't', 'xoxb-m', 't']);   // TODO 카드는 PM 봇(버튼이 PM 앱으로 오게)
 assert.equal(p2[1].text, '<@UMK> 톤 조사');
 assert.match(p2[2].blocks[0].text, /끝났어요 \(3분\)\n\n초안 3개/);
 assert.equal(p2[3].text, '▶️ 조사 시작 — 시장');
 assert.equal(calls.at(-1).method, 'chat.update');
-assert.equal(calls.at(-1).tok, 'xoxb-m');
+assert.equal(calls.at(-1).tok, 't');
 assert.ok(logs2.some((l) => l.includes('dev 봇 토큰이 안 맞아요')));
 
 // 매니페스트: 팀원마다 하나, 토큰 없는 팀원 목록

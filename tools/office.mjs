@@ -246,7 +246,7 @@ function comment(thread, text, member) {
   if (!Number.isInteger(thread) || !text?.trim()) throw new Error('댓글이 비어 있음');
   const th = threadInfo(thread);
   if (!th.prompt) throw new Error('스레드를 찾을 수 없음(기록이 지워졌을 수 있음)');
-  const live = th.ids.some((id) => runs.has(id)), agent = member || th.agent || undefined;
+  const live = th.ids.some((id) => runs.has(id)), agent = member === '' ? undefined : member || th.agent || undefined;   // '' = PM 봇을 멘션
   if (th.session && !live && agent === (th.agent || undefined)) return startRun(text.trim(), { thread, resume: th.session, shown: text.trim(), agent });
   startRun(`대표가 아래 지시의 스레드에 댓글을 달았습니다. 지시의 맥락에서 댓글을 처리해.
 
@@ -380,7 +380,7 @@ function flushAnswers() {
       if (fresh.length) { startRun(prompt(fresh), { title: v.title || undefined, from: thread }); office({ log: `새 주제라 새 스레드로: ${v.title || fresh.length + '건'}` }); }
       if (!stay.length) return;
       const th = threadInfo(thread);
-      startRun(prompt(stay), { thread, resume: th.ids.some((id) => runs.has(id)) ? undefined : th.session || undefined });
+      startRun(prompt(stay), { thread, resume: th.ids.some((id) => runs.has(id)) ? undefined : th.session || undefined, agent: th.agent || undefined });   // 팀원이 맡던 스레드면 그 팀원 세션으로
     });
   }
 }
