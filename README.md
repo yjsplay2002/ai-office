@@ -187,6 +187,10 @@ init에서 `슬랙 연동: 씀`을 고르거나, 이미 차린 오피스라면 �
 - 대시보드·텔레그램에서 답한 TODO는 슬랙 카드의 버튼이 내려가고 답이 적힙니다. 스레드를 종료·다시 열면 그 스레드에도 남습니다.
 - 슬랙을 켜기 전에 있던 스레드는 그 스레드에 새 일이 생길 때 머리글이 만들어집니다.
 - 대표(`SLACK_USER_ID`) 한 명이 오피스 채널에 쓴 글만 받습니다. 그 글로 권한 우회 PM이 돌기 때문입니다.
+- 팀원마다 봇을 만들면(설정 7) 팀원이 채널의 진짜 멤버가 됩니다.
+  - `@마케팅 경쟁사 SNS 톤 정리해`처럼 채널에 쓰면 PM을 거치지 않고 그 팀원이 바로 일하고, 그 스레드에 그 팀원 봇이 보고합니다. 자기 역할 밖의 일은 보고에 "PM에게 넘길 일"로 적습니다.
+  - 스레드 안에서 `@개발 이것도 고쳐`처럼 멘션하면 그 팀원이 그 스레드를 이어서 합니다. 멘션 없는 답글은 그 스레드를 마지막으로 맡은 쪽(PM 또는 그 팀원)이 받습니다.
+  - 멘션 없이 채널에 쓰면 PM이 받아 나눕니다. PM이 팀원에게 맡길 때 `@마케팅 톤 조사`처럼 진짜 멘션이 스레드에 남고, 끝나면 그 팀원 봇이 결과 첫머리를 답합니다. TODO 카드도 그 일을 한 팀원 봇이 올립니다.
 - 받기는 Socket Mode라 공개 주소가 필요 없고 Node 22 이상이 필요합니다(그보다 낮으면 보내기만). 슬랙에서 보낸 파일 첨부는 아직 받지 않습니다.
 
 설정:
@@ -202,6 +206,8 @@ init에서 `슬랙 연동: 씀`을 고르거나, 이미 차린 오피스라면 �
    ```
    채널 이름을 바꾸려면 `SLACK_CHANNEL=이름`, 이미 있는 채널을 쓰려면 `SLACK_CHANNEL_ID=C...`(봇을 그 채널에 초대).
 6. 대시보드 서버를 켜거나 `서버 재시작`을 누르면 비공개 채널 `#ai-office-<폴더 이름>`이 생기고 대표가 초대된다.
+7. (선택) 팀원마다 봇 만들기: 프로젝트 폴더에서 `node tools/slack.mjs apps`를 실행하면 `.claude/slack-apps/<팀원>.json` 매니페스트가 팀원마다 생긴다. 팀원 하나마다 1번처럼 그 매니페스트로 앱을 만들고 설치한 뒤 *Bot User OAuth Token*을 `.office-slack.env`에 `SLACK_BOT_TOKEN_<팀원 이름 대문자>=xoxb-...`(예: `SLACK_BOT_TOKEN_MARKETING`)로 넣고 서버를 다시 켠다. 팀원 앱에는 App-Level Token이 필요 없다(받기는 PM 앱 하나가 한다). 봇 프로필 사진은 각 앱의 **Basic Information → Display Information**에서 직접 올린다.
+   - 슬랙 무료 플랜은 워크스페이스에 앱을 **10개**까지 설치할 수 있다(PM 앱 + 팀원 9명). 더 필요하면 슬랙 유료 플랜으로 올리고 앱을 더 만든다. 봇이 없는 팀원은 예전처럼 PM 봇이 대신 알린다.
 
 ## 자체 점검
 ```
@@ -223,5 +229,5 @@ for f in tools/*.test.mjs skills/init/*.test.mjs; do node "$f"; done
 - Your work queue is `board/todos.md` with five types: decide, approve, input, do-it-yourself, and review. One job reports once: if a run already raised a decision or approval, its final report is attached to that TODO instead of a separate review item.
 - The local 3D dashboard (`node tools/office.mjs`, 127.0.0.1:4747, `claude -p` only) shows the team working in a forest office, with speech bubbles, task history, Notion-style markdown in chat, TODOs and reports, a staff editor, usage gauges and a restart button. Idle staff rest in the lounge or on the tree-house deck, and their faces change with their state. See the screenshots above.
 - After a plugin update, starting the dashboard (or its restart button) syncs the project's `tools/` when the installed plugin version is newer than `tools/.plugin-version`. Bump `version` in `.claude-plugin/plugin.json` when releasing.
-- Optional Slack integration: a private office channel where every dashboard thread is a Slack thread (instructions, progress, reports, TODO buttons, replies as comments), over Socket Mode. Setup: `tools/slack-manifest.json` and `.office-slack.env`.
+- Optional Slack integration: a private office channel where every dashboard thread is a Slack thread (instructions, progress, reports, TODO buttons, replies as comments), over Socket Mode. Each team member can be its own Slack bot (`node tools/slack.mjs apps` writes one manifest per member): mention `@member` to have that member do the work directly and reply as itself; PM delegations show up as real mentions. Setup: `tools/slack-manifest.json` and `.office-slack.env`.
 - Optional Telegram bot for TODOs, reports and replies. Templates and prompts are Korean in v1. MIT licensed.

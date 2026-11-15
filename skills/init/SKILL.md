@@ -111,5 +111,7 @@ description: >
      ```
      채널 이름을 바꾸려면 `SLACK_CHANNEL=이름`, 이미 있는 채널을 쓰려면 `SLACK_CHANNEL_ID=C...`(봇을 그 채널에 초대).
   6. 대시보드 서버를 켜거나 `서버 재시작`을 누르면 비공개 채널 `#ai-office-<폴더 이름>`이 생기고 대표가 초대된다.
+  7. (선택) 팀원마다 봇 만들기: 프로젝트 폴더에서 `node tools/slack.mjs apps`를 실행하면 `.claude/slack-apps/<팀원>.json` 매니페스트가 팀원마다 생긴다. 팀원 하나마다 1번처럼 그 매니페스트로 앱을 만들고 설치한 뒤 *Bot User OAuth Token*을 `.office-slack.env`에 `SLACK_BOT_TOKEN_<팀원 이름 대문자>=xoxb-...`(예: `SLACK_BOT_TOKEN_MARKETING`)로 넣고 서버를 다시 켠다. 팀원 앱에는 App-Level Token이 필요 없다(받기는 PM 앱 하나가 한다). 봇 프로필 사진은 각 앱의 **Basic Information → Display Information**에서 직접 올린다.
+     - 슬랙 무료 플랜은 워크스페이스에 앱을 **10개**까지 설치할 수 있다(PM 앱 + 팀원 9명). 더 필요하면 슬랙 유료 플랜으로 올리고 앱을 더 만든다. 봇이 없는 팀원은 예전처럼 PM 봇이 대신 알린다.
 - Codex: `AGENTS.md`와 `board/`는 그대로 쓰고, 대시보드는 v1에서 Claude Code 전용이다.
 - 아직 커밋하지 않았다. 원하면 `git add`할 파일을 골라 커밋하자고 제안한다(푸시는 하지 않는다).

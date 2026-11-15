@@ -11,7 +11,7 @@ import { parseTodos, answerTodo, dismissTodo, uploadPlan, addRunReport, followUp
 import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
-import { slackConfig, createSlack } from './slack.mjs';
+import { slackConfig, createSlack, writeApps } from './slack.mjs';
 import { loadLog, lastRun, KEEP_LINES, SEND_LINES, todoThread, linkAnswers, ANSWER_HEAD, keepRuns, tail } from './eventlog.mjs';
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
@@ -84,13 +84,15 @@ const busy = () => runs.size > 0;
 // Every instruction / TODO answer starts its own PM run immediately — no queue.
 // thread = the run that started the dashboard thread this run belongs to (a CEO comment); resume = that thread's PM session.
 // title: 목록에 보일 작업 제목(없으면 프롬프트에서), from: 새 주제로 갈라져 나온 원래 스레드, shown: 슬랙에 보일 짧은 글(댓글)
-function startRun(prompt, { thread, resume, title, from, shown } = {}) {
+// agent: 이 실행을 PM 대신 그 팀원으로 돌린다(슬랙에서 팀원 봇을 멘션해 직접 시킨 일).
+function startRun(prompt, { thread, resume, title, from, shown, agent } = {}) {
+  if (agent && !agents().some((a) => a.name === agent && /^[\w-]+$/.test(a.name))) agent = undefined;   // 명령줄에 실리니 아는 팀원 이름만
   const id = nextRun++, before = todoIds();
   slack?.runStarted({ id, thread: thread ?? id, prompt, title, from, shown });
   if (replay) {
     const send = (obj) => broadcast({ ...obj, _run: id });
     runs.set(id, null);
-    send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from });
+    send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from, agent });
     const lines = readFileSync(path.resolve(root, replay), 'utf8').split('\n').filter(Boolean);
     let i = 0;
     const tick = () => {
@@ -109,7 +111,7 @@ function startRun(prompt, { thread, resume, title, from, shown } = {}) {
   const shell = !claudeExe && process.platform === 'win32', q = (a) => (shell ? `"${a}"` : a);   // cmd needs the quotes
   // 토큰·안전: 개인 MCP 커넥터(메일·슬랙·드라이브 등)와 전역 스킬은 bypassPermissions 실행에 싣지 않는다.
   // 그래서 대시보드에서 도는 브라우저 담당은 CLI 브라우저 도구(Bash)를 써야 한다.
-  const child = spawn(claudeExe || 'claude', ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'bypassPermissions', ...(resume ? ['--resume', resume] : []), ...pmArgs(pmConf()),   // PM 모델·노력: .claude/ai-office.json(직원 관리), 실행마다 다시 읽음
+  const child = spawn(claudeExe || 'claude', ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'bypassPermissions', ...(resume ? ['--resume', resume] : []), ...(agent ? ['--agent', agent, ...pmArgs({ effort: agents().find((a) => a.name === agent).effort })] : pmArgs(pmConf())),   // PM 모델·노력: .claude/ai-office.json(직원 관리), 실행마다 다시 읽음
     '--allowedTools', q('WebSearch,WebFetch,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*)'),
     // Telegram plugin tools are blocked: the office reaches its owner only through its own bot (tools/tg-send.mjs).
     '--disallowedTools', q('mcp__plugin_telegram_telegram')],
@@ -118,7 +120,7 @@ function startRun(prompt, { thread, resume, title, from, shown } = {}) {
   child.on('error', () => {});   // a spawn failure shows up as an already-dead pid below
   child.stdin.end(prompt);
   child.unref();
-  const meta = { id, pid: child.pid, prompt, t: Date.now(), before, thread, title, from };
+  const meta = { id, pid: child.pid, prompt, t: Date.now(), before, thread, title, from, agent };
   writeFileSync(base + '.json', JSON.stringify(meta));
   attach(meta);
 }
@@ -131,7 +133,7 @@ const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); ret
 
 // Follow a run's output files until its process is gone, then finish it and delete the files.
 // shortcut: liveness is by pid only; a pid reused while the server was down would look alive until it exits.
-function attach({ id, pid, prompt, t: started, before = [], thread, title, from }) {
+function attach({ id, pid, prompt, t: started, before = [], thread, title, from, agent }) {
   const base = path.join(runDir, String(id));
   const send = (obj) => broadcast({ ...obj, _run: id });
   // 중간 보고: PM이 팀원을 부르고 돌려받을 때마다 텔레그램에 무음으로 알린다. LLM을 안 써서 토큰이 들지 않는다.
@@ -141,14 +143,15 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from 
     for (const c of obj.message?.content || []) {
       if (obj.type === 'assistant' && c.type === 'tool_use' && (c.name === 'Agent' || c.name === 'Task')) {
         const who = agents().find((a) => a.name === c.input?.subagent_type)?.title || c.input?.subagent_type || '임시 지원';
-        if (!c.input?.run_in_background) calls.set(c.id, { who, ts });
+        if (!c.input?.run_in_background) calls.set(c.id, { who, ts, a: c.input?.subagent_type });
         tg?.progress(`▶️ ${who} 시작 — ${c.input?.description || ''}`);
-        slack?.progress(thread ?? id, `▶️ ${who} 시작 — ${c.input?.description || ''}`);
+        slack?.delegated(thread ?? id, c.input?.subagent_type, who, c.input?.description || '');
       }
       if (obj.type === 'user' && c.type === 'tool_result' && calls.has(c.tool_use_id)) {
-        const { who, ts: t0 } = calls.get(c.tool_use_id); calls.delete(c.tool_use_id);
-        tg?.progress(`☑️ ${who} 끝 (${Math.max(1, Math.round((ts - t0) / 60000))}분)`);
-        slack?.progress(thread ?? id, `☑️ ${who} 끝 (${Math.max(1, Math.round((ts - t0) / 60000))}분)`);
+        const { who, ts: t0, a } = calls.get(c.tool_use_id); calls.delete(c.tool_use_id);
+        const mins = Math.max(1, Math.round((ts - t0) / 60000));
+        tg?.progress(`☑️ ${who} 끝 (${mins}분)`);
+        slack?.returned(thread ?? id, a, who, mins, typeof c.content === 'string' ? c.content : (c.content || []).map((x) => x.text || '').join('\n'));
       }
     }
   };
@@ -183,13 +186,13 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from 
           const list = todos().filter((t) => ids.includes(t.id));
           for (const t of list) seenTodos?.add(t.id);
           if (list.length) list.forEach((t, i) => tg?.notifyTodo(t, i ? '' : msg)); else tg?.notify(msg);
-          slack?.report(thread ?? id, obj, list);   // 슬랙은 그 스레드에 보고, 이어서 TODO 카드
+          slack?.report(thread ?? id, obj, list, agent);   // 슬랙은 그 스레드에 보고(팀원에게 직접 시킨 일이면 그 팀원 봇이), 이어서 TODO 카드
         }
       }
     }
   };
   runs.set(id, { pid });
-  send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from, _t: started });
+  send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from, agent, _t: started });
   const poll = setInterval(() => {
     const live = alive(pid);   // checked before reading, so everything written before exit is read
     pump();
@@ -225,30 +228,33 @@ function cancel(only) {
 // A dashboard thread = a CEO instruction's run plus the runs started by comments on it. Read back from the event log.
 function threadInfo(thread) {
   const ids = new Set([thread]);
-  let prompt = '', session = null;
+  let prompt = '', session = null, agent = null;
+  const runAgent = {};
   for (const l of history) {
     let o; try { o = JSON.parse(l); } catch { continue; }
+    if (o.type === '_office' && o.state === 'running' && o.prompt) runAgent[o._run] = o.agent || null;
     if (o.type === '_office' && o.prompt && (o._run === thread || o.thread === thread) && !prompt) prompt = o.prompt;   // 연 지시가 잘렸으면 남은 가장 이른 실행
     if (o.type === '_office' && o.prompt && o.thread === thread) ids.add(o._run);
-    if (o.type === 'system' && o.subtype === 'init' && !o.parent_tool_use_id && ids.has(o._run)) session = o.session_id;
+    if (o.type === 'system' && o.subtype === 'init' && !o.parent_tool_use_id && ids.has(o._run)) { session = o.session_id; agent = runAgent[o._run] || null; }
   }
   // The session id goes on the command line (shell on Windows), so only a plain UUID passes.
-  return { ids: [...ids], prompt, session: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session || '') ? session : null };
+  return { ids: [...ids], prompt, agent, session: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session || '') ? session : null };
 }
 // CEO comment on a thread: continues the thread's PM session when no run of it is still going; otherwise a fresh run quoting the instruction.
-function comment(thread, text) {
+// member = 댓글에서 멘션한 팀원. 멘션이 없으면 그 스레드를 마지막으로 이어 온 쪽(PM 또는 직접 시킨 팀원)이 받는다.
+function comment(thread, text, member) {
   if (!Number.isInteger(thread) || !text?.trim()) throw new Error('댓글이 비어 있음');
   const th = threadInfo(thread);
   if (!th.prompt) throw new Error('스레드를 찾을 수 없음(기록이 지워졌을 수 있음)');
-  const live = th.ids.some((id) => runs.has(id));
-  if (th.session && !live) return startRun(text.trim(), { thread, resume: th.session, shown: text.trim() });
+  const live = th.ids.some((id) => runs.has(id)), agent = member || th.agent || undefined;
+  if (th.session && !live && agent === (th.agent || undefined)) return startRun(text.trim(), { thread, resume: th.session, shown: text.trim(), agent });
   startRun(`대표가 아래 지시의 스레드에 댓글을 달았습니다. 지시의 맥락에서 댓글을 처리해.
 
 [원래 지시]
 ${th.prompt}
 
 [대표 댓글]
-${text.trim()}`, { thread, shown: text.trim() });
+${text.trim()}`, { thread, shown: text.trim(), agent });
 }
 
 // 직원 관리: PM 설정 파일과 팀원 머리말. 서버는 파일만 고치고 커밋하지 않는다.
@@ -395,11 +401,11 @@ function judgeTopic(subject, lines) {
 }
 
 // A new CEO instruction (dashboard or Telegram). files = [{ name, data(base64) }].
-function startInstruction(prompt, files = []) {
+function startInstruction(prompt, files = [], agent) {
   if (!prompt?.trim()) throw new Error('지시가 비어 있음');
   const ups = checkUploads(`run-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`, files);
   saveUploads(ups);
-  startRun(prompt.trim() + (ups.length ? `\n\n대표 첨부 파일: ${ups.map((u) => u.rel).join(', ')}` : ''));
+  startRun(prompt.trim() + (ups.length ? `\n\n대표 첨부 파일: ${ups.map((u) => u.rel).join(', ')}` : ''), { agent });
 }
 
 // Only files inside board/ are ever served.
@@ -429,10 +435,12 @@ if (existsSync(path.join(root, '.office-slack.env')) && !(existsSync(gi) ? readF
   appendFileSync(gi, (have && !have.endsWith('\n') ? '\n' : '') + '.office-slack.env\n');
 }
 const slackCfg = slackConfig(root);
+if (slackCfg) try { const { missing } = writeApps(root, slackCfg.bots); if (missing.length) console.log(`슬랙: 봇이 없는 팀원 ${missing.join(', ')} — node tools/slack.mjs apps 참고`); } catch {}   // 새 팀원도 매니페스트가 생긴다
 const slack = slackCfg && createSlack({
   cfg: slackCfg, runDir, todos: () => todos().filter((t) => !t.done), threadPrompt: (th) => threadInfo(th).prompt,
-  onRun: (prompt) => startInstruction(`${prompt}\n\n(슬랙으로 받은 지시)`),
-  onComment: (thread, text) => comment(thread, text),
+  onRun: (prompt, member) => startInstruction(`${prompt}\n\n(슬랙으로 받은 지시${member ? '. 대표가 PM을 거치지 않고 너에게 직접 시킨 일이다. 네 역할 밖의 일은 하지 말고 최종 보고에 "PM에게 넘길 일"로 적는다' : ''})`, [], member),
+  onComment: (thread, text, member) => comment(thread, text, member),
+  agents: () => agents().map((a) => a.name),
   onAnswer: (id, answer, note) => submitTodo(id, answer, note, []),
 });
 // New open TODOs (by id) since the server started. Existing ones at boot are not re-announced.
