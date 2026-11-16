@@ -4,7 +4,8 @@ import path from 'node:path';
 
 export const MEDIA_TYPES = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
 };
 const DENY = /^(\.env.*|\.office-telegram\.env|\.office-slack\.env|\.dev\.vars.*|\.git|node_modules|.*\.(key|pem|jks|keystore))$/i;
 

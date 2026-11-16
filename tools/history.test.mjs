@@ -94,3 +94,14 @@ h.end(9, '중단');
 assert.deepEqual(h.thread(1).slice(-3).map((x) => [x.who, x.kind]), [['ceo', 'order'], ['pm', 'run'], ['pm', 'order']]);
 assert.equal(h.latest('dev').state, '중단');
 console.log('history ok:', pick('report').length, 'reports,', h.tasks.size, 'cards');
+
+// 미디어 경로: 절대 경로는 board/…로, 이름만 쓴 건 앞에 말한 board/ 폴더로
+{
+  const { linkMedia, mediaIn } = await import('./map.mjs');
+  const B = '\\', abs = ['C:', 'Users', 'amaze luke', 'p', 'board', 'design', 'd1', ''].join(B);
+  const t = `(모두 \`${abs}\`)\n- \`prep-ko.png\`: 창\n- \`mock.js\`\n\`${abs}arena.png\` · board/sound/hit.wav에 · boss.mp3 · game/x.png · /tmp/y.png · /c/u/p/board/dev/s.mp4`;
+  assert.equal(linkMedia(t).split('\n')[0], '(모두 `board/design/d1/`)');
+  assert.deepEqual(mediaIn(t), ['board/design/d1/prep-ko.png', 'board/design/d1/arena.png', 'board/sound/hit.wav', 'board/sound/boss.mp3', 'board/dev/s.mp4']);
+  assert.deepEqual(mediaIn('그냥 a.png와 board/../x.png'), []);
+  console.log('media ok');
+}

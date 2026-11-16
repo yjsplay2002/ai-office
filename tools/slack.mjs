@@ -2,11 +2,13 @@
 // 지시는 스레드 첫 메시지, 팀원 진행·최종 보고·TODO 카드는 그 스레드 답글. 채널에 새 글 = 새 지시, 스레드 답글 = 댓글,
 // TODO 카드 버튼 = 답. 받는 쪽은 Socket Mode(공개 주소 없이 웹소켓)라 127.0.0.1 서버에서도 돈다.
 // Only the one owner (SLACK_USER_ID) in the office channel is ever acted on: a message here can start a claude run.
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseCommand } from './telegram.mjs';
 import { readAgent } from './staff.mjs';
+import { mediaIn } from './map.mjs';
+import { mediaFile } from './files.mjs';
 
 export function slackConfig(root, env = process.env) {
   let own = {};
@@ -25,12 +27,12 @@ export function slackConfig(root, env = process.env) {
 }
 export const botKey = (agent) => String(agent).toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
-// 팀원 슬랙 앱 매니페스트: 보내기(chat:write)만. 받기는 PM 앱 하나의 Socket Mode가 채널 전체를 듣는다.
+// 팀원 슬랙 앱 매니페스트: 보내기(chat:write)와 결과물 올리기(files:write)만. 받기는 PM 앱 하나의 Socket Mode가 채널 전체를 듣는다.
 export function memberManifest({ id, role, name }) {
   const shown = (name || role || id).slice(0, 35), app = [role, name && `「${name}」`].filter(Boolean).join(' ') || id;
   return { display_information: { name: app.slice(0, 35), description: `AI 오피스 팀원 ${id}` },
     features: { bot_user: { display_name: shown, always_online: true } },
-    oauth_config: { scopes: { bot: ['chat:write'] } },
+    oauth_config: { scopes: { bot: ['chat:write', 'files:write'] } },
     settings: { org_deploy_enabled: false, socket_mode_enabled: false, token_rotation_enabled: false } };
 }
 // .claude/agents/*.md마다 .claude/slack-apps/<id>.json을 쓰고, 아직 토큰이 없는 팀원을 돌려준다.
@@ -98,7 +100,7 @@ export function answerModal(t, answer, meta) {
 const firstLine = (s, n = 200) => { const l = (String(s || '').split('\n').map((x) => x.trim()).find(Boolean) || '').replace(/^#+\s*/, ''); return l.length > n ? l.slice(0, n - 1) + '…' : l; };
 
 // agents() = 팀원 이름 목록. 토큰이 있는 팀원은 자기 봇으로 말한다.
-export function createSlack({ cfg, runDir, todos, threadPrompt, onRun, onComment, onAnswer, agents = () => [], log = console.log }) {
+export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), todos, threadPrompt, onRun, onComment, onAnswer, agents = () => [], log = console.log }) {
   const stateFile = path.join(runDir, 'slack.json');
   let st = { channel: cfg.channel || null, threads: {}, todos: {} };
   try { st = { ...st, ...JSON.parse(readFileSync(stateFile, 'utf8')), ...(cfg.channel ? { channel: cfg.channel } : {}) }; } catch {}
@@ -113,6 +115,13 @@ export function createSlack({ cfg, runDir, todos, threadPrompt, onRun, onComment
       if (!j.ok) throw Object.assign(new Error(`${method}: ${j.error || r.status}`), { code: j.error });
       return j;
     }
+  }
+  // 파일 올리기 API는 form 형식만 받는다
+  async function form(method, params, token = cfg.token) {
+    const r = await fetch(`https://slack.com/api/${method}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString() });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) throw Object.assign(new Error(`${method}: ${j.error || r.status}`), { code: j.error });
+    return j;
   }
   // 보내기는 한 줄로 세운다: 같은 스레드 머리글이 두 번 생기지 않고 순서도 지켜진다.
   let chain = ready().catch((err) => log('슬랙 채널 준비 실패(보내기가 안 돼요):', err.message));
@@ -154,7 +163,34 @@ export function createSlack({ cfg, runDir, todos, threadPrompt, onRun, onComment
     return m.ts;
   }
   const reply = (thread, body, as) => queue(async () => post({ thread_ts: await root(thread), ...body }, as));
-  const md = (thread, text, fallback, as) => reply(thread, { text: fallback || firstLine(text, 150), blocks: [{ type: 'markdown', text: String(text).slice(0, 11000) }] }, as);
+  const md = (thread, text, fallback, as) => { reply(thread, { text: fallback || firstLine(text, 150), blocks: [{ type: 'markdown', text: String(text).slice(0, 11000) }] }, as); attach(thread, text, as); };
+  // 글에 나온 board/ 사진·영상·소리를 그 글 바로 아래에 파일로 올린다(슬랙에서 바로 보고 듣게). 같은 파일은 스레드에 한 번만.
+  const sent = new Set();
+  let noScope = false;
+  function attach(thread, text, as) {
+    const files = mediaIn(text).filter((rel) => !sent.has(`${thread}:${rel}`)).map((rel) => ({ rel, m: mediaFile(repo, rel) }))
+      .filter((f) => f.m && statSync(f.m.file).size <= 100e6).slice(0, 10);
+    if (!files.length || noScope) return;
+    for (const f of files) sent.add(`${thread}:${f.rel}`);
+    queue(async () => {
+      const up = async (token) => {
+        const ids = [];
+        for (const f of files) {
+          const buf = readFileSync(f.m.file), u = await form('files.getUploadURLExternal', { filename: path.basename(f.rel), length: buf.length }, token);
+          const r = await fetch(u.upload_url, { method: 'POST', body: buf });
+          if (!r.ok) throw new Error(`파일 올리기 ${r.status}`);
+          ids.push({ id: u.file_id, title: f.rel });
+        }
+        await form('files.completeUploadExternal', { files: JSON.stringify(ids), channel_id: st.channel, thread_ts: await root(thread) }, token);
+      };
+      try { await up(bots[as]?.token); }
+      catch (err) {
+        if (err.code !== 'missing_scope') throw err;
+        try { if (bots[as]) return await up(); throw err; }   // 팀원 앱에 권한이 없으면 PM 앱으로
+        catch (e) { if (e.code !== 'missing_scope') throw e; noScope = true; log('슬랙: 앱에 files:write 권한이 없어 사진·영상·소리를 못 올려요. 슬랙 앱 설정 → OAuth & Permissions에서 files:write를 더하고 다시 설치하세요'); }
+      }
+    });
+  }
 
   let origin = null;   // 지금 처리 중인 슬랙 메시지: 그 지시·댓글은 슬랙에 다시 쓰지 않는다
   // 실행 시작. thread = 이 실행이 속한 대시보드 스레드, shown = 슬랙에 보일 짧은 글(대시보드 댓글이면 그 댓글)
@@ -175,6 +211,7 @@ export function createSlack({ cfg, runDir, todos, threadPrompt, onRun, onComment
     flush(key);
     const r = String(result || '').trim(), text = `☑️ ${who} 끝 (${mins}분)`;
     queue(async () => post({ thread_ts: await root(thread), ...(bots[a] ? { text, blocks: [{ type: 'markdown', text: `☑️ 끝났어요 (${mins}분)${r ? `\n\n${r.length > 1500 ? r.slice(0, 1500) + '…' : r}` : ''}` }] } : { text }) }, a));
+    attach(thread, r, a);
   }
   // 대시보드 스레드처럼: 팀원의 말은 그 팀원 봇 글로(봇이 없으면 PM 봇이 이름을 붙여), 도구 사용은 그 사람의 마지막 말 아래 한 줄 글 하나를 고쳐 가며.
   // key = 그 팀원을 부른 Agent 호출 id(PM·직접 실행은 'run:<n>'). who = 봇 없을 때 붙일 이름(PM이면 '').

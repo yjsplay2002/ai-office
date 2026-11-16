@@ -49,9 +49,12 @@ assert.equal(answerModal(todos[0], '승인', {}).blocks[1].optional, true);
 const calls = [];
 let n = 0;
 globalThis.fetch = async (url, { body, headers }) => {
-  const method = url.split('/').pop(), b = JSON.parse(body), tok = headers.authorization.slice(7);
+  if (!url.startsWith('https://slack.com/')) { calls.push({ method: 'upload', url, size: body.length }); return { ok: true, status: 200 }; }
+  const method = url.split('/').pop(), tok = headers.authorization.slice(7);
+  const b = headers['content-type'].includes('form') ? Object.fromEntries(new URLSearchParams(body)) : JSON.parse(body);
   calls.push({ method, tok, ...b });
-  const res = method === 'chat.postMessage' ? { ts: `${++n}.0` } : method === 'conversations.create' ? { channel: { id: 'C9' } } : method === 'auth.test' ? { user_id: { t: 'UPM', 'xoxb-m': 'UMK' }[tok] } : {};
+  if (method === 'files.getUploadURLExternal' && tok === 'xoxb-m') return { status: 200, headers: new Map(), json: async () => ({ ok: false, error: 'missing_scope' }) };
+  const res = method === 'files.getUploadURLExternal' ? { upload_url: 'https://files.slack.com/up/' + b.filename, file_id: 'F' + b.filename } : method === 'chat.postMessage' ? { ts: `${++n}.0` } : method === 'conversations.create' ? { channel: { id: 'C9' } } : method === 'auth.test' ? { user_id: { t: 'UPM', 'xoxb-m': 'UMK' }[tok] } : {};
   if (tok === 'xoxb-bad') return { status: 200, headers: new Map(), json: async () => ({ ok: false, error: 'invalid_auth' }) };
   return { status: 200, headers: new Map(), json: async () => ({ ok: true, ...res }) };
 };
@@ -90,7 +93,7 @@ calls.length = 0;
 const d2 = mkdtempSync(path.join(os.tmpdir(), 'slack-'));
 const mt = [{ id: 8, type: '승인', by: 'marketing', desc: '게시할까요?', options: ['승인', '반려'], ref: '' }];
 const logs2 = [];
-const s2 = createSlack({ cfg: { token: 't', owner: 'U1', app: '', channel: 'C5', name: 'x', bots: { MARKETING: 'xoxb-m', DEV: 'xoxb-bad' } }, runDir: d2, todos: () => mt,
+const s2 = createSlack({ cfg: { token: 't', owner: 'U1', app: '', channel: 'C5', name: 'x', bots: { MARKETING: 'xoxb-m', DEV: 'xoxb-bad' } }, runDir: d2, root: d2, todos: () => mt,
   threadPrompt: () => '', onRun() {}, onComment() {}, onAnswer() {}, agents: () => ['marketing', 'research', 'dev'], log: (...a) => logs2.push(a.join(' ')) });
 s2.runStarted({ id: 1, thread: 1, prompt: 'SNS 계획' });
 s2.delegated(1, 'marketing', '마케팅', '톤 조사');
@@ -120,6 +123,17 @@ await new Promise((ok) => setTimeout(ok, 50));
 const p3 = calls.filter((c) => c.method === 'chat.postMessage');
 assert.deepEqual(p3.map((p) => [p.tok, p.text]), [['xoxb-m', '🔧 작업 2건 · 읽음 1 · 조사 1 — 마지막: WebSearch 톤'], ['xoxb-m', '마케팅: 초안 끝'], ['t', '조사: 시장 큼']]);
 assert.equal(p3[2].blocks[0].text, '**조사** · 시장 큼');
+// 글에 나온 board/ 사진·소리는 그 스레드에 파일로(같은 파일은 한 번만). 팀원 앱에 files:write가 없으면 PM 앱으로
+mkdirSync(path.join(d2, 'board', 'design'), { recursive: true });
+writeFileSync(path.join(d2, 'board', 'design', 'a.png'), 'png');
+writeFileSync(path.join(d2, 'board', 'design', 'b.mp3'), 'mp3!');
+calls.length = 0;
+s2.said(1, 'marketing', '마케팅', '시안은 `C:\\x\\board\\design\\` 폴더에: `a.png`, `b.mp3`, `없음.png`', 'k');
+s2.said(1, 'marketing', '마케팅', '다시 board/design/a.png', 'k');
+await new Promise((ok) => setTimeout(ok, 50));
+const up = calls.filter((c) => c.method.startsWith('files.') || c.method === 'upload');
+assert.deepEqual(up.map((c) => [c.method, c.tok ?? c.size]), [['files.getUploadURLExternal', 'xoxb-m'], ['files.getUploadURLExternal', 't'], ['upload', 3], ['files.getUploadURLExternal', 't'], ['upload', 4], ['files.completeUploadExternal', 't']]);
+assert.deepEqual([JSON.parse(up.at(-1).files).map((f) => f.title), up.at(-1).channel_id, up.at(-1).thread_ts], [['board/design/a.png', 'board/design/b.mp3'], 'C5', p3[0].thread_ts]);
 
 // 매니페스트: 팀원마다 하나, 토큰 없는 팀원 목록
 mkdirSync(path.join(d2, '.claude', 'agents'), { recursive: true });
@@ -127,5 +141,5 @@ writeFileSync(path.join(d2, '.claude', 'agents', 'marketing.md'), '---\nname: ma
 writeFileSync(path.join(d2, '.claude', 'agents', 'dev.md'), '---\nname: dev\ndescription: 개발. 만든다.\n---\n');
 assert.deepEqual(writeApps(d2, { MARKETING: 'x' }).missing, ['dev']);
 const man = JSON.parse(readFileSync(path.join(d2, '.claude', 'slack-apps', 'marketing.json'), 'utf8'));
-assert.deepEqual([man.display_information.name, man.features.bot_user.display_name, man.oauth_config.scopes.bot], ['마케팅 「홍보」', '홍보', ['chat:write']]);
+assert.deepEqual([man.display_information.name, man.features.bot_user.display_name, man.oauth_config.scopes.bot], ['마케팅 「홍보」', '홍보', ['chat:write', 'files:write']]);
 console.log('slack ok');
