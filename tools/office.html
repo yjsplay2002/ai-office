@@ -51,7 +51,10 @@
   #hist .empty { color:var(--dim); font-size:12px; }
   /* 긴 메모·보고는 3줄까지 보이고, 눌러서 펼친다(▾는 잘렸을 때만) */
   .tx { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; white-space:pre-line; overflow-wrap:anywhere; }
-  .tx.open { display:block; }
+  .tx.open, .tx:has(.mdfile[open]) { display:block; }
+  .mdfile { margin:4px 0; border:1px solid var(--well); border-radius:6px; }
+  .mdfile summary { cursor:pointer; padding:3px 8px; font-weight:600; }
+  .mdfile .doc { padding:2px 10px 8px; max-height:420px; overflow:auto; white-space:normal; }
   .tx.more { cursor:pointer; }
   .fold { display:none; font-style:normal; font-size:11px; color:var(--link); cursor:pointer; }
   .tx.more + .fold { display:inline; }
@@ -1428,7 +1431,7 @@ document.addEventListener('click', (e) => {
   if (pp) return openPaper(pp.userData);   // 책상 위 서류 → 그 문서(또는 지시·보고 내용)
   const tag = e.target.closest('.tag'), id = tag ? tag.dataset.id : e.target === renderer.domElement ? pickPerson(e) : null;
   if (id) return openHist(id);
-  const f = e.target.closest('#hist .tx.more, #hist .fold, .todo .tx.more, .todo .fold, #tmsgs .tx.more, #tmsgs .fold');
+  const f = !e.target.closest('.mdfile') && e.target.closest('#hist .tx.more, #hist .fold, .todo .tx.more, .todo .fold, #tmsgs .tx.more, #tmsgs .fold');
   if (f) {
     const x = f.parentElement.querySelector('.tx'), open = x.classList.toggle('open'), card = f.closest('.todo');
     const set = card ? repOpen : f.closest('#tmsgs') ? tOpen : unfolded, key = card ? Number(card.dataset.id) : x.dataset.k;
@@ -1563,19 +1566,31 @@ function inline(s, thumbs = true) { return esc(s)
   .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
   .replace(MEDIA, (_, rel) => mediaEl(rel, thumbs))   // last, so it never rescans its own src/href
-  .replace(/<code>(<span class="media">.*?<\/span>)<\/code>/g, '$1'); }
+  .replace(/<code>(<span class="media">.*?<\/span>|<details class="mdfile".*?<\/details>)<\/code>/g, '$1'); }
 // 저장소 상대 경로(board/a/b.png 등). 앞이 / : $ 이면 URL·절대경로라 건너뛴다. 서버(/files/)가 다시 거른다.
-const MEDIA = /(?<![\p{L}\p{N}_.\/:$~@%-])((?:[\p{L}\p{N}_.@+-]+\/)+[\p{L}\p{N}_.@+-]+\.(?:png|jpe?g|gif|webp|svg|mp4|webm|mov|mp3|wav|ogg|m4a|html?))(?![A-Za-z\p{N}_\/-])/giu;
+const MEDIA = /(?<![\p{L}\p{N}_.\/:$~@%-])((?:[\p{L}\p{N}_.@+-]+\/)+[\p{L}\p{N}_.@+-]+\.(?:png|jpe?g|gif|webp|svg|mp4|webm|mov|mp3|wav|ogg|m4a|md|html?))(?![A-Za-z\p{N}_\/-])/giu;
 const fileUrl = (rel) => '/files/' + rel.split('/').map(encodeURIComponent).join('/');
 function mediaEl(rel, thumbs = true) {
   const url = esc(fileUrl(rel)), r = esc(rel), ext = rel.split('.').pop().toLowerCase();
   const link = `<a href="${url}" target="_blank" rel="noopener">${r}</a>`;
+  if (ext === 'md') return rel.startsWith('board/') && thumbs ? `<details class="mdfile" data-md="${r}"${mdOpen.has(rel) ? ' open' : ''}><summary>${ic('file')} ${esc(rel.split('/').pop())}</summary><div class="doc mdx">${mdCache.get(rel) ?? '불러오는 중…'}</div></details>` : r;
   if (!thumbs) return `<span class="media">${link}</span>`;
   if (/^(mp3|wav|ogg|m4a)$/.test(ext)) return `<span class="media">${link}<audio controls preload="metadata" src="${url}"></audio></span>`;
   if (ext === 'mp4' || ext === 'webm' || ext === 'mov') return `<span class="media">${link}<video controls preload="metadata" src="${url}"></video></span>`;
   if (ext.startsWith('htm')) return `<span class="media">${link}<button data-frame="${url}" data-title="${r}">미리보기</button></span>`;
   return `<span class="media">${link}<img loading="lazy" alt="${r}" src="${url}" data-zoom="${url}" data-title="${r}"></span>`;
 }
+// md 문서는 펼칠 때 한 번 읽어 둔다(스레드를 다시 그려도 펼친 채로)
+const mdCache = new Map(), mdOpen = new Set();
+document.addEventListener('toggle', async (e) => {
+  const d = e.target, rel = d.dataset?.md;
+  if (!rel) return;
+  d.open ? mdOpen.add(rel) : mdOpen.delete(rel);
+  if (!d.open || mdCache.has(rel)) return;
+  const r = await fetch('/api/file?path=' + encodeURIComponent(rel)).catch(() => null);
+  mdCache.set(rel, r?.ok ? md(await r.text()) : '파일을 찾을 수 없습니다.');
+  for (const x of document.querySelectorAll('details[data-md]')) if (x.dataset.md === rel) x.querySelector('.doc').innerHTML = mdCache.get(rel);
+}, true);
 // TODO 근거·파일·QR (서버 parseTodos가 board/ 경로로 풀어 줌): .md는 문서 링크, 이미지는 썸네일
 const refsEl = (refs = []) => refs.length ? `<div class="refs">${refs.map((p) => /\.md$/i.test(p)
   ? `<a data-p="${esc(p)}">${p.startsWith('board/reports/') ? `${ic('file')} 보고 보기` : esc(p.split('/').pop())}</a>` : mediaEl(p)).join(' ')}</div>` : '';

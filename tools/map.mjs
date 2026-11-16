@@ -63,7 +63,7 @@ export function createMapper() {
       finish(c.tool_use_id, !c.is_error, c.is_error ? full(typeof c.content === 'string' ? c.content : c.content?.[0]?.text) : '');
     }
 
-    if (e.type === 'result') out.push({ kind: 'result', text: e.result || '', turns: e.num_turns, error: !!e.is_error });
+    if (isResult(e)) out.push({ kind: 'result', text: e.result || '', turns: e.num_turns, error: !!e.is_error });
     return out;
   };
 }
@@ -159,7 +159,9 @@ export function gridPath(n, free, [si, sj], [gi, gj]) {
 
 // 미디어 결과물(사진·영상·소리). 팀원은 "C:\…\board\a\x.png" 같은 절대 경로를 쓰거나, 폴더를 한 번 말하고 "x.png"처럼 이름만 쓴다.
 // linkMedia: 절대 경로는 board/…로 자르고(\는 /로), 이름만 쓴 미디어는 앞에 말한 board/ 폴더를 붙인다. 대시보드·슬랙이 같이 쓴다.
-export const MEDIA_EXT = 'png|jpe?g|gif|webp|svg|mp4|webm|mov|mp3|wav|ogg|m4a';
+export const MEDIA_EXT = 'png|jpe?g|gif|webp|svg|mp4|webm|mov|mp3|wav|ogg|m4a|md';
+// 세션을 이어 받으면(--resume) 클로드 코드가 일을 하기 전에 0턴짜리 빈 result를 먼저 낸다: 그건 최종 보고가 아니다
+export const isResult = (e) => e?.type === 'result' && !(e.num_turns === 0 && !e.is_error && !String(e.result || '').trim());
 const SEG = String.raw`[\p{L}\p{N}_.@+-]+`, END = String.raw`(?![A-Za-z\p{N}_\/-])`;   // 뒤에 붙은 한글 조사("x.png에")는 괜찮다
 const ABS = /(?<=^|[\s`(（"'*])(?:[A-Za-z]:[\\/][^\n`'"<>|*?]*?|\/[^\s`'"<>|*?]*?)[\\/](?=board[\\/])/gm;   // 윈도 경로만 빈칸 허용("amaze luke")
 const NAME = new RegExp(String.raw`(?<![\p{L}\p{N}_.\/\\:$~@%-])(?:(board\/(?:${SEG}\/)*)(?:${SEG}\.[A-Za-z0-9]+${END})?|(${SEG}\.(?:${MEDIA_EXT}))${END})`, 'giu');

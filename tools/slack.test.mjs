@@ -39,7 +39,8 @@ assert.equal(routeSlack(ev({ text: '<@UMK> T7 승인', thread_ts: '100.1' }), mc
 for (const o of [{ user: 'U2' }, { channel: 'C2' }, { bot_id: 'B1' }, { subtype: 'message_changed' }]) assert.equal(routeSlack(ev({ text: 'rm', ...o }), ctx).kind, 'none');
 
 const card = todoCard(todos[0], 'U1');
-assert.match(card.blocks[0].text.text, /<@U1> 📋 \*T7 · 승인 · dev\*/);
+assert.match(card.blocks[0].text.text, /^<@U1> \*T7 승인\* · dev\n/);
+assert.equal(todoCard({ ...todos[0], type: '확인', desc: '보고를 확인해 주세요: 길게', ref: 'board/reports/r.md' }, '').blocks[0].text.text, '*T7 확인* · dev\n위 보고를 확인해 주세요.');
 assert.deepEqual(card.blocks[1].elements.map((b) => JSON.parse(b.value)), [{ id: 7, answer: '승인' }, { id: 7, answer: '반려' }]);
 assert.deepEqual(JSON.parse(todoCard({ ...todos[0], type: '입력', options: [] }, 'U1').blocks[1].elements[0].value), { id: 7, answer: '' });
 assert.equal(answerModal({ ...todos[0], type: '입력' }, '', {}).blocks[1].optional, false);
@@ -73,11 +74,12 @@ assert.deepEqual(calls.slice(0, 3).map((c) => c.method), ['conversations.create'
 assert.equal(posts[0].thread_ts, undefined);
 assert.match(posts[0].text, /홍보 계획 세워/);
 assert.deepEqual(posts.slice(1, 4).map((p) => p.thread_ts), ['1.0', '1.0', '1.0']);
-assert.match(posts[2].blocks[0].text, /<@U1> ✅ \*\*최종 보고\*\*\n\n## 끝/);
+assert.match(posts[2].blocks[0].text, /<@U1> \*\*최종 보고\*\*\n\n## 끝/);
+assert.doesNotMatch(posts[3].blocks[0].text.text, /<@U1>/);   // 보고에서 이미 불렀다
 assert.equal(posts[3].blocks[1].type, 'actions');
 assert.match(posts[4].text, /옛 지시/);
 assert.equal(posts[5].thread_ts, '5.0');
-assert.match(posts[6].blocks[0].text, /▶ 대표 댓글: 더 짧게/);
+assert.match(posts[6].blocks[0].text, /^대표 댓글: 더 짧게/);
 assert.equal(posts[6].thread_ts, '1.0');
 assert.deepEqual(s.openTodos(), [7]);
 s.todoDone({ ...todos[0], answer: '승인' });
@@ -109,7 +111,7 @@ assert.deepEqual(calls.filter((c) => c.method === 'conversations.invite').map((c
 assert.deepEqual(p2.map((p) => p.tok), ['t', 't', 'xoxb-m', 't', 'xoxb-m', 't']);   // TODO 카드는 PM 봇(버튼이 PM 앱으로 오게)
 assert.equal(p2[1].text, '<@UMK> 톤 조사');
 assert.match(p2[2].blocks[0].text, /끝났어요 \(3분\)\n\n초안 3개/);
-assert.equal(p2[3].text, '▶️ 조사 시작 — 시장');
+assert.equal(p2[3].text, '조사에게 맡김 · 시장');
 assert.equal(calls.at(-1).method, 'chat.update');
 assert.equal(calls.at(-1).tok, 't');
 assert.ok(logs2.some((l) => l.includes('dev 봇 토큰이 안 맞아요')));
@@ -121,19 +123,22 @@ s2.said(1, 'marketing', '마케팅', '초안 끝', 'k');
 s2.said(1, 'research', '조사', '시장 큼', 'k2');
 await new Promise((ok) => setTimeout(ok, 50));
 const p3 = calls.filter((c) => c.method === 'chat.postMessage');
-assert.deepEqual(p3.map((p) => [p.tok, p.text]), [['xoxb-m', '🔧 작업 2건 · 읽음 1 · 조사 1 — 마지막: WebSearch 톤'], ['xoxb-m', '마케팅: 초안 끝'], ['t', '조사: 시장 큼']]);
+assert.deepEqual(p3.map((p) => [p.tok, p.text]), [['xoxb-m', '작업 2건 · 읽음 1 · 조사 1 · 마지막 WebSearch 톤'], ['xoxb-m', '마케팅: 초안 끝'], ['t', '조사: 시장 큼']]);
 assert.equal(p3[2].blocks[0].text, '**조사** · 시장 큼');
+assert.equal(p3[0].blocks[0].type, 'context');
 // 글에 나온 board/ 사진·소리는 그 스레드에 파일로(같은 파일은 한 번만). 팀원 앱에 files:write가 없으면 PM 앱으로
 mkdirSync(path.join(d2, 'board', 'design'), { recursive: true });
 writeFileSync(path.join(d2, 'board', 'design', 'a.png'), 'png');
 writeFileSync(path.join(d2, 'board', 'design', 'b.mp3'), 'mp3!');
+writeFileSync(path.join(d2, 'board', 'design', 'c.md'), '# 시안\n');
+writeFileSync(path.join(d2, 'board', 'todos.md'), '# TODO\n');
 calls.length = 0;
 s2.said(1, 'marketing', '마케팅', '시안은 `C:\\x\\board\\design\\` 폴더에: `a.png`, `b.mp3`, `없음.png`', 'k');
-s2.said(1, 'marketing', '마케팅', '다시 board/design/a.png', 'k');
+s2.said(1, 'marketing', '마케팅', '다시 board/design/a.png, 설명은 board/design/c.md, board/todos.md', 'k');
 await new Promise((ok) => setTimeout(ok, 50));
 const up = calls.filter((c) => c.method.startsWith('files.') || c.method === 'upload');
-assert.deepEqual(up.map((c) => [c.method, c.tok ?? c.size]), [['files.getUploadURLExternal', 'xoxb-m'], ['files.getUploadURLExternal', 't'], ['upload', 3], ['files.getUploadURLExternal', 't'], ['upload', 4], ['files.completeUploadExternal', 't']]);
-assert.deepEqual([JSON.parse(up.at(-1).files).map((f) => f.title), up.at(-1).channel_id, up.at(-1).thread_ts], [['board/design/a.png', 'board/design/b.mp3'], 'C5', p3[0].thread_ts]);
+assert.deepEqual(up.map((c) => [c.method, c.tok ?? c.size]), [['files.getUploadURLExternal', 'xoxb-m'], ['files.getUploadURLExternal', 't'], ['upload', 3], ['files.getUploadURLExternal', 't'], ['upload', 4], ['files.completeUploadExternal', 't'], ['files.getUploadURLExternal', 'xoxb-m'], ['files.getUploadURLExternal', 't'], ['upload', 9], ['files.completeUploadExternal', 't']]);
+assert.deepEqual([JSON.parse(up[5].files).map((f) => f.title), up[5].channel_id, up[5].thread_ts], [['board/design/a.png', 'board/design/b.mp3'], 'C5', p3[0].thread_ts]);
 
 // 매니페스트: 팀원마다 하나, 토큰 없는 팀원 목록
 mkdirSync(path.join(d2, '.claude', 'agents'), { recursive: true });

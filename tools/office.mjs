@@ -16,7 +16,7 @@ import { loadLog, lastRun, KEEP_LINES, SEND_LINES, todoThread, linkAnswers, ANSW
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
 import { judgePrompt, parseVerdict } from './topic.mjs';
-import { createMapper } from './map.mjs';
+import { createMapper, isResult } from './map.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -101,7 +101,7 @@ function startRun(prompt, { thread, resume, title, from, shown, agent } = {}) {
       if (i >= lines.length) { runs.delete(id); return send({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, ended: true }); }
       const obj = JSON.parse(lines[i++]);
       send(obj);
-      if (obj.type === 'result') reportTodo(id, prompt, obj, before);
+      if (isResult(obj)) reportTodo(id, prompt, obj, before);
       runs.set(id, { timer: setTimeout(tick, 700) });
     };
     return tick();
@@ -198,7 +198,7 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from,
         if (fresh) progress(obj, ts);
         // 직원별 토큰은 이 오피스가 띄운 세션만 센다(같은 폴더의 다른 Claude 작업과 섞이지 않게). tools/usage.mjs가 읽는다.
         if (fresh && obj.type === 'system' && obj.subtype === 'init' && obj.session_id) appendFileSync(path.join(runDir, 'sessions.txt'), obj.session_id + '\n');
-        if (fresh && obj.type === 'result') {   // 텔레그램도 한 번만: 최종 보고를 그 보고가 실린 TODO(버튼 포함)와 한 메시지로
+        if (fresh && isResult(obj)) {   // 텔레그램도 한 번만: 최종 보고를 그 보고가 실린 TODO(버튼 포함)와 한 메시지로
           const ids = reportTodo(id, prompt, obj, before), msg = `${obj.is_error ? '⚠️ 최종 보고 (오류)' : '✅ 최종 보고'}\n${String(obj.result || '').trim().slice(0, 600)}`;
           const list = todos().filter((t) => ids.includes(t.id));
           for (const t of list) seenTodos?.add(t.id);

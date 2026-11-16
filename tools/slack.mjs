@@ -79,7 +79,9 @@ function routeText(ev, text, threadOf, todos) {
 
 // TODO 카드: 보기마다 버튼. 누르면 메모 칸이 있는 창이 뜨고 보내면 답이 된다.
 export function todoCard(t, owner) {
-  const head = `<@${owner}> 📋 *T${t.id} · ${t.type} · ${t.by}*\n${t.desc}${t.ref ? `\n근거: \`${t.ref}\`` : ''}`;
+  // 보고 확인 TODO는 바로 위에 보고가 있으니 요약·근거 경로를 되풀이하지 않는다
+  const rep = t.ref?.startsWith('board/reports/'), desc = rep ? t.desc.replace(/^(작업이 오류로 끝났습니다\. )?보고를 확인해 주세요: [\s\S]*/, '위 보고를 확인해 주세요.') : t.desc;
+  const head = `${owner ? `<@${owner}> ` : ''}*T${t.id} ${t.type}* · ${t.by}\n${desc}${t.ref && !rep ? `\n근거: \`${t.ref}\`` : ''}`;
   const opts = t.options.length ? t.options : [t.type === '입력' ? '답하기' : '완료'];
   return { text: `T${t.id} ${t.type}: ${t.desc.split('\n')[0]}`.slice(0, 300),
     blocks: [{ type: 'section', text: { type: 'mrkdwn', text: head.slice(0, 2900) } },
@@ -158,7 +160,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   // 대시보드 스레드의 슬랙 머리글. 없으면(슬랙을 켜기 전 스레드, 다시 붙은 실행) 그 스레드의 지시로 만든다.
   async function root(thread, prompt = threadPrompt(thread), extra = '') {
     if (st.threads[thread]) return st.threads[thread];
-    const m = await post({ text: `🧵 ${firstLine(prompt, 150)}`, blocks: [{ type: 'markdown', text: `**🧵 ${firstLine(prompt, 150)}**${extra}\n\n${String(prompt || '').slice(0, 2500)}` }] });
+    const m = await post({ text: firstLine(prompt, 150), blocks: [{ type: 'markdown', text: `**${firstLine(prompt, 150)}**${extra}\n\n${String(prompt || '').slice(0, 2500)}` }] });
     st.threads[thread] = m.ts; save();
     return m.ts;
   }
@@ -167,8 +169,8 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   // 글에 나온 board/ 사진·영상·소리를 그 글 바로 아래에 파일로 올린다(슬랙에서 바로 보고 듣게). 같은 파일은 스레드에 한 번만.
   const sent = new Set();
   let noScope = false;
-  function attach(thread, text, as) {
-    const files = mediaIn(text).filter((rel) => !sent.has(`${thread}:${rel}`)).map((rel) => ({ rel, m: mediaFile(repo, rel) }))
+  function attach(thread, text, as) {   // md는 todos.md 같은 board/ 바로 아래 파일과 보고 전문(이미 글로 올림)은 빼고
+    const files = mediaIn(text).filter((rel) => !/^board\/([^/]+|reports\/.*)\.md$/i.test(rel) && !sent.has(`${thread}:${rel}`)).map((rel) => ({ rel, m: mediaFile(repo, rel) }))
       .filter((f) => f.m && statSync(f.m.file).size <= 100e6).slice(0, 10);
     if (!files.length || noScope) return;
     for (const f of files) sent.add(`${thread}:${f.rel}`);
@@ -201,16 +203,16 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
       return queue(() => root(thread, title ? `${title}\n${prompt}` : prompt, from != null ? `\n_↪ 스레드에서 새 주제로 갈라져 나온 일_` : ''));
     }
     if (o) return;
-    md(thread, `▶ ${shown ? `대표 댓글: ${shown}` : String(prompt).split('\n\n')[0]}`.slice(0, 2000));   // TODO 답이면 답 줄들
+    md(thread, `${shown ? `대표 댓글: ${shown}` : String(prompt).split('\n\n')[0]}`.slice(0, 2000));   // TODO 답이면 답 줄들
   }
   const progress = (thread, text) => reply(thread, { text });
   // PM이 팀원을 부르고 돌려받을 때: 봇이 있는 팀원이면 진짜 멘션으로 맡기고, 끝나면 그 팀원 봇이 결과 첫머리를 답한다.
   // 봇이 있는지는 보낼 차례에 본다(봇 확인은 채널 준비와 같은 줄에서 끝난다).
-  const delegated = (thread, a, who, desc) => queue(async () => post({ thread_ts: await root(thread), text: bots[a] ? `<@${bots[a].user}> ${desc}` : `▶️ ${who} 시작 — ${desc}` }));
+  const delegated = (thread, a, who, desc) => queue(async () => post({ thread_ts: await root(thread), text: bots[a] ? `<@${bots[a].user}> ${desc}` : `${who}에게 맡김 · ${desc}` }));
   function returned(thread, a, who, mins, result, key) {
     flush(key);
-    const r = String(result || '').trim(), text = `☑️ ${who} 끝 (${mins}분)`;
-    queue(async () => post({ thread_ts: await root(thread), ...(bots[a] ? { text, blocks: [{ type: 'markdown', text: `☑️ 끝났어요 (${mins}분)${r ? `\n\n${r.length > 1500 ? r.slice(0, 1500) + '…' : r}` : ''}` }] } : { text }) }, a));
+    const r = String(result || '').trim(), text = `${who} 끝 (${mins}분)`;
+    queue(async () => post({ thread_ts: await root(thread), ...(bots[a] ? { text, blocks: [{ type: 'markdown', text: `끝났어요 (${mins}분)${r ? `\n\n${r.length > 1500 ? r.slice(0, 1500) + '…' : r}` : ''}` }] } : { text }) }, a));
     attach(thread, r, a);
   }
   // 대시보드 스레드처럼: 팀원의 말은 그 팀원 봇 글로(봇이 없으면 PM 봇이 이름을 붙여), 도구 사용은 그 사람의 마지막 말 아래 한 줄 글 하나를 고쳐 가며.
@@ -229,21 +231,22 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   }
   function show(w) {
     clearTimeout(w.timer); w.timer = null;
-    const body = { text: `${tag(w.a, w.who, '*')}🔧 작업 ${w.n}건 · ${Object.entries(w.by).map(([k, v]) => `${k} ${v}`).join(' · ')} — 마지막: ${w.last}`.slice(0, 2900) };
+    const text = `${tag(w.a, w.who, '*')}작업 ${w.n}건 · ${Object.entries(w.by).map(([k, v]) => `${k} ${v}`).join(' · ')} · 마지막 ${w.last}`.slice(0, 2900);
+    const body = { text, blocks: [{ type: 'context', elements: [{ type: 'mrkdwn', text }] }] };   // 작은 회색 글: 대시보드의 접힌 도구 목록처럼
     queue(async () => { if (w.ts) await api('chat.update', { channel: st.channel, ts: w.ts, ...body }, bots[w.a]?.token); else w.ts = (await post({ thread_ts: await root(w.thread), ...body }, w.a)).ts; });
   }
   // 그 사람이 새로 말하거나 끝나면 모아 둔 작업 줄을 지금 내보내고, 다음 작업은 새 줄로
   function flush(key) { const w = work.get(key); if (!w) return; work.delete(key); if (w.timer) show(w); }
   // as = 이 실행을 한 팀원(대표가 멘션으로 직접 시킨 일). 없으면 PM이 보고.
   function report(thread, obj, list, as) {
-    const body = String(obj.result || '').trim() || '(내용 없음)';
-    md(thread, `<@${cfg.owner}> ${obj.is_error ? '⚠️ **최종 보고 (오류)**' : '✅ **최종 보고**'}\n\n${body}`, `${obj.is_error ? '최종 보고(오류)' : '최종 보고'}: ${firstLine(body, 120)}`, as);
-    for (const t of list) notifyTodo(t, thread);
+    const body = String(obj.result || '').trim() || '(보고 글 없음)';
+    md(thread, `<@${cfg.owner}> ${obj.is_error ? '**최종 보고 (오류)**' : '**최종 보고**'}\n\n${body}`, `${obj.is_error ? '최종 보고(오류)' : '최종 보고'}: ${firstLine(body, 120)}`, as);
+    for (const t of list) notifyTodo(t, thread, true);
   }
-  function notifyTodo(t, thread) {
+  function notifyTodo(t, thread, quiet) {   // quiet = 바로 위 보고에서 이미 대표를 불렀다
     if (st.todos[t.id] || thread == null) return;
     st.todos[t.id] = { thread };
-    queue(async () => { const m = await post({ thread_ts: await root(thread), ...todoCard(t, cfg.owner) }); st.todos[t.id] = { thread, ts: m.ts }; save(); });   // 버튼 누름은 글을 올린 앱으로 가니 카드는 늘 PM 봇이(팀원 앱은 받기가 없다)
+    queue(async () => { const m = await post({ thread_ts: await root(thread), ...todoCard(t, quiet ? '' : cfg.owner) }); st.todos[t.id] = { thread, ts: m.ts }; save(); });   // 버튼 누름은 글을 올린 앱으로 가니 카드는 늘 PM 봇이(팀원 앱은 받기가 없다)
   }
   // 답했거나 지운 TODO 카드는 버튼을 내리고 답을 적는다(대시보드·텔레그램에서 답해도).
   function todoDone(t) {
@@ -253,8 +256,8 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     queue(() => api('chat.update', { channel: st.channel, ts: c.ts, text: `T${t.id} 처리됨`,
       blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `~T${t.id} · ${t.type} · ${t.by}~ ${firstLine(t.desc, 150)}\n→ *${t.answer || '완료'}*`.slice(0, 2900) } }] }));
   }
-  const closed = (thread) => st.threads[thread] && reply(thread, { text: '🛑 대표가 이 스레드를 종료했어요.' });
-  const reopened = (thread) => st.threads[thread] && reply(thread, { text: '↩ 스레드를 다시 열었어요. 답글을 달면 PM이 이어 가요.' });
+  const closed = (thread) => st.threads[thread] && reply(thread, { text: '대표가 이 스레드를 종료했어요.' });
+  const reopened = (thread) => st.threads[thread] && reply(thread, { text: '스레드를 다시 열었어요. 답글을 달면 PM이 이어 가요.' });
   const openTodos = () => Object.keys(st.todos).map(Number);
 
   // ---------- 받기: Socket Mode ----------
@@ -264,12 +267,12 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     if (c.kind === 'none') return;
     const say = (text) => queue(() => post({ thread_ts: c.ts, text }, c.member));
     try {
-      if (c.kind === 'error') return say(`⚠️ ${c.text}`);
-      if (c.kind === 'answer') { const full = await onAnswer(c.id, c.answer, c.note); return say(`✅ T${c.id} 처리: ${full}`); }
+      if (c.kind === 'error') return say(c.text);
+      if (c.kind === 'answer') { const full = await onAnswer(c.id, c.answer, c.note); return say(`T${c.id} 처리: ${full}`); }
       origin = c.ts;
       try { c.kind === 'run' ? onRun(c.prompt, c.member) : onComment(c.thread, c.text, c.member); } finally { origin = null; }
-      say(c.kind !== 'run' ? '🫡 받았어요.' : c.member ? '🫡 제가 바로 할게요. 이 스레드에 보고할게요.' : '🫡 지시 받았어요. 이 스레드에 진행과 보고를 올릴게요. 답글은 댓글로 PM에게 가요.');
-    } catch (err) { say(`⚠️ ${err.message}`); }
+      say(c.kind === 'run' && !c.member ? '받았어요. 진행과 보고는 이 스레드에 올려요.' : '받았어요.');
+    } catch (err) { say(`오류: ${err.message}`); }
   }
   async function onInteractive(p, ack) {
     if (p.user?.id !== cfg.owner) return ack();
@@ -277,7 +280,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
       ack();
       const a = p.actions?.[0]; if (!a?.action_id?.startsWith('todo_')) return;
       const { id, answer } = JSON.parse(a.value), t = todos().find((x) => x.id === id);
-      if (!t) return queue(() => post({ thread_ts: p.message?.thread_ts || p.message?.ts, text: `⚠️ T${id}은 이미 처리됐어요.` }));
+      if (!t) return queue(() => post({ thread_ts: p.message?.thread_ts || p.message?.ts, text: `T${id}은 이미 처리됐어요.` }));
       return api('views.open', { trigger_id: p.trigger_id, view: answerModal(t, answer, { id, answer, thread: p.message?.thread_ts }) }).catch((err) => log('슬랙 창 열기 실패:', err.message));
     }
     if (p.type === 'view_submission' && p.view?.callback_id === 'todo_answer') {
@@ -285,7 +288,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
       try {
         const full = await onAnswer(m.id, m.answer, note);
         ack();
-        if (m.thread) queue(() => post({ thread_ts: m.thread, text: `✅ T${m.id} 처리: ${full}` }));
+        if (m.thread) queue(() => post({ thread_ts: m.thread, text: `T${m.id} 처리: ${full}` }));
       } catch (err) { ack({ response_action: 'errors', errors: { note: err.message.slice(0, 150) } }); }
       return;
     }

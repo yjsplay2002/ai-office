@@ -105,3 +105,12 @@ console.log('history ok:', pick('report').length, 'reports,', h.tasks.size, 'car
   assert.deepEqual(mediaIn('그냥 a.png와 board/../x.png'), []);
   console.log('media ok');
 }
+
+{
+  const { createMapper, isResult } = await import('./map.mjs');
+  const f = createMapper();
+  assert.deepEqual(f({ type: 'result', result: '', num_turns: 0, is_error: false }), []);
+  assert.equal(f({ type: 'result', result: '끝', num_turns: 3 })[0].kind, 'result');
+  assert.ok(isResult({ type: 'result', result: '', num_turns: 2 }) && !isResult({ type: 'assistant' }));
+  console.log('resume result ok');
+}

@@ -21,9 +21,10 @@ assert.equal(ok('board/x.png'), 'image/png');
 assert.equal(ok('board/Y.PNG'), 'image/png');
 assert.equal(ok('game/tools/a.html'), 'text/html; charset=utf-8');
 assert.equal(ok('board/v.webm'), 'video/webm');
+assert.equal(ok('board/notes.md'), 'text/markdown; charset=utf-8');   // 슬랙에 문서로 올린다
 assert.equal(ok('board\\x.png'), 'image/png');
 for (const bad of ['', '../outside/secret.png', 'board/../../outside/secret.png', 'board/../board/x.png', '/board/x.png', '\\board\\x.png',
-  path.join(root, 'board/x.png'), 'C:/Windows/x.png', 'c:board/x.png', 'board/x.png\0', 'board/notes.md', 'board/missing.png', 'board',
+  path.join(root, 'board/x.png'), 'C:/Windows/x.png', 'c:board/x.png', 'board/x.png\0', 'board/missing.png', 'board',
   'board/.env.png', '.dev.vars.png', '.git/c.png', 'node_modules/a/b.png', 'board/a.key', '.office-telegram.env', '.office-slack.env', '.env'])
   assert.equal(mediaFile(root, bad), null, bad);
 if (linked) assert.equal(mediaFile(root, 'board/link/secret.png'), null, 'junction escape');
