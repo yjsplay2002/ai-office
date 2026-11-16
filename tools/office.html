@@ -1812,16 +1812,12 @@ function dropZone(el, onFiles) {
 // 놓을 곳을 빗나가도 브라우저가 파일을 열어 버리지 않게
 addEventListener('dragover', (e) => e.preventDefault());
 addEventListener('drop', (e) => e.preventDefault());
-function addTodoFiles(card, list) {
-  const id = Number(card.dataset.id);
+function addTodoFiles(id, list) {
   picked.set(id, [...(picked.get(id) || []), ...list]);
-  card.querySelector('.files').lastChild.textContent = ' ' + picked.get(id).map((f) => f.name).join(', ');
+  const names = ' ' + picked.get(id).map((f) => f.name).join(', ');
+  document.querySelectorAll(`.todo[data-id="${id}"] .files`).forEach((f) => (f.lastChild.textContent = names));   // 목록·스레드 두 곳의 같은 카드
 }
-for (const box of [$('todos'), $('ttodos')]) dropZone(box, (list, t) => { const card = t.closest?.('.todo'); if (card) addTodoFiles(card, list); });
-$('todos').onchange = $('ttodos').onchange = (e) => {
-  if (e.target.dataset.files == null) return;
-  addTodoFiles(e.target.closest('.todo'), [...e.target.files]);
-};
+for (const box of [$('todos'), $('ttodos')]) dropZone(box, (list, t) => { const card = t.closest?.('.todo'); if (card) addTodoFiles(Number(card.dataset.id), list); });
 $('todos').oninput = $('ttodos').oninput = (e) => {
   if (e.target.type === 'file') return;
   const card = e.target.closest('.todo');
@@ -1831,6 +1827,8 @@ const dropCards = (id) => document.querySelectorAll(`.todo[data-id="${id}"]`).fo
 $('todos').onclick = $('ttodos').onclick = async (e) => {
   const card = e.target.closest('.todo'); if (!card) return;
   const id = Number(card.dataset.id), go = e.target.closest('[data-goth]');
+  // 파일 창이 열린 사이 목록이 다시 그려지면(15초마다·실행 이벤트) 그 input이 문서에서 빠져 change가 위로 안 올라온다. 그래서 input에 직접 단다.
+  if (e.target.dataset.files != null) { e.target.onchange = () => { addTodoFiles(id, [...e.target.files]); e.target.value = ''; }; return; }
   if (go) return openThread(Number(go.dataset.goth));
   if (e.target.dataset.p) return openPaper({ path: e.target.dataset.p, title: e.target.dataset.p });
   if (e.target.dataset.pick != null) {
