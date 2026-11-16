@@ -1847,7 +1847,7 @@ $('todos').onclick = $('ttodos').onclick = async (e) => {
   let answer, note;
   if (e.target.dataset.check) {   // 확인 TODO: 종료 또는 추가 지시(글 필요)
     answer = e.target.dataset.check; note = (card.querySelector('textarea')?.value ?? '').trim();
-    if (answer === '추가 지시' && !note) return (card.querySelector('.err').textContent = '이어서 시킬 일을 적어 주세요');
+    if (answer === '추가 지시' && !note && !picked.get(id)?.length) return (card.querySelector('.err').textContent = '이어서 시킬 일을 적어 주세요');
   } else {
     if (e.target.dataset.submit == null) return;
     const text = card.querySelector('textarea')?.value ?? '';
@@ -1883,7 +1883,7 @@ $('runpick').onchange = (e) => { addRunFiles([...e.target.files]); e.target.valu
 $('runnames').onclick = (e) => { if (e.target.id === 'runclear') { runFiles = []; showRunFiles(); } };
 async function send() {
   const prompt = $('prompt').value.trim();
-  if (!prompt) return;
+  if (!prompt && !runFiles.length) return;   // 첨부만 있어도 보낸다
   const r = await fetch('/api/run', { method: 'POST', body: JSON.stringify({ prompt, files: await toB64(runFiles) }) });
   const j = await r.json();
   if (!r.ok) return log('지시 실패: ' + j.error, 'bad');

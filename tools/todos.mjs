@@ -48,7 +48,7 @@ export function refPaths(lines) {
 export function answerTodo(text, id, answer, note, today) {
   const { todo, nth } = findOpen(text, id);
   if (todo.options.length && !todo.options.includes(answer)) throw new Error('보기 중 하나를 골라 주세요');
-  if (todo.type === '입력' && !answer.trim()) throw new Error('답을 입력해 주세요');
+  if (todo.type === '입력' && !answer.trim() && !note?.trim()) throw new Error('답을 입력해 주세요');
   if (todo.type === '확인' && answer === '추가 지시' && !note?.trim()) throw new Error('추가로 시킬 일을 적어 주세요');
   const full = todo.type === '확인' && answer === '추가 지시' ? `추가 지시: ${note.trim()}` : [answer.trim() || '완료', note?.trim()].filter(Boolean).join(' — ');
   return { text: closeBlock(text, id, nth, full, today), todo, full };

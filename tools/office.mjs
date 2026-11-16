@@ -406,10 +406,10 @@ function judgeTopic(subject, lines) {
 
 // A new CEO instruction (dashboard or Telegram). files = [{ name, data(base64) }].
 function startInstruction(prompt, files = [], agent) {
-  if (!prompt?.trim()) throw new Error('지시가 비어 있음');
+  if (!prompt?.trim() && !files.length) throw new Error('지시가 비어 있음');   // 첨부만 있어도 됨
   const ups = checkUploads(`run-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`, files);
   saveUploads(ups);
-  startRun(prompt.trim() + (ups.length ? `\n\n대표 첨부 파일: ${ups.map((u) => u.rel).join(', ')}` : ''), { agent });
+  startRun(((prompt || '').trim() + (ups.length ? `\n\n대표 첨부 파일: ${ups.map((u) => u.rel).join(', ')}` : '')).trim(), { agent });
 }
 
 // Only files inside board/ are ever served.

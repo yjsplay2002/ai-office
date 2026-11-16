@@ -12,6 +12,7 @@ assert.equal(t[1].desc, '서비스 아이디어를 알려 주세요');
 
 assert.throws(() => answerTodo(src, 1, '$9', '', 'D'), /보기/);
 assert.throws(() => answerTodo(src, 2, '  ', '', 'D'), /입력/);
+assert.match(answerTodo(src, 2, '', '첨부: board/uploads/T2/a.png', 'D').text, /첨부: board\/uploads\/T2\/a\.png/);   // 첨부만 있는 입력 답
 assert.throws(() => answerTodo(src, 9, 'x', '', 'D'), /찾을 수 없음/);
 
 let r = answerTodo(src, 1, '$19.99', '번들 할인 고려', '2026-11-04');
