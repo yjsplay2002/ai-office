@@ -171,10 +171,32 @@ export function createSlack({ cfg, runDir, todos, threadPrompt, onRun, onComment
   // PM이 팀원을 부르고 돌려받을 때: 봇이 있는 팀원이면 진짜 멘션으로 맡기고, 끝나면 그 팀원 봇이 결과 첫머리를 답한다.
   // 봇이 있는지는 보낼 차례에 본다(봇 확인은 채널 준비와 같은 줄에서 끝난다).
   const delegated = (thread, a, who, desc) => queue(async () => post({ thread_ts: await root(thread), text: bots[a] ? `<@${bots[a].user}> ${desc}` : `▶️ ${who} 시작 — ${desc}` }));
-  function returned(thread, a, who, mins, result) {
+  function returned(thread, a, who, mins, result, key) {
+    flush(key);
     const r = String(result || '').trim(), text = `☑️ ${who} 끝 (${mins}분)`;
     queue(async () => post({ thread_ts: await root(thread), ...(bots[a] ? { text, blocks: [{ type: 'markdown', text: `☑️ 끝났어요 (${mins}분)${r ? `\n\n${r.length > 1500 ? r.slice(0, 1500) + '…' : r}` : ''}` }] } : { text }) }, a));
   }
+  // 대시보드 스레드처럼: 팀원의 말은 그 팀원 봇 글로(봇이 없으면 PM 봇이 이름을 붙여), 도구 사용은 그 사람의 마지막 말 아래 한 줄 글 하나를 고쳐 가며.
+  // key = 그 팀원을 부른 Agent 호출 id(PM·직접 실행은 'run:<n>'). who = 봇 없을 때 붙일 이름(PM이면 '').
+  const tag = (a, who, b) => (bots[a] || !who ? '' : `${b}${who}${b} · `);
+  function said(thread, a, who, text, key) {
+    flush(key);
+    md(thread, tag(a, who, '**') + String(text).trim(), `${who ? who + ': ' : ''}${firstLine(text, 140)}`, a);
+  }
+  const work = new Map();   // key -> { thread, a, who, n, by, last, ts, timer }
+  function worked(thread, key, a, who, label, text) {
+    let w = work.get(key);
+    if (!w) work.set(key, (w = { thread, a, who, n: 0, by: {}, ts: null, timer: null }));
+    w.n++; w.by[label] = (w.by[label] || 0) + 1; w.last = text;
+    w.timer ??= setTimeout(() => show(w), 4000);   // 몇 초씩 모아 고친다(슬랙 보내기 한도)
+  }
+  function show(w) {
+    clearTimeout(w.timer); w.timer = null;
+    const body = { text: `${tag(w.a, w.who, '*')}🔧 작업 ${w.n}건 · ${Object.entries(w.by).map(([k, v]) => `${k} ${v}`).join(' · ')} — 마지막: ${w.last}`.slice(0, 2900) };
+    queue(async () => { if (w.ts) await api('chat.update', { channel: st.channel, ts: w.ts, ...body }, bots[w.a]?.token); else w.ts = (await post({ thread_ts: await root(w.thread), ...body }, w.a)).ts; });
+  }
+  // 그 사람이 새로 말하거나 끝나면 모아 둔 작업 줄을 지금 내보내고, 다음 작업은 새 줄로
+  function flush(key) { const w = work.get(key); if (!w) return; work.delete(key); if (w.timer) show(w); }
   // as = 이 실행을 한 팀원(대표가 멘션으로 직접 시킨 일). 없으면 PM이 보고.
   function report(thread, obj, list, as) {
     const body = String(obj.result || '').trim() || '(내용 없음)';
@@ -255,7 +277,7 @@ export function createSlack({ cfg, runDir, todos, threadPrompt, onRun, onComment
   if (cfg.app && typeof WebSocket === 'function') connect();
   else log(cfg.app ? '슬랙: 이 Node에는 WebSocket이 없어 보내기만 해요(Node 22 이상이면 받기도 됨)' : '슬랙: SLACK_APP_TOKEN이 없어 보내기만 해요');
   chain.then(() => st.channel && log(`슬랙: #${cfg.name} 채널로 스레드·알림 연동${cfg.app ? ' + 지시·댓글·TODO 답 받기' : ''}`));
-  return { runStarted, progress, delegated, returned, report, notifyTodo, todoDone, closed, reopened, openTodos };
+  return { runStarted, progress, delegated, returned, said, worked, flush, report, notifyTodo, todoDone, closed, reopened, openTodos };
 }
 
 // node tools/slack.mjs apps — 팀원마다 슬랙 앱 매니페스트를 .claude/slack-apps/에 쓰고, 토큰을 넣을 줄을 알려 준다.

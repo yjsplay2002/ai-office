@@ -110,6 +110,16 @@ assert.equal(p2[3].text, '▶️ 조사 시작 — 시장');
 assert.equal(calls.at(-1).method, 'chat.update');
 assert.equal(calls.at(-1).tok, 't');
 assert.ok(logs2.some((l) => l.includes('dev 봇 토큰이 안 맞아요')));
+// 대시보드 스레드처럼: 팀원 작업 줄 하나(새 말이 나오면 먼저 내보냄), 말은 그 팀원 봇으로, 봇 없는 팀원은 PM 봇이 이름을 붙여
+calls.length = 0;
+s2.worked(1, 'k', 'marketing', '마케팅', '읽음', 'Read a.md');
+s2.worked(1, 'k', 'marketing', '마케팅', '조사', 'WebSearch 톤');
+s2.said(1, 'marketing', '마케팅', '초안 끝', 'k');
+s2.said(1, 'research', '조사', '시장 큼', 'k2');
+await new Promise((ok) => setTimeout(ok, 50));
+const p3 = calls.filter((c) => c.method === 'chat.postMessage');
+assert.deepEqual(p3.map((p) => [p.tok, p.text]), [['xoxb-m', '🔧 작업 2건 · 읽음 1 · 조사 1 — 마지막: WebSearch 톤'], ['xoxb-m', '마케팅: 초안 끝'], ['t', '조사: 시장 큼']]);
+assert.equal(p3[2].blocks[0].text, '**조사** · 시장 큼');
 
 // 매니페스트: 팀원마다 하나, 토큰 없는 팀원 목록
 mkdirSync(path.join(d2, '.claude', 'agents'), { recursive: true });

@@ -16,6 +16,7 @@ import { loadLog, lastRun, KEEP_LINES, SEND_LINES, todoThread, linkAnswers, ANSW
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
 import { judgePrompt, parseVerdict } from './topic.mjs';
+import { createMapper } from './map.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -132,6 +133,7 @@ function startRun(prompt, { thread, resume, title, from, shown, agent } = {}) {
 // The npm claude.cmd shim drops its output when detached on Windows, so run the real exe when it can be found.
 const claudeExe = process.platform !== 'win32' ? null : (process.env.PATH || '').split(path.delimiter)
   .map((d) => path.join(d, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')).find((p) => existsSync(p)) || null;
+const ACT = { read: '읽음', search: '조사', run: '실행', write: '산출물' };   // office.html의 TACT와 같게
 const RUN_FILES = ['.json', '.jsonl', '.err', '.jsonl.t', '.err.t'];
 const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 
@@ -140,22 +142,33 @@ const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); ret
 function attach({ id, pid, prompt, t: started, before = [], thread, title, from, agent }) {
   const base = path.join(runDir, String(id));
   const send = (obj) => broadcast({ ...obj, _run: id });
-  // 중간 보고: PM이 팀원을 부르고 돌려받을 때마다 텔레그램에 무음으로 알린다. LLM을 안 써서 토큰이 들지 않는다.
-  const calls = new Map();
+  // 중간 보고: 대시보드와 같은 이벤트(map.mjs)로. 텔레그램엔 팀원 시작·끝만 무음으로, 슬랙엔 대시보드 스레드처럼
+  // 팀원의 말·작업 줄까지 그 팀원 봇으로. LLM을 안 써서 토큰이 들지 않는다.
+  const feed = createMapper(), calls = new Map(), th = thread ?? id, me = `run:${id}`;
+  const nameOf = (a) => agents().find((x) => x.name === a)?.title || a || '임시 지원';
+  let pmSay = '';   // PM의 말은 다음 일이 생길 때 보낸다: 마지막 말은 최종 보고와 같아서 두 번 올리지 않게
+  const sayPm = () => { if (pmSay) slack?.said(th, agent, agent ? nameOf(agent) : '', pmSay, me); pmSay = ''; };
   const progress = (obj, ts) => {
-    if (obj.parent_tool_use_id) return;   // 팀원 안쪽 도구 호출은 생략
-    for (const c of obj.message?.content || []) {
-      if (obj.type === 'assistant' && c.type === 'tool_use' && (c.name === 'Agent' || c.name === 'Task')) {
-        const who = agents().find((a) => a.name === c.input?.subagent_type)?.title || c.input?.subagent_type || '임시 지원';
-        if (!c.input?.run_in_background) calls.set(c.id, { who, ts, a: c.input?.subagent_type });
-        tg?.progress(`▶️ ${who} 시작 — ${c.input?.description || ''}`);
-        slack?.delegated(thread ?? id, c.input?.subagent_type, who, c.input?.description || '');
-      }
-      if (obj.type === 'user' && c.type === 'tool_result' && calls.has(c.tool_use_id)) {
-        const { who, ts: t0, a } = calls.get(c.tool_use_id); calls.delete(c.tool_use_id);
-        const mins = Math.max(1, Math.round((ts - t0) / 60000));
-        tg?.progress(`☑️ ${who} 끝 (${mins}분)`);
-        slack?.returned(thread ?? id, a, who, mins, typeof c.content === 'string' ? c.content : (c.content || []).map((x) => x.text || '').join('\n'));
+    for (const ev of feed(obj)) {
+      if (ev.kind === 'result') { if (pmSay && !String(ev.text).includes(pmSay.trim())) sayPm(); pmSay = ''; slack?.flush(me); continue; }
+      if (ev.kind === 'start' || ev.kind === 'limit') continue;
+      if (!(ev.kind === 'say' && !ev.id)) sayPm();
+      const c = ev.id && calls.get(ev.id);
+      if (ev.kind === 'dispatch') {
+        calls.set(ev.id, { ts, spoke: false });
+        tg?.progress(`▶️ ${nameOf(ev.agent)} 시작 — ${ev.task}`);
+        slack?.delegated(th, ev.agent, nameOf(ev.agent), ev.task);
+      } else if (ev.kind === 'report' && c) {
+        calls.delete(ev.id);
+        const mins = Math.max(1, Math.round((ts - c.ts) / 60000));
+        tg?.progress(`☑️ ${nameOf(ev.agent)} 끝 (${mins}분)`);
+        slack?.returned(th, ev.agent, nameOf(ev.agent), mins, c.spoke ? '' : ev.summary, ev.id);   // 결과 글은 이미 그 팀원이 말했다
+      } else if (ev.kind === 'say') {
+        if (!ev.id) pmSay = ev.text;
+        else { if (c) c.spoke = true; slack?.said(th, ev.agent, nameOf(ev.agent), ev.text, ev.id); }
+      } else if (ev.kind === 'tool') {
+        const a = ev.id ? ev.agent : agent;
+        slack?.worked(th, ev.id || me, a, ev.id || agent ? nameOf(a) : '', ACT[ev.step] || '실행', `${ev.tool} ${ev.detail || ''}`.trim());
       }
     }
   };

@@ -58,7 +58,8 @@ export function createMapper() {
       const a = c.type === 'tool_result' && agentOf.get(c.tool_use_id);
       if (!a) continue;
       // A background agent's tool_result only says it was launched; it is finished by its task_notification.
-      if (a.bg && !c.is_error) continue;
+      // Claude Code also backgrounds agents on its own (no run_in_background in the input): then the result says so.
+      if (!c.is_error && (a.bg || /^Async agent launched/.test(typeof c.content === 'string' ? c.content : c.content?.[0]?.text || ''))) { a.bg = true; continue; }
       finish(c.tool_use_id, !c.is_error, c.is_error ? full(typeof c.content === 'string' ? c.content : c.content?.[0]?.text) : '');
     }
 
