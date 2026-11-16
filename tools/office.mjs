@@ -111,10 +111,14 @@ function startRun(prompt, { thread, resume, title, from, shown, agent } = {}) {
   const shell = !claudeExe && process.platform === 'win32', q = (a) => (shell ? `"${a}"` : a);   // cmd needs the quotes
   // 토큰·안전: 개인 MCP 커넥터(메일·슬랙·드라이브 등)와 전역 스킬은 bypassPermissions 실행에 싣지 않는다.
   // 그래서 대시보드에서 도는 브라우저 담당은 CLI 브라우저 도구(Bash)를 써야 한다.
-  const child = spawn(claudeExe || 'claude', ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'bypassPermissions', ...(resume ? ['--resume', resume] : []), ...(agent ? ['--agent', agent, ...pmArgs({ effort: agents().find((a) => a.name === agent).effort })] : pmArgs(pmConf())),   // PM 모델·노력: .claude/ai-office.json(직원 관리), 실행마다 다시 읽음
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'bypassPermissions', ...(resume ? ['--resume', resume] : []), ...(agent ? ['--agent', agent, ...pmArgs({ effort: agents().find((a) => a.name === agent).effort })] : pmArgs(pmConf())),   // PM 모델·노력: .claude/ai-office.json(직원 관리), 실행마다 다시 읽음
     '--allowedTools', q('WebSearch,WebFetch,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*)'),
     // Telegram plugin tools are blocked: the office reaches its owner only through its own bot (tools/tg-send.mjs).
-    '--disallowedTools', q('mcp__plugin_telegram_telegram')],
+    '--disallowedTools', q('mcp__plugin_telegram_telegram')];
+  // 윈도: detached면 콘솔이 없어 windowsHide가 안 먹고, claude가 띄우는 명령(Bash·훅)마다 cmd 창이 뜬다.
+  // 그래서 detached node가 claude를 숨긴 콘솔로 띄운다(claude 아래 명령은 그 숨은 콘솔을 같이 씀).
+  const [cmd, argv] = claudeExe ? [process.execPath, ['-e', "const c=require('child_process').spawn(process.argv[1],process.argv.slice(2),{stdio:'inherit',windowsHide:true});c.on('error',()=>process.exit(1));c.on('exit',(n)=>process.exit(n??1))", claudeExe, ...args]] : [claudeExe || 'claude', args];
+  const child = spawn(cmd, argv,
     { cwd: root, shell, detached: true, windowsHide: true, stdio: ['pipe', out, err], env: { ...process.env, OFFICE_RUN: '1' } });
   closeSync(out); closeSync(err);
   child.on('error', () => {});   // a spawn failure shows up as an already-dead pid below
