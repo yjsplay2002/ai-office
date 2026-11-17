@@ -89,6 +89,13 @@ assert.equal(calls.at(-1).ts, '4.0');
 const st = JSON.parse(readFileSync(path.join(d, 'slack.json'), 'utf8'));
 assert.deepEqual([st.channel, st.threads['3'], st.threads['1']], ['C9', '1.0', '5.0']);
 assert.deepEqual(logs.filter((l) => l.includes('실패')), []);
+// 뒤 보고가 대신한 '확인' 카드는 지운다
+s.notifyTodo({ id: 9, type: '확인', by: 'pm', desc: '보고를 확인해 주세요: a', ref: 'board/reports/r.md', options: [] }, 1, true);
+await new Promise((ok) => setTimeout(ok, 20));
+s.todoDone({ id: 9, answer: '취소 (새 보고로 바뀜)' });
+await new Promise((ok) => setTimeout(ok, 20));
+assert.equal(calls.at(-1).method, 'chat.delete');
+assert.deepEqual(s.openTodos(), []);
 
 // 팀원 봇: PM이 진짜 멘션으로 맡기고, 결과·직접 보고·TODO 카드는 그 팀원 봇 토큰으로. 봇 없는 팀원은 예전처럼 PM 봇 글.
 calls.length = 0;

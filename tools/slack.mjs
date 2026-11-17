@@ -9,6 +9,7 @@ import { parseCommand } from './telegram.mjs';
 import { readAgent } from './staff.mjs';
 import { mediaIn } from './map.mjs';
 import { mediaFile } from './files.mjs';
+import { SUPERSEDED } from './todos.mjs';
 
 export function slackConfig(root, env = process.env) {
   let own = {};
@@ -253,6 +254,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     const c = st.todos[t.id];
     if (!c?.ts) return;
     delete st.todos[t.id]; save();
+    if (t.answer === `취소 (${SUPERSEDED})`) return queue(() => api('chat.delete', { channel: st.channel, ts: c.ts }));   // 뒤 보고 카드만 남긴다
     queue(() => api('chat.update', { channel: st.channel, ts: c.ts, text: `T${t.id} 처리됨`,
       blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `~T${t.id} · ${t.type} · ${t.by}~ ${firstLine(t.desc, 150)}\n→ *${t.answer || '완료'}*`.slice(0, 2900) } }] }));
   }

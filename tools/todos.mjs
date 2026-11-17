@@ -9,6 +9,7 @@
 // 확인 = 대시보드 실행이 끝나 올라온 보고. 대표가 '종료'하거나 '추가 지시'로 이어서 시킨다.
 export const TYPES = ['결정', '승인', '입력', '실행', '확인'];
 export const CHECK = ['종료', '추가 지시'];
+export const SUPERSEDED = '새 보고로 바뀜';   // 같은 스레드의 뒤 보고가 앞 '확인'을 대신함(답: "취소 (새 보고로 바뀜)")
 
 export function parseTodos(text) {
   return text.split(/^### /m).slice(1).map((part) => {
@@ -84,10 +85,15 @@ function closeBlock(text, id, nth, full, today) {
 
 // 끝난 실행의 보고는 대표에게 한 번만 간다. 실행 중에 새로 올라온 미처리 TODO(결정·승인 등)가 있으면 '확인'을 따로 만들지 않고
 // 그 TODO들에 '- 보고:' 줄로 붙인다. 없거나 오류로 끝났으면 '확인' TODO 하나. before = 실행을 시작할 때 있던 TODO 번호들.
-// -> { text, ids(보고가 실린 TODO), check(확인을 새로 만들었나) }
-export function addRunReport(text, { summary, ref, error, before = [] }) {
+// 새 '확인'을 만들 때, 같은 스레드(same(t, todos))에 아직 열린 앞 '확인'은 이 보고가 이어받으니 닫는다(답: 취소 (새 보고로 바뀜)). 다른 종류는 둔다.
+// -> { text, ids(보고가 실린 TODO), check(확인을 새로 만들었나), closed(닫은 앞 확인 번호) }
+export function addRunReport(text, { summary, ref, error, before = [], same, today = '' }) {
   const fresh = error ? [] : parseTodos(String(text)).filter((t) => !t.done && t.type !== '확인' && !before.includes(t.id));
-  if (!fresh.length) { const r = addCheckTodo(text, { summary, ref, error }); return { text: r.text, ids: [r.id], check: true }; }
+  if (!fresh.length) {
+    const r = addCheckTodo(text, { summary, ref, error }), all = parseTodos(r.text);
+    const old = same ? all.filter((t) => !t.done && t.type === '확인' && t.id !== r.id && same(t, all)).map((t) => t.id) : [];
+    return { text: old.reduce((x, id) => dismissTodo(x, id, SUPERSEDED, today).text, r.text), ids: [r.id], check: true, closed: old };
+  }
   const nl = /\r\n/.test(text) ? '\r\n' : '\n', lines = String(text).split(/\r?\n/);
   for (const t of fresh) {
     const start = lines.findIndex((l) => new RegExp(`^### T${t.id}\\s*·`).test(l));
@@ -96,7 +102,7 @@ export function addRunReport(text, { summary, ref, error, before = [] }) {
     const st = lines.findIndex((l, i) => i > start && i < end && l.startsWith('- 상태:'));
     lines.splice(st >= 0 ? st : end, 0, `- 보고: ${ref}`);
   }
-  return { text: lines.join(nl), ids: fresh.map((t) => t.id), check: false };
+  return { text: lines.join(nl), ids: fresh.map((t) => t.id), check: false, closed: [] };
 }
 
 // A finished dashboard run -> one '확인' TODO at the end of todos.md. Numbered from the text passed in, so read the file

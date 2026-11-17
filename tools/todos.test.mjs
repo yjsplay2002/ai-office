@@ -72,6 +72,14 @@ assert.ok(rr.text.includes('- 보고: board/reports/r1.md\n- 상태: 대기'));
 // 새 TODO가 없거나 오류로 끝나면 지금처럼 확인 TODO 하나
 assert.equal(addRunReport(run0, { summary: 'x', ref: 'board/r.md', before: [1, 2, 3] }).check, true);
 assert.equal(addRunReport(run0, { summary: 'x', ref: 'board/r.md', error: true, before: [1] }).check, true);
+// 같은 스레드의 열린 앞 '확인'은 새 확인이 이어받아 닫힌다. 다른 스레드의 확인, 다른 종류(결정)는 그대로
+{
+  const t0 = run0 + '\n### T4 · 확인 · pm\n보고를 확인해 주세요: a\n- 근거: board/reports/x-run7.md\n- 상태: 대기\n\n### T5 · 확인 · pm\n보고를 확인해 주세요: b\n- 근거: board/reports/x-run9.md\n- 상태: 대기\n';
+  const sr = addRunReport(t0, { summary: 'c', ref: 'board/reports/x-run8.md', before: [1, 2, 3, 4, 5], today: 'D', same: (t) => t.refs[0].endsWith('run7.md') || t.id === 2 });
+  assert.deepEqual([sr.ids, sr.closed], [[6], [4]]);
+  assert.deepEqual(parseTodos(sr.text).filter((x) => !x.done).map((x) => x.id), [1, 2, 3, 5, 6]);
+  assert.equal(parseTodos(sr.text).find((x) => x.id === 4).answer, '취소 (새 보고로 바뀜)');
+}
 assert.equal(followUp(t[0], '$19.99'), '- T1 [결정 · plan] 가격을 골라 주세요 → $19.99');
 console.log('todos ok');
 
