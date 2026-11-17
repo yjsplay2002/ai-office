@@ -100,10 +100,29 @@ export function answerModal(t, answer, meta) {
         element: { type: 'plain_text_input', action_id: 'v', multiline: true } }] };
 }
 
+// 글에 나온 T12 같은 번호 뒤에 그 TODO 제목을 붙인다(번호만으로는 뭔지 모름). 번호마다 첫 번째만, 제목이 이미 글에 있으면 건너뜀.
+// 경로 속 번호(board/uploads/T12/)는 앞뒤 / 로 걸러진다.
+export function withTodoTitles(text, all = []) {
+  const src = String(text), done = new Set();
+  return src.replace(/(?<![\w/.%-])T(\d+)(?![\w/])/g, (m, n) => {
+    const t = all.findLast((x) => x.id === Number(n)), title = t && firstLine(t.desc, 40);
+    if (!title || done.has(n) || src.includes(title.replace(/…$/, ''))) return m;
+    done.add(n);
+    return `${m}(${title})`;
+  });
+}
+// 채널 캔버스에 올릴 대표 TODO 판: 대기는 빈 체크박스, 처리한 것은 체크(최근 30개). all = todos.md 전체(파일 순서)
+export function todoBoard(all = []) {
+  const line = (t) => `- [${t.done ? 'x' : ' '}] **T${t.id} ${t.type}** · ${t.by} — ${firstLine(t.desc, 120)}${t.done ? ` → ${firstLine(t.answer || '완료', 80)}` : ''}`;
+  const open = all.filter((t) => !t.done), done = all.filter((t) => t.done).slice(-30).reverse();
+  return ['# 대표 TODO', '', `## 대기 ${open.length}건`, '', ...(open.length ? open.map(line) : ['할 일 없음']), '', `## 처리함 (최근 ${done.length}건)`, '', ...done.map(line), '',
+    '_대시보드·슬랙 카드에서 답하면 여기 체크가 바뀌어요. 여기서 체크해도 답이 되지는 않아요._'].join('\n');
+}
+
 const firstLine = (s, n = 200) => { const l = (String(s || '').split('\n').map((x) => x.trim()).find(Boolean) || '').replace(/^#+\s*/, ''); return l.length > n ? l.slice(0, n - 1) + '…' : l; };
 
 // agents() = 팀원 이름 목록. 토큰이 있는 팀원은 자기 봇으로 말한다.
-export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), todos, threadPrompt, onRun, onComment, onAnswer, agents = () => [], log = console.log }) {
+export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), todos, allTodos = todos, threadPrompt, onRun, onComment, onAnswer, agents = () => [], log = console.log }) {
   const stateFile = path.join(runDir, 'slack.json');
   let st = { channel: cfg.channel || null, threads: {}, todos: {} };
   try { st = { ...st, ...JSON.parse(readFileSync(stateFile, 'utf8')), ...(cfg.channel ? { channel: cfg.channel } : {}) }; } catch {}
@@ -166,7 +185,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     return m.ts;
   }
   const reply = (thread, body, as) => queue(async () => post({ thread_ts: await root(thread), ...body }, as));
-  const md = (thread, text, fallback, as) => { reply(thread, { text: fallback || firstLine(text, 150), blocks: [{ type: 'markdown', text: String(text).slice(0, 11000) }] }, as); attach(thread, text, as); };
+  const md = (thread, text, fallback, as) => { const t = withTodoTitles(text, allTodos()); reply(thread, { text: fallback || firstLine(t, 150), blocks: [{ type: 'markdown', text: t.slice(0, 11000) }] }, as); attach(thread, text, as); };
   // 글에 나온 board/ 사진·영상·소리를 그 글 바로 아래에 파일로 올린다(슬랙에서 바로 보고 듣게). 같은 파일은 스레드에 한 번만.
   const sent = new Set();
   let noScope = false;
@@ -261,6 +280,33 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   const closed = (thread) => st.threads[thread] && reply(thread, { text: '대표가 이 스레드를 종료했어요.' });
   const reopened = (thread) => st.threads[thread] && reply(thread, { text: '스레드를 다시 열었어요. 답글을 달면 PM이 이어 가요.' });
   const openTodos = () => Object.keys(st.todos).map(Number);
+  // 채널 캔버스(채널 위 탭)에 TODO 판. 내용이 바뀔 때만 고친다. 앱에 canvases:write가 없으면 한 번 알리고 끈다.
+  let boardText = '', noCanvas = false;
+  function board(all) {
+    const text = todoBoard(all);
+    if (text === boardText || noCanvas) return;
+    boardText = text;
+    const doc = { type: 'markdown', markdown: text };
+    queue(async () => {
+      try {
+        if (!st.canvas) {
+          let made = true;
+          st.canvas = await api('conversations.canvases.create', { channel_id: st.channel, document_content: doc }).then((j) => j.canvas_id, async (err) => {
+            if (err.code !== 'channel_canvas_already_exists') throw err;   // 채널 캔버스는 하나뿐: 있던 것을 TODO 판으로 쓴다
+            made = false;
+            return (await api('conversations.info', { channel: st.channel })).channel?.properties?.canvas?.file_id;
+          });
+          save();
+          if (made) return;   // 새로 만든 것은 이미 이 내용
+        }
+        await api('canvases.edit', { canvas_id: st.canvas, changes: [{ operation: 'replace', document_content: doc }] });
+      } catch (err) {
+        if (err.code === 'missing_scope' || err.code === 'not_allowed_token_type') { noCanvas = true; return log('슬랙: 앱에 canvases:write 권한이 없어 TODO 판(채널 캔버스)을 못 만들어요. 슬랙 앱 설정 → OAuth & Permissions에서 canvases:write를 더하고 다시 설치하세요'); }
+        if (err.code === 'canvas_not_found' || err.code === 'invalid_canvas') { st.canvas = null; boardText = ''; save(); }   // 지워진 캔버스: 다음 차례에 새로
+        throw err;
+      }
+    });
+  }
 
   // ---------- 받기: Socket Mode ----------
   const seen = new Set();
@@ -270,7 +316,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     const say = (text) => queue(() => post({ thread_ts: c.ts, text }, c.member));
     try {
       if (c.kind === 'error') return say(c.text);
-      if (c.kind === 'answer') { const full = await onAnswer(c.id, c.answer, c.note); return say(`T${c.id} 처리: ${full}`); }
+      if (c.kind === 'answer') { const full = await onAnswer(c.id, c.answer, c.note); return say(withTodoTitles(`T${c.id} 처리: ${full}`, allTodos())); }
       origin = c.ts;
       try { c.kind === 'run' ? onRun(c.prompt, c.member) : onComment(c.thread, c.text, c.member); } finally { origin = null; }
       say(c.kind === 'run' && !c.member ? '받았어요. 진행과 보고는 이 스레드에 올려요.' : '받았어요.');
@@ -290,7 +336,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
       try {
         const full = await onAnswer(m.id, m.answer, note);
         ack();
-        if (m.thread) queue(() => post({ thread_ts: m.thread, text: `T${m.id} 처리: ${full}` }));
+        if (m.thread) queue(() => post({ thread_ts: m.thread, text: withTodoTitles(`T${m.id} 처리: ${full}`, allTodos()) }));
       } catch (err) { ack({ response_action: 'errors', errors: { note: err.message.slice(0, 150) } }); }
       return;
     }
@@ -319,7 +365,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   if (cfg.app && typeof WebSocket === 'function') connect();
   else log(cfg.app ? '슬랙: 이 Node에는 WebSocket이 없어 보내기만 해요(Node 22 이상이면 받기도 됨)' : '슬랙: SLACK_APP_TOKEN이 없어 보내기만 해요');
   chain.then(() => st.channel && log(`슬랙: #${cfg.name} 채널로 스레드·알림 연동${cfg.app ? ' + 지시·댓글·TODO 답 받기' : ''}`));
-  return { runStarted, progress, delegated, returned, said, worked, flush, report, notifyTodo, todoDone, closed, reopened, openTodos };
+  return { runStarted, progress, delegated, returned, said, worked, flush, report, notifyTodo, todoDone, closed, reopened, openTodos, board };
 }
 
 // node tools/slack.mjs apps — 팀원마다 슬랙 앱 매니페스트를 .claude/slack-apps/에 쓰고, 토큰을 넣을 줄을 알려 준다.

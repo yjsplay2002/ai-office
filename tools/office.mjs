@@ -455,7 +455,7 @@ if (existsSync(path.join(root, '.office-slack.env')) && !(existsSync(gi) ? readF
 const slackCfg = slackConfig(root);
 if (slackCfg) try { const { missing } = writeApps(root, slackCfg.bots); if (missing.length) console.log(`슬랙: 봇이 없는 팀원 ${missing.join(', ')} — node tools/slack.mjs apps 참고`); } catch {}   // 새 팀원도 매니페스트가 생긴다
 const slack = slackCfg && createSlack({
-  cfg: slackCfg, runDir, root, todos: () => todos().filter((t) => !t.done), threadPrompt: (th) => threadInfo(th).prompt,
+  cfg: slackCfg, runDir, root, todos: () => todos().filter((t) => !t.done), allTodos: todos, threadPrompt: (th) => threadInfo(th).prompt,
   onRun: (prompt, member) => startInstruction(`${prompt}\n\n(슬랙으로 받은 지시${member ? '. 대표가 PM을 거치지 않고 너에게 직접 시킨 일이다. 네 역할 밖의 일은 하지 말고 최종 보고에 "PM에게 넘길 일"로 적는다' : ''})`, [], member),
   onComment: (thread, text, member) => comment(thread, text, member),
   agents: () => agents().map((a) => a.name),
@@ -471,6 +471,7 @@ function checkTodos() {
   for (const t of fresh) tg?.notifyTodo(t);
   if (!slack) return;
   const all = todos();
+  slack.board(all);
   for (const t of fresh) slack.notifyTodo(t, todoThread(t, history, all));
   for (const id of slack.openTodos()) {   // 대시보드·텔레그램에서 답한 TODO의 슬랙 카드도 닫는다
     if (open.some((t) => t.id === id)) continue;

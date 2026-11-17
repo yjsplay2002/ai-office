@@ -2,7 +2,7 @@
   "display_information": { "name": "AI Office", "description": "AI 오피스 대시보드의 스레드·TODO·보고를 슬랙으로" },
   "features": { "bot_user": { "display_name": "AI Office", "always_online": true } },
   "oauth_config": {
-    "scopes": { "bot": ["chat:write", "files:write", "channels:read", "channels:manage", "channels:history", "groups:read", "groups:write", "groups:history"] }
+    "scopes": { "bot": ["chat:write", "files:write", "channels:read", "channels:manage", "channels:history", "groups:read", "groups:write", "groups:history", "canvases:write"] }
   },
   "settings": {
     "event_subscriptions": { "bot_events": ["message.channels", "message.groups"] },

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { channelName, routeSlack, todoCard, answerModal, slackConfig, createSlack, writeApps, botKey } from './slack.mjs';
+import { channelName, routeSlack, todoCard, answerModal, slackConfig, createSlack, writeApps, botKey, withTodoTitles, todoBoard } from './slack.mjs';
 
 assert.equal(channelName('biz-ops'), 'ai-office-biz-ops');
 assert.equal(channelName('My App!!'), 'ai-office-my-app');
@@ -154,4 +154,11 @@ writeFileSync(path.join(d2, '.claude', 'agents', 'dev.md'), '---\nname: dev\ndes
 assert.deepEqual(writeApps(d2, { MARKETING: 'x' }).missing, ['dev']);
 const man = JSON.parse(readFileSync(path.join(d2, '.claude', 'slack-apps', 'marketing.json'), 'utf8'));
 assert.deepEqual([man.display_information.name, man.features.bot_user.display_name, man.oauth_config.scopes.bot], ['마케팅 「홍보」', '홍보', ['chat:write', 'files:write']]);
+// 번호 뒤 TODO 제목: 번호마다 첫 번째만, 경로 속 번호·제목이 이미 있는 글은 그대로
+const tl = [{ id: 3, type: '결정', by: 'plan', desc: '가격 정책을 골라 주세요', done: false, answer: '' }, { id: 4, type: '승인', by: 'dev', desc: '배포 승인', done: true, answer: '승인' }];
+assert.equal(withTodoTitles('T3을 올렸고 T3, T9도 봐 주세요', tl), 'T3(가격 정책을 골라 주세요)을 올렸고 T3, T9도 봐 주세요');
+assert.equal(withTodoTitles('board/uploads/T3/a.png', tl), 'board/uploads/T3/a.png');
+assert.equal(withTodoTitles('- T3 [결정 · plan] 가격 정책을 골라 주세요 → 19.99', tl), '- T3 [결정 · plan] 가격 정책을 골라 주세요 → 19.99');
+const bd = todoBoard(tl);
+assert.ok(bd.includes('- [ ] **T3 결정** · plan — 가격 정책을 골라 주세요') && bd.includes('- [x] **T4 승인** · dev — 배포 승인 → 승인'), bd);
 console.log('slack ok');

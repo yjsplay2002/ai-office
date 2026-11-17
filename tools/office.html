@@ -58,6 +58,7 @@
   .tx.more { cursor:pointer; }
   .fold { display:none; font-style:normal; font-size:11px; color:var(--link); cursor:pointer; }
   .tx.more + .fold { display:inline; }
+  .tref { color:var(--link); cursor:pointer; text-decoration:underline dotted; }
   .todo.t-확인 { --t1:#c9a46a; } .todo .rep { margin-top:5px; font-size:12.5px; color:var(--text); } .todo .rep:empty { display:none; }
   /* 공유 카드: 오늘 우리 회사가 한 일 */
   #shareBox { left:16px; top:70px; width:290px; }
@@ -1569,6 +1570,7 @@ function inline(s, thumbs = true) { return esc(s)
   .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
   .replace(MEDIA, (_, rel) => mediaEl(rel, thumbs))   // last, so it never rescans its own src/href
+  .replace(/(?<![\w/.%=-])T(\d+)(?![\w/])/g, '<a class="tref" data-tid="$1">$&</a>')   // TODO 번호: 올리면 제목, 누르면 내용(경로 속 T12/는 앞뒤 / 로 걸러짐)
   .replace(/<code>(<span class="media">.*?<\/span>|<details class="mdfile".*?<\/details>)<\/code>/g, '$1'); }
 // 저장소 상대 경로(board/a/b.png 등). 앞이 / : $ 이면 URL·절대경로라 건너뛴다. 서버(/files/)가 다시 거른다.
 const MEDIA = /(?<![\p{L}\p{N}_.\/:$~@%-])((?:[\p{L}\p{N}_.@+-]+\/)+[\p{L}\p{N}_.@+-]+\.(?:png|jpe?g|gif|webp|svg|mp4|webm|mov|mp3|wav|ogg|m4a|md|html?))(?![A-Za-z\p{N}_\/-])/giu;
@@ -1608,6 +1610,19 @@ document.addEventListener('click', (e) => {
   e.preventDefault(); zoom(z.dataset.title, z.dataset.zoom || z.dataset.frame, !!z.dataset.frame);
 });
 $('zclose').onclick = () => $('zoom').close();
+// T12 같은 번호: 같은 번호가 둘이면(동시에 매겨짐) 열린 쪽
+const todoOf = (id) => { const s = (lastBoard?.todos || []).filter((t) => t.id === id); return s.find((t) => !t.done) || s.at(-1); };
+document.addEventListener('mouseover', (e) => {
+  const a = e.target.closest?.('.tref'), t = a && todoOf(Number(a.dataset.tid));
+  if (t) a.title = `T${t.id} ${t.type} · ${t.by} · ${t.done ? t.status : '대기'}\n${plain(todoDesc(t)).split('\n')[0]}`;
+});
+document.addEventListener('click', (e) => {
+  const a = e.target.closest?.('.tref'); if (!a) return;
+  const t = todoOf(Number(a.dataset.tid)); if (!t) return;
+  e.preventDefault();
+  showDoc(`T${t.id} · ${t.type} · ${t.by}`, md([todoDesc(t), '', t.options.length ? `- 보기: ${t.options.join(' / ')}` : '', `- 상태: ${t.done ? t.status : '대기'}`, t.answer ? `- 답: ${t.answer}` : '', ...t.refs.map((r) => `- ${r}`)].filter((l, i) => l || i === 1).join('\n'))
+    + (t.done ? '' : '<p class="meta">대표 TODO 칸이나 그 스레드에서 답할 수 있어요.</p>'));
+});
 $('zoom').onclick = (e) => { if (e.target.id === 'zoom' || e.target.tagName === 'IMG') $('zoom').close(); };
 $('zoom').onclose = () => { $('zbody').innerHTML = ''; };
 addEventListener('error', (e) => e.target.closest?.('.media')?.classList.add('missing'), true);   // 없는 파일은 글자 링크만 남긴다
