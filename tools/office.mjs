@@ -120,7 +120,7 @@ function startRun(prompt, { thread, resume, title, from, shown, agent } = {}) {
   // 그래서 detached node가 claude를 숨긴 콘솔로 띄운다(claude 아래 명령은 그 숨은 콘솔을 같이 씀).
   const [cmd, argv] = claudeExe ? [process.execPath, ['-e', "const c=require('child_process').spawn(process.argv[1],process.argv.slice(2),{stdio:'inherit',windowsHide:true});c.on('error',()=>process.exit(1));c.on('exit',(n)=>process.exit(n??1))", claudeExe, ...args]] : [claudeExe || 'claude', args];
   const child = spawn(cmd, argv,
-    { cwd: root, shell, detached: true, windowsHide: true, stdio: ['pipe', out, err], env: { ...process.env, OFFICE_RUN: '1' } });
+    { cwd: root, shell, detached: true, windowsHide: true, stdio: ['pipe', out, err], env: { ...process.env, OFFICE_RUN: '1', CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' } });   // -p는 답이 끝나면 백그라운드 팀원을 ~10분 뒤 끊는다: 팀원은 포그라운드로
   closeSync(out); closeSync(err);
   child.on('error', () => {});   // a spawn failure shows up as an already-dead pid below
   child.stdin.end(prompt);
