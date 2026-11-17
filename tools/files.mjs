@@ -15,7 +15,7 @@ export function mediaFile(root, rel) {
   if (rel.split(/[\\/]/).some((s) => s === '..' || DENY.test(s))) return null;
   try {
     // realpath on both sides, so a symlink/junction pointing outside the repo is caught.
-    const base = realpathSync(root), file = realpathSync(path.resolve(base, rel));
+    const base = realpathSync(root), file = realpathSync(path.resolve(base, ...rel.split(/[\\/]/)));   // 맥·리눅스에서도 board\x.png를 찾게
     const rest = path.relative(base, file);
     if (!rest || rest.split(path.sep).some((s) => s === '..' || DENY.test(s)) || path.isAbsolute(rest)) return null;
     const type = MEDIA_TYPES[path.extname(file).toLowerCase()];
