@@ -1,0 +1,62 @@
+name: release
+on:
+  push:
+    branches: [main]
+    paths: ['.claude-plugin/plugin.json']
+  workflow_dispatch:
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 새 버전이면 태그와 릴리스
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=v$(node -p "require('./.claude-plugin/plugin.json').version")
+          echo "tag=$v" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then echo "$v 이미 있음"; exit 0; fi
+          prev=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          # 첫 릴리스는 앞 태그가 없어 최근 커밋 20개만
+          range=${prev:+$prev..HEAD}; range=${range:-HEAD~20..HEAD}
+          git log --no-merges --format='- %s' $range > notes.md
+          git tag "$v" && git push origin "$v"
+          gh release create "$v" --title "$v" --notes-file notes.md
+
+      # 비밀 CLAUDE_CODE_OAUTH_TOKEN이 있을 때만: Claude Code가 README를 고쳐 readme-auto PR 하나로 올린다(사람이 합침)
+      - name: README 갱신 PR
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.rel.outputs.tag }}
+        run: |
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then echo "CLAUDE_CODE_OAUTH_TOKEN 없음: 건너뜀"; exit 0; fi
+          since=$(git log -1 --format=%H -- README.md)
+          git log --no-merges --format='### %s%n%b' "$since"..HEAD > /tmp/changes.md
+          if [ ! -s /tmp/changes.md ]; then echo "README 뒤 새 커밋 없음"; exit 0; fi
+          npm install -g @anthropic-ai/claude-code
+          claude -p "README.md를 $TAG에 맞게 고쳐. 아래는 README를 마지막으로 고친 뒤의 커밋들이다. 사용자에게 보이는 바뀐 동작만 README의 알맞은 자리(한국어 본문과 끝의 English 요약)에 반영하고, 내부 리팩터링·테스트 변경은 넣지 마. 1인 프로덕트 빌더를 위한 도구라는 틀과 지금 문체(짧고 담백한 합니다체, 과장·홍보 문구 없음)를 지키고, 버전 목록이나 변경 내역 표를 만들지 마. README.md 말고는 고치지 마.
+
+          $(cat /tmp/changes.md)" --allowedTools "Read,Edit,Grep,Glob" --max-turns 30
+          if git diff --quiet README.md; then echo "README 바뀐 것 없음"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B readme-auto
+          git commit -am "README: $TAG 반영 (자동)"
+          git push -f origin readme-auto
+          gh pr create --base main --head readme-auto --title "README: 최신 버전 반영 (자동)" --body "릴리스 $TAG 뒤 Claude Code가 고친 README입니다. 읽어 보고 합쳐 주세요." \
+            || gh pr edit readme-auto --title "README: $TAG 반영 (자동)" \
+            || echo "PR을 못 만들었어요. Settings → Actions → General에서 'Allow GitHub Actions to create and approve pull requests'를 켜세요"

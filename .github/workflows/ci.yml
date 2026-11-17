@@ -1,0 +1,22 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: plugin.json 버전이 같은지
+        run: |
+          a=$(node -p "require('./.claude-plugin/plugin.json').version")
+          b=$(node -p "require('./.codex-plugin/plugin.json').version")
+          echo "claude $a / codex $b"
+          test "$a" = "$b"
+      - name: 자체 점검
+        run: for f in tools/*.test.mjs skills/init/*.test.mjs; do echo "== $f"; node "$f" || exit 1; done
