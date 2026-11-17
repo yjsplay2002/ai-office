@@ -1,5 +1,7 @@
 # ai-office: 1인 프로덕트 빌더를 위한 AI 오피스
 
+**한국어** | [English](README.en.md)
+
 ai-office는 앱, 게임, SaaS를 혼자 만들고 출시하는 1인 프로덕트 빌더를 위한 Claude Code / Codex 플러그인입니다. 조사, 기획, 개발, 디자인, 마케팅은 PM과 역할별 AI 팀원에게 맡깁니다. 대표는 지시하고 결정합니다. 프로젝트 폴더에서 `/ai-office:init`을 한 번 실행하면 팀 구성, 업무 규칙, 할 일 보드, 3D 대시보드를 설정합니다.
 
 ![작업 중인 AI 오피스: 왼쪽은 하늘섬 3D 오피스, 오른쪽은 지시·대표 TODO·스레드 패널](docs/readme/office.png)
@@ -36,7 +38,7 @@ ai-office에서는 PM이 지시를 받아 팀원에게 나눕니다. 팀원은 �
 
 ### 1. 인터뷰로 팀을 꾸립니다 (`/ai-office:init`)
 
-만드는 제품을 한 줄로 설명하고 주요 업무 영역을 말하면 팀 구성안을 표로 제안합니다. 역할별로 위임 수준과 모델을 고칠 수 있습니다.
+만드는 제품을 한 줄로 설명하고 주요 업무 영역을 말하면 팀 구성안을 표로 제안합니다. 역할별로 위임 수준, 모델(`opus` / `sonnet` / `haiku`), 노력 수준을 고칠 수 있습니다.
 
 | 역할(예) | 하는 일 | 기본 모델 |
 |---|---|---|
@@ -105,7 +107,7 @@ ai-office에서는 PM이 지시를 받아 팀원에게 나눕니다. 팀원은 �
 - 대표 자리는 1층 한가운데입니다. 왼쪽은 책상이 늘어선 업무 공간, 오른쪽은 큰 나무와 원형 소파 라운지입니다.
 - 일이 없는 팀원은 라운지 소파에서 쉬거나 나선 계단을 올라 나무 위 2층 데크에서 쉽니다. 일이 오면 책상으로 돌아갑니다.
 - 화면을 드래그하면 시점을 돌리고, 휠로 확대·축소합니다. 더블클릭하면 처음 구도로 돌아갑니다.
-- 팀원은 역할마다 생김새가 다른 2.5등신 피규어입니다. 걷기, 앉기, 쉬기, 두리번거리기 동작은 모든 팀원이 같은 것을 씁니다.
+- 팀원은 역할마다 생김새가 다른 2.5등신 피규어입니다. 상태에 따라 표정도 바뀝니다. 걷기, 앉기, 쉬기, 두리번거리기 동작은 모든 팀원이 같은 것을 씁니다.
 
 ![역할별 피규어: 콘솔, 대표, PM, 조사, 전략, 개발, 마케팅, 수익모델, 디자인](docs/readme/figures.png)
 
@@ -279,39 +281,11 @@ GitHub Actions 워크플로는 `.github/workflows/`에 있습니다.
 
 - **점검**(`ci.yml`): main 푸시와 PR마다 위 자체 점검을 돌리고, 두 `plugin.json`의 `version`이 같은지 봅니다.
 - **릴리스**(`release.yml`): `version`이 바뀐 푸시마다 `v<버전>` 태그와 [GitHub 릴리스](https://github.com/yjsplay2002/ai-office/releases)를 만들고, 앞 릴리스 뒤의 커밋 제목을 변경 내역으로 적습니다.
-- **README 갱신 PR**(같은 파일): 저장소 비밀 `CLAUDE_CODE_OAUTH_TOKEN`이 있으면 Claude Code가 새 커밋을 읽고 README를 고쳐 `readme-auto` 브랜치의 PR 하나로 올립니다. 이후 변경도 같은 PR에 반영합니다. 병합 여부는 사람이 판단합니다. 비밀이 없으면 이 단계는 건너뜁니다.
+- **README 갱신 PR**(같은 파일): 저장소 비밀 `CLAUDE_CODE_OAUTH_TOKEN`이 있으면 Claude Code가 새 커밋을 읽고 한국어·영어 README를 고쳐 `readme-auto` 브랜치의 PR 하나로 올립니다. 이후 변경도 같은 PR에 반영합니다. 병합 여부는 사람이 판단합니다. 비밀이 없으면 이 단계는 건너뜁니다.
   - 켜는 법: 터미널에서 `claude setup-token`으로 토큰을 받고 `gh secret set CLAUDE_CODE_OAUTH_TOKEN`으로 넣습니다(구독 사용량을 씁니다). 저장소 **Settings → Actions → General**에서 *Allow GitHub Actions to create and approve pull requests*를 켭니다.
 
 ---
 
-## English
+## 언어와 라이선스
 
-ai-office is a Claude Code / Codex plugin built for solo product builders who make and ship an app, game, or SaaS. A PM main session takes your goal and delegates research, planning, development, design, and marketing to persona subagents. You direct the work and make decisions through `board/todos.md`.
-
-### Why
-
-Building a product with AI turns session management into the real headache. You open and close a Claude Code or Codex session per task, context scatters across sessions, and every morning starts with "where was I, and which session did that?" Working with several AIs at once, it is easy to lose track of where the project is going.
-
-ai-office splits the work into personas and pins each one to a fixed job. That makes it visible how the work is going, which work is spending the tokens, and where you should focus. This is why it has a dashboard and Slack integration that work like people working in Slack: one instruction becomes one thread, and the team talks and reports in it.
-
-It also removes smaller frictions: re-explaining roles in one chat, deciding each time how far the AI may go before deploys, posts, or payments, and requests for your input buried in long answers.
-
-### Team and work queue
-
-- `/ai-office:init` (or `$ai-office:init` in Codex) interviews you and proposes a team: research, plan, dev, design, marketing, BM, console, or custom roles. You set each role's delegation level (full / partial: stop before the irreversible step and ask / human only) and model (`opus` / `sonnet` / `haiku`, with effort).
-- It writes `CLAUDE.md`, `AGENTS.md`, `.claude/agents/*.md`, and `board/`. It merges `.claude/settings.json`, keeping the `git push` deny, and optionally copies the dashboard to `tools/`. It asks before overwriting existing files.
-- Your work queue is `board/todos.md` with five types: decide, approve, input, do-it-yourself, and review. If a run already raised a decision or approval, it attaches the final report to that TODO rather than creating a separate review item.
-
-### Dashboard and integrations
-
-- The local 3D dashboard (`node tools/office.mjs`, 127.0.0.1:4747, `claude -p` only) shows the team working in a forest office. It has speech bubbles, task history, Notion-style markdown in chat, TODOs and reports, a staff editor, usage gauges, and a restart button. Idle staff rest in the lounge or on the tree-house deck. Their faces change with their state. See the screenshots above.
-- After a plugin update, starting the dashboard or pressing its restart button syncs the project's `tools/` if the installed plugin version is newer than `tools/.plugin-version`. Bump `version` in `.claude-plugin/plugin.json` when releasing.
-- Optional Slack integration uses Socket Mode and a private office channel. Each dashboard thread becomes a Slack thread with instructions, progress, reports, TODO buttons, and replies as comments. Each team member can have its own Slack bot. The command `node tools/slack.mjs apps` writes one manifest per member. Mention `@member` to have that member work directly and reply as itself. PM delegations appear as real mentions. Setup uses `tools/slack-manifest.json` and `.office-slack.env`.
-- Successive reports in the same thread close the earlier review TODO ("superseded"). Only the latest review TODO stays on the dashboard and in Slack. Threads show status badges (working / waiting on a decision / done), play images, video, and audio inline, and open `board/` markdown in place. TODO answers and new instructions accept file attachments.
-- An optional Telegram bot handles TODOs, reports, and replies.
-
-### Automation
-
-CI runs the self-tests on every push. Each version bump creates a GitHub release with the commit log. If the `CLAUDE_CODE_OAUTH_TOKEN` secret is set, Claude Code opens a README update PR.
-
-Templates and prompts are Korean in v1. MIT licensed.
+v1 템플릿과 프롬프트는 한국어로 작성되어 있습니다. [MIT 라이선스](LICENSE)를 따릅니다.

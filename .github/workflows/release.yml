@@ -44,18 +44,19 @@ jobs:
           TAG: ${{ steps.rel.outputs.tag }}
         run: |
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then echo "CLAUDE_CODE_OAUTH_TOKEN 없음: 건너뜀"; exit 0; fi
-          since=$(git log -1 --format=%H -- README.md)
+          since=$(git log -1 --format=%H -- README.md README.en.md)
           git log --no-merges --format='### %s%n%b' "$since"..HEAD > /tmp/changes.md
           if [ ! -s /tmp/changes.md ]; then echo "README 뒤 새 커밋 없음"; exit 0; fi
           npm install -g @anthropic-ai/claude-code
-          claude -p "README.md를 $TAG에 맞게 고쳐. 아래는 README를 마지막으로 고친 뒤의 커밋들이다. 사용자에게 보이는 바뀐 동작만 README의 알맞은 자리(한국어 본문과 끝의 English 요약)에 반영하고, 내부 리팩터링·테스트 변경은 넣지 마. 1인 프로덕트 빌더를 위한 도구라는 틀과 지금 문체(짧고 담백한 합니다체, 과장·홍보 문구 없음)를 지키고, 버전 목록이나 변경 내역 표를 만들지 마. README.md 말고는 고치지 마.
+          claude -p "README.md와 README.en.md를 $TAG에 맞게 고쳐. 아래는 README를 마지막으로 고친 뒤의 커밋들이다. 사용자에게 보이는 바뀐 동작만 두 문서의 알맞은 자리에 같은 내용으로 반영하고, 내부 리팩터링·테스트 변경은 넣지 마. 1인 프로덕트 빌더를 위한 도구라는 틀을 지켜. README.md는 짧고 담백한 합니다체로, README.en.md는 자연스럽고 간결한 영어로 써. 과장·홍보 문구, 버전 목록, 변경 내역 표를 만들지 마. 상단의 언어 전환 링크를 유지하고 README.md와 README.en.md 말고는 고치지 마.
 
           $(cat /tmp/changes.md)" --allowedTools "Read,Edit,Grep,Glob" --max-turns 30
-          if git diff --quiet README.md; then echo "README 바뀐 것 없음"; exit 0; fi
+          if git diff --quiet -- README.md README.en.md; then echo "README 바뀐 것 없음"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B readme-auto
-          git commit -am "README: $TAG 반영 (자동)"
+          git add -- README.md README.en.md
+          git commit -m "README: $TAG 반영 (자동)"
           git push -f origin readme-auto
           gh pr create --base main --head readme-auto --title "README: 최신 버전 반영 (자동)" --body "릴리스 $TAG 뒤 Claude Code가 고친 README입니다. 읽어 보고 합쳐 주세요." \
             || gh pr edit readme-auto --title "README: $TAG 반영 (자동)" \
