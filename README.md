@@ -10,12 +10,25 @@ ai-office는 앱, 게임, SaaS를 혼자 만들고 출시하는 1인 프로덕�
 
 ## 1인 프로덕트 빌더에게 왜 필요한가
 
-혼자 제품을 만들고 출시하려면 개발 외에도 조사, 기획, 디자인, 마케팅을 해야 합니다. 이 일을 AI에 맡겨도 다음 문제는 남습니다.
+AI와 함께 제품을 만들다 보면 코드보다 **세션 관리**가 더 골치 아파집니다.
 
-- 조사, 기획, 개발, 홍보를 같은 대화창에서 하다 보면 역할과 규칙을 매번 다시 설명해야 합니다.
-- 조사와 초안은 끝까지 맡겨도, 배포, 게시, 결제처럼 되돌리기 어려운 일은 직접 확인해야 합니다. AI가 어디까지 해도 되는지 매번 정해야 합니다.
-- "가격을 골라 주세요", "계정 이메일을 알려 주세요" 같은 요청이 긴 답변에 섞여 있어 놓치기 쉽습니다.
-- 여러 작업을 돌리면 누가 무엇을 하는지, 어디까지 끝냈는지 터미널 로그에서 찾아야 합니다.
+- 작업마다 Claude Code나 Codex 세션을 열었다 닫았다 해야 합니다.
+- 문맥이 세션마다 흩어져서 정리가 안 됩니다. 매일 아침 "어디까지 했지?", "그 작업은 어느 세션에서 했지?"부터 찾습니다.
+- AI 여럿과 동시에 일하면 정신이 없고, 프로젝트가 어디로 흘러가는지 놓치기 쉽습니다.
+
+ai-office는 일을 **페르소나별로 나누고, 페르소나마다 하는 일을 고정**합니다. research는 조사만, dev는 개발만 합니다. 그러면 다음이 한눈에 보입니다.
+
+- 일이 지금 어떻게 돌아가고 있는지
+- 토큰을 어떤 일에 많이 쓰고 있는지
+- 내가 어디에 더 집중해야 하는지
+
+사람들이 슬랙에서 일하듯 3D 대시보드와 슬랙 연동을 만든 이유가 이것입니다. 지시 하나가 스레드 하나가 되고, 팀원이 그 스레드에서 말하고 보고합니다. 다음 날 와도 스레드와 `board/`를 보면 어디까지 했는지 바로 압니다.
+
+그 밖에도 혼자 AI에 일을 맡기면 이런 문제가 남습니다.
+
+- 같은 대화창에서 조사, 기획, 개발, 홍보를 하면 역할과 규칙을 매번 다시 설명해야 합니다.
+- 배포, 게시, 결제처럼 되돌리기 어려운 일은 직접 확인해야 합니다. AI가 어디까지 해도 되는지 매번 정해야 합니다.
+- "가격을 골라 주세요", "계정 이메일을 알려 주세요" 같은 요청이 긴 답변에 섞여 놓치기 쉽습니다.
 
 ai-office에서는 PM이 지시를 받아 팀원에게 나눕니다. 팀원은 정해진 권한 안에서 끝까지 일하고, 대표의 판단이나 직접 실행이 필요한 일은 `board/todos.md`에 정해진 형식으로 올립니다. 대표는 이 목록에서 결정하고 필요한 일을 처리합니다.
 
@@ -275,7 +288,11 @@ ai-office is a Claude Code / Codex plugin built for solo product builders who ma
 
 ### Why
 
-A solo product builder handles more than code. Using one chat for research, planning, design, development, and marketing means explaining roles and rules repeatedly. You have to keep setting limits on actions such as deploys, posts, and payments. Requests for your input get buried in long answers, and terminal logs become the way to check what is running.
+Building a product with AI turns session management into the real headache. You open and close a Claude Code or Codex session per task, context scatters across sessions, and every morning starts with "where was I, and which session did that?" Working with several AIs at once, it is easy to lose track of where the project is going.
+
+ai-office splits the work into personas and pins each one to a fixed job. That makes it visible how the work is going, which work is spending the tokens, and where you should focus. This is why it has a dashboard and Slack integration that work like people working in Slack: one instruction becomes one thread, and the team talks and reports in it.
+
+It also removes smaller frictions: re-explaining roles in one chat, deciding each time how far the AI may go before deploys, posts, or payments, and requests for your input buried in long answers.
 
 ### Team and work queue
 
