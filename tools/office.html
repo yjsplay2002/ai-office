@@ -1387,7 +1387,7 @@ function paint(name) {
   q.busy = name === 'pm' ? running() : [...hist.tasks.values()].some((x) => x.agent === name && x.state === '진행 중');
   let head = '대기', sub = k ? `최근: ${k.title} · ${k.state}` : q.sub;
   if (q.busy) { head = k?.title || '작업 중'; sub = !last ? '' : last[1] === 'say' ? last[2] : `${VERB[last[1]]} · ${last[2]}`; }
-  else if (askCeo.has(name)) head = `대표 답 기다림 · T${askCeo.get(name)}`;
+  else if (askCeo.has(name)) { const t = openTodos.find((x) => x.id === askCeo.get(name)); head = `대표 답 기다림 · T${t.id}`; sub = t.desc.replace(/^\(T\d+ 후속\)\s*/, '').split('\n')[0]; }   // 번호만으로는 뭔지 몰라 제목을 아래 줄에
   q.bub.className = 'bub' + (q.busy ? '' : ' idle');
   q.bub.innerHTML = `<strong>${esc(cut(plain(head), 24))}</strong>${sub ? `<small>${esc(cut(plain(sub).replace(/\s*\n\s*/g, ' '), 32))}</small>` : ''}`;
   if (focusId === name) openHist(name, true);
@@ -1570,7 +1570,7 @@ function inline(s, thumbs = true) { return esc(s)
   .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
   .replace(MEDIA, (_, rel) => mediaEl(rel, thumbs))   // last, so it never rescans its own src/href
-  .replace(/(?<![\w/.%=-])T(\d+)(?![\w/])/g, '<a class="tref" data-tid="$1">$&</a>')   // TODO 번호: 올리면 제목, 누르면 내용(경로 속 T12/는 앞뒤 / 로 걸러짐)
+  .replace(/(<[^>]*>)|(?<![\w/.%=-])T(\d+)(?![\w/])/g, (m, tag, n) => tag || `<a class="tref" data-tid="${n}">${m}</a>`)   // TODO 번호: 올리면 제목, 누르면 내용(경로 속 T12/는 앞뒤 / 로 걸러짐)
   .replace(/<code>(<span class="media">.*?<\/span>|<details class="mdfile".*?<\/details>)<\/code>/g, '$1'); }
 // 저장소 상대 경로(board/a/b.png 등). 앞이 / : $ 이면 URL·절대경로라 건너뛴다. 서버(/files/)가 다시 거른다.
 const MEDIA = /(?<![\p{L}\p{N}_.\/:$~@%-])((?:[\p{L}\p{N}_.@+-]+\/)+[\p{L}\p{N}_.@+-]+\.(?:png|jpe?g|gif|webp|svg|mp4|webm|mov|mp3|wav|ogg|m4a|md|html?))(?![A-Za-z\p{N}_\/-])/giu;

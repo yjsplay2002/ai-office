@@ -225,10 +225,10 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     if (o) return;
     md(thread, `${shown ? `대표 댓글: ${shown}` : String(prompt).split('\n\n')[0]}`.slice(0, 2000));   // TODO 답이면 답 줄들
   }
-  const progress = (thread, text) => reply(thread, { text });
+  const progress = (thread, text) => reply(thread, { text: withTodoTitles(text, allTodos()) });
   // PM이 팀원을 부르고 돌려받을 때: 봇이 있는 팀원이면 진짜 멘션으로 맡기고, 끝나면 그 팀원 봇이 결과 첫머리를 답한다.
   // 봇이 있는지는 보낼 차례에 본다(봇 확인은 채널 준비와 같은 줄에서 끝난다).
-  const delegated = (thread, a, who, desc) => queue(async () => post({ thread_ts: await root(thread), text: bots[a] ? `<@${bots[a].user}> ${desc}` : `${who}에게 맡김 · ${desc}` }));
+  const delegated = (thread, a, who, desc) => queue(async () => post({ thread_ts: await root(thread), text: withTodoTitles(bots[a] ? `<@${bots[a].user}> ${desc}` : `${who}에게 맡김 · ${desc}`, allTodos()) }));
   function returned(thread, a, who, mins, result, key) {
     flush(key);
     const r = String(result || '').trim(), text = `${who} 끝 (${mins}분)`;
@@ -289,18 +289,13 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     const doc = { type: 'markdown', markdown: text };
     queue(async () => {
       try {
-        if (!st.canvas) {
-          let made = true;
-          st.canvas = await api('conversations.canvases.create', { channel_id: st.channel, document_content: doc }).then((j) => j.canvas_id, async (err) => {
-            if (err.code !== 'channel_canvas_already_exists') throw err;   // 채널 캔버스는 하나뿐: 있던 것을 TODO 판으로 쓴다
-            made = false;
-            return (await api('conversations.info', { channel: st.channel })).channel?.properties?.canvas?.file_id;
-          });
-          save();
-          if (made) return;   // 새로 만든 것은 이미 이 내용
+        if (!st.canvas) {   // 새로 만든 것은 이미 이 내용. 이 앱이 만든 캔버스(slack.json에 저장한 id)만 고친다
+          st.canvas = (await api('conversations.canvases.create', { channel_id: st.channel, document_content: doc })).canvas_id;
+          return save();
         }
         await api('canvases.edit', { canvas_id: st.canvas, changes: [{ operation: 'replace', document_content: doc }] });
       } catch (err) {
+        if (err.code === 'channel_canvas_already_exists' || err.code === 'free_team_canvas_tab_already_exists') { noCanvas = true; return log('슬랙: 채널에 이미 다른 캔버스가 있어 TODO 판을 만들지 않았어요(남의 캔버스는 덮어쓰지 않음). 그 캔버스를 지우면 다음 서버 시작 때 만들어요'); }
         if (err.code === 'missing_scope' || err.code === 'not_allowed_token_type') { noCanvas = true; return log('슬랙: 앱에 canvases:write 권한이 없어 TODO 판(채널 캔버스)을 못 만들어요. 슬랙 앱 설정 → OAuth & Permissions에서 canvases:write를 더하고 다시 설치하세요'); }
         if (err.code === 'canvas_not_found' || err.code === 'invalid_canvas') { st.canvas = null; boardText = ''; save(); }   // 지워진 캔버스: 다음 차례에 새로
         throw err;

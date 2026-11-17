@@ -48,6 +48,7 @@ assert.equal(answerModal(todos[0], '승인', {}).blocks[1].optional, true);
 
 // 가짜 Slack API: 채널을 만들고, 스레드 머리글은 한 번만, 진행·보고·TODO 카드는 그 스레드 답글로.
 const calls = [];
+let canvasErr = '';
 let n = 0;
 globalThis.fetch = async (url, { body, headers }) => {
   if (!url.startsWith('https://slack.com/')) { calls.push({ method: 'upload', url, size: body.length }); return { ok: true, status: 200 }; }
@@ -55,7 +56,8 @@ globalThis.fetch = async (url, { body, headers }) => {
   const b = headers['content-type'].includes('form') ? Object.fromEntries(new URLSearchParams(body)) : JSON.parse(body);
   calls.push({ method, tok, ...b });
   if (method === 'files.getUploadURLExternal' && tok === 'xoxb-m') return { status: 200, headers: new Map(), json: async () => ({ ok: false, error: 'missing_scope' }) };
-  const res = method === 'files.getUploadURLExternal' ? { upload_url: 'https://files.slack.com/up/' + b.filename, file_id: 'F' + b.filename } : method === 'chat.postMessage' ? { ts: `${++n}.0` } : method === 'conversations.create' ? { channel: { id: 'C9' } } : method === 'auth.test' ? { user_id: { t: 'UPM', 'xoxb-m': 'UMK' }[tok] } : {};
+  if (method === 'conversations.canvases.create' && canvasErr) return { status: 200, headers: new Map(), json: async () => ({ ok: false, error: canvasErr }) };
+  const res = method === 'conversations.canvases.create' ? { canvas_id: 'FCV' } : method === 'files.getUploadURLExternal' ? { upload_url: 'https://files.slack.com/up/' + b.filename, file_id: 'F' + b.filename } : method === 'chat.postMessage' ? { ts: `${++n}.0` } : method === 'conversations.create' ? { channel: { id: 'C9' } } : method === 'auth.test' ? { user_id: { t: 'UPM', 'xoxb-m': 'UMK' }[tok] } : {};
   if (tok === 'xoxb-bad') return { status: 200, headers: new Map(), json: async () => ({ ok: false, error: 'invalid_auth' }) };
   return { status: 200, headers: new Map(), json: async () => ({ ok: true, ...res }) };
 };
@@ -159,6 +161,25 @@ const tl = [{ id: 3, type: '결정', by: 'plan', desc: '가격 정책을 골라 
 assert.equal(withTodoTitles('T3을 올렸고 T3, T9도 봐 주세요', tl), 'T3(가격 정책을 골라 주세요)을 올렸고 T3, T9도 봐 주세요');
 assert.equal(withTodoTitles('board/uploads/T3/a.png', tl), 'board/uploads/T3/a.png');
 assert.equal(withTodoTitles('- T3 [결정 · plan] 가격 정책을 골라 주세요 → 19.99', tl), '- T3 [결정 · plan] 가격 정책을 골라 주세요 → 19.99');
+// TODO 판: 처음엔 채널 캔버스를 만들고, 바뀔 때만 고치고, 남의 캔버스·권한 없음이면 한 번 알리고 끈다
+calls.length = 0;
+s.board(tl); s.board(tl);
+await new Promise((ok) => setTimeout(ok, 20));
+s.board([{ ...tl[0], done: true, answer: '19.99' }]);
+await new Promise((ok) => setTimeout(ok, 20));
+const cv = calls.filter((c) => c.method.startsWith('canvases') || c.method.startsWith('conversations.canvases'));
+assert.deepEqual(cv.map((c) => c.method), ['conversations.canvases.create', 'canvases.edit']);
+assert.equal(cv[1].canvas_id, 'FCV');
+assert.equal(cv[1].changes[0].operation, 'replace');
+assert.ok(cv[1].changes[0].document_content.markdown.includes('- [x] **T3 결정**'));
+assert.equal(JSON.parse(readFileSync(path.join(d, 'slack.json'), 'utf8')).canvas, 'FCV');
+canvasErr = 'channel_canvas_already_exists'; calls.length = 0;
+const s4 = createSlack({ cfg: { token: 't', owner: 'U1', app: '', channel: 'C7', name: 'x' }, runDir: mkdtempSync(path.join(os.tmpdir(), 'slack4-')), todos: () => [],
+  threadPrompt: () => '', onRun() {}, onComment() {}, onAnswer() {}, log: (...a) => logs.push(a.join(' ')) });
+s4.board(tl); await new Promise((ok) => setTimeout(ok, 20)); s4.board([]); await new Promise((ok) => setTimeout(ok, 20));
+assert.deepEqual(calls.filter((c) => c.method.includes('canvas')).map((c) => c.method), ['conversations.canvases.create']);   // 덮어쓰지 않고 끔
+assert.ok(logs.at(-1).includes('이미 다른 캔버스'));
+canvasErr = '';
 const bd = todoBoard(tl);
 assert.ok(bd.includes('- [ ] **T3 결정** · plan — 가격 정책을 골라 주세요') && bd.includes('- [x] **T4 승인** · dev — 배포 승인 → 승인'), bd);
 console.log('slack ok');
