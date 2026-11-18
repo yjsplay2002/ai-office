@@ -1,6 +1,6 @@
 // node tools/eventlog.test.mjs — the saved dashboard log: trim by age and size, drop re-attached runs, next run id.
 import assert from 'node:assert/strict';
-import { loadLog, lastRun, todoThread, linkAnswers, keepRuns, tail } from './eventlog.mjs';
+import { slimLine, loadLog, lastRun, todoThread, linkAnswers, keepRuns, tail } from './eventlog.mjs';
 
 const now = Date.parse('2026-11-12T00:00:00Z'), day = 864e5;
 const L = (o) => JSON.stringify(o);
@@ -100,3 +100,9 @@ console.log('eventlog keep ok');
   assert.equal(JSON.parse(out[1]).thread, undefined);
   assert.equal(JSON.parse(linkAnswers([L[0], L[1].replace(',"from":1', '')], [{ id: 5, refs: ['board/reports/a-run1.md'], desc: 'x' }])[1]).thread, 1);
 }
+
+// 스크린샷 base64는 비우고 나머지는 그대로
+{ const big = JSON.stringify({ type: 'user', message: { content: [{ type: 'image', source: { type: 'base64', data: 'A'.repeat(5000), media_type: 'image/png' } }] } });
+  const s = JSON.parse(slimLine(big)); assert.equal(s.message.content[0].source.data, ''); assert.equal(s.message.content[0].source.media_type, 'image/png');
+  assert.equal(JSON.parse(slimLine(JSON.stringify({ tool_use_result: { file: { base64: 'B'.repeat(500) } } }))).tool_use_result.file.base64, '');
+  assert.equal(slimLine('{"a":1}'), '{"a":1}'); }

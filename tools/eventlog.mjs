@@ -3,6 +3,9 @@
 
 export const KEEP_DAYS = 7, KEEP_LINES = 5000, SEND_LINES = 3000;
 
+// 팀원 도구 결과의 스크린샷(base64)·생각 서명은 화면에 안 쓰는데 한 줄이 수백 KB라, 기록·전송 전에 비운다(기록 52MB → 새 화면이 멈춤)
+export const slimLine = (l) => /"(base64|signature)"/.test(l) ? l.replace(/"(data|base64|signature)":"[A-Za-z0-9+/=]{200,}"/g, '"$1":""') : l;
+
 // File text -> lines to keep: parseable, newer than `days`, not from a run in `drop` (runs re-attached on boot re-send
 // all their lines, so their old copies go), at most `max` (newest kept). Lines of runs in `keep` stay however old.
 export function loadLog(text, { now = Date.now(), days = KEEP_DAYS, max = KEEP_LINES, drop = new Set(), keep = new Set() } = {}) {
@@ -11,7 +14,7 @@ export function loadLog(text, { now = Date.now(), days = KEEP_DAYS, max = KEEP_L
     if (!l.trim()) continue;
     let o; try { o = JSON.parse(l); } catch { continue; }
     if (drop.has(o._run) || !(o._t >= since || (o._t != null && keep.has(o._run)))) continue;
-    out.push(l.trim());
+    out.push(slimLine(l.trim()));
   }
   return tail(out, max, keep);
 }
