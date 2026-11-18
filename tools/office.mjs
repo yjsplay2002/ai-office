@@ -12,7 +12,7 @@ import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
 import { slackConfig, createSlack, writeApps } from './slack.mjs';
-import { loadLog, lastRun, KEEP_LINES, SEND_LINES, slimLine, todoThread, linkAnswers, ANSWER_HEAD, keepRuns, tail } from './eventlog.mjs';
+import { loadLog, lastRun, KEEP_LINES, SEND_LINES, slimLine, todoThread, linkAnswers, ANSWER_HEAD, keepRuns, tail, threadInfo as threadOf, staleSession } from './eventlog.mjs';
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
 import { judgePrompt, parseVerdict } from './topic.mjs';
@@ -242,21 +242,7 @@ function cancel(only) {
   return ids.length;
 }
 
-// A dashboard thread = a CEO instruction's run plus the runs started by comments on it. Read back from the event log.
-function threadInfo(thread) {
-  const ids = new Set([thread]);
-  let prompt = '', session = null, agent = null;
-  const runAgent = {};
-  for (const l of history) {
-    let o; try { o = JSON.parse(l); } catch { continue; }
-    if (o.type === '_office' && o.state === 'running' && o.prompt) runAgent[o._run] = o.agent || null;
-    if (o.type === '_office' && o.prompt && (o._run === thread || o.thread === thread) && !prompt) prompt = o.prompt;   // 연 지시가 잘렸으면 남은 가장 이른 실행
-    if (o.type === '_office' && o.prompt && o.thread === thread) ids.add(o._run);
-    if (o.type === 'system' && o.subtype === 'init' && !o.parent_tool_use_id && ids.has(o._run)) { session = o.session_id; agent = runAgent[o._run] || null; }
-  }
-  // The session id goes on the command line (shell on Windows), so only a plain UUID passes.
-  return { ids: [...ids], prompt, agent, session: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session || '') ? session : null };
-}
+const threadInfo = (thread) => threadOf(history, thread);
 // CEO comment on a thread: continues the thread's PM session when no run of it is still going; otherwise a fresh run quoting the instruction.
 // member = 댓글에서 멘션한 팀원. 멘션이 없으면 그 스레드를 마지막으로 이어 온 쪽(PM 또는 직접 시킨 팀원)이 받는다.
 function comment(thread, text, member, files = []) {
@@ -267,15 +253,19 @@ function comment(thread, text, member, files = []) {
   saveUploads(ups);
   if (ups.length) text = `${(text || '').trim()}\n\n대표 첨부 파일: ${ups.map((u) => u.rel).join(', ')}`;
   const live = th.ids.some((id) => runs.has(id)), agent = member === '' ? undefined : member || th.agent || undefined;   // '' = PM 봇을 멘션
-  if (th.session && !live && agent === (th.agent || undefined)) return startRun(text.trim(), { thread, resume: th.session, shown: text.trim(), agent });
+  if (th.session && !live && agent === (th.agent || undefined)) {
+    if (!staleSession(th)) return startRun(text.trim(), { thread, resume: th.session, shown: text.trim(), agent });
+    office({ log: `스레드 세션이 길어져(문맥 ${Math.round(th.ctx / 1e3)}k) 새 세션으로 이어 감` });
+  }
   startRun(`대표가 아래 지시의 스레드에 댓글을 달았습니다. 지시의 맥락에서 댓글을 처리해.
 
-[원래 지시]
-${th.prompt}
+${threadContext(th)}
 
 [대표 댓글]
 ${text.trim()}`, { thread, shown: text.trim(), agent });
 }
+// 이어 붙이지 않는 새 세션에 넘기는 스레드 맥락: 원래 지시 + 직전 보고 앞부분(자세한 것은 board/에 있다)
+const threadContext = (th) => `[원래 지시]\n${th.prompt}` + (th.last ? `\n\n[이 스레드의 직전 보고(앞부분)]\n${th.last.slice(0, 2000)}` : '');
 
 // 직원 관리: PM 설정 파일과 팀원 머리말. 서버는 파일만 고치고 커밋하지 않는다.
 const pmFile = path.join(root, '.claude', 'ai-office.json');
@@ -420,8 +410,8 @@ function flushAnswers() {
       const fresh = lines.filter((_, i) => v?.fresh.includes(i)), stay = lines.filter((_, i) => !v?.fresh.includes(i));
       if (fresh.length) { startRun(prompt(fresh), { title: v.title || undefined, from: thread }); office({ log: `새 주제라 새 스레드로: ${v.title || fresh.length + '건'}` }); }
       if (!stay.length) return;
-      const th = threadInfo(thread);
-      startRun(prompt(stay), { thread, resume: th.ids.some((id) => runs.has(id)) ? undefined : th.session || undefined, agent: th.agent || undefined });   // 팀원이 맡던 스레드면 그 팀원 세션으로
+      const th = threadInfo(thread), resume = !th.ids.some((id) => runs.has(id)) && !staleSession(th) && th.session || undefined;
+      startRun(resume ? prompt(stay) : `${threadContext(th)}\n\n${prompt(stay)}`, { thread, resume, agent: th.agent || undefined });   // 팀원이 맡던 스레드면 그 팀원 세션으로
     });
   }
 }
@@ -595,8 +585,8 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/comment') {
-      const { thread, text } = await body(req);
-      try { comment(thread, String(text ?? '')); } catch (err) { return json(res, 400, { error: err.message }); }
+      const { thread, text, files } = await body(req);
+      try { comment(thread, String(text ?? ''), undefined, Array.isArray(files) ? files : []); } catch (err) { return json(res, 400, { error: err.message }); }
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/staff') {

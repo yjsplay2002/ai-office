@@ -106,3 +106,28 @@ console.log('eventlog keep ok');
   const s = JSON.parse(slimLine(big)); assert.equal(s.message.content[0].source.data, ''); assert.equal(s.message.content[0].source.media_type, 'image/png');
   assert.equal(JSON.parse(slimLine(JSON.stringify({ tool_use_result: { file: { base64: 'B'.repeat(500) } } }))).tool_use_result.file.base64, '');
   assert.equal(slimLine('{"a":1}'), '{"a":1}'); }
+
+// 스레드 세션 크기: 메인 세션의 마지막 문맥·시작 시각·직전 보고. 팀원(parent_tool_use_id) 줄은 세지 않는다. 크거나 하루 넘으면 이어 붙이지 않는다.
+{
+  const { threadInfo, staleSession } = await import('./eventlog.mjs');
+  const S = '11111111-2222-3333-4444-555555555555', J = (o) => JSON.stringify(o);
+  const lines = [
+    J({ type: '_office', state: 'running', prompt: '가격 정해', _run: 1 }),
+    J({ type: 'system', subtype: 'init', session_id: S, _run: 1, _t: 1000 }),
+    J({ type: 'assistant', _run: 1, message: { usage: { input_tokens: 5, cache_read_input_tokens: 40000, cache_creation_input_tokens: 1000 } } }),
+    J({ type: 'assistant', _run: 1, parent_tool_use_id: 'x', message: { usage: { input_tokens: 0, cache_read_input_tokens: 900000 } } }),
+    J({ type: 'result', _run: 1, result: '보고 1' }),
+    J({ type: '_office', state: 'running', prompt: '댓글', thread: 1, _run: 2 }),
+    J({ type: 'system', subtype: 'init', session_id: S, _run: 2, _t: 5000 }),
+    J({ type: 'assistant', _run: 2, message: { usage: { input_tokens: 1, cache_read_input_tokens: 160000 } } }),
+    J({ type: 'result', _run: 2, result: '보고 2' }),
+    J({ type: 'assistant', _run: 3, message: { usage: { input_tokens: 1, cache_read_input_tokens: 999999 } } }),
+  ];
+  const th = threadInfo(lines, 1);
+  assert.deepEqual([th.session, th.ctx, th.since, th.last, th.prompt, th.ids], [S, 160001, 1000, '보고 2', '가격 정해', [1, 2]]);
+  assert.equal(threadInfo(lines.slice(0, 5), 1).ctx, 41005);
+  assert.equal(staleSession(th, 2000), true);
+  assert.equal(staleSession({ ctx: 41005, since: 1000 }, 2000), false);
+  assert.equal(staleSession({ ctx: 41005, since: 1000 }, 1000 + 25 * 3600e3), true);
+  console.log('thread session ok');
+}

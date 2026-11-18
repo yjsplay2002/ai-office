@@ -77,3 +77,32 @@ export function linkAnswers(lines, todos) {
   });
   return out;
 }
+
+// A dashboard thread = a CEO instruction's run plus the runs started by comments on it. Read back from the event log.
+// ctx = tokens the thread's main session sent on its last turn, since = when that session started, last = newest final report.
+export function threadInfo(lines, thread) {
+  const ids = new Set([thread]);
+  let prompt = '', session = null, agent = null, ctx = 0, since = 0, last = '';
+  const runAgent = {};
+  for (const l of lines) {
+    let o; try { o = JSON.parse(l); } catch { continue; }
+    if (o.type === '_office' && o.state === 'running' && o.prompt) runAgent[o._run] = o.agent || null;
+    if (o.type === '_office' && o.prompt && (o._run === thread || o.thread === thread) && !prompt) prompt = o.prompt;   // 연 지시가 잘렸으면 남은 가장 이른 실행
+    if (o.type === '_office' && o.prompt && o.thread === thread) ids.add(o._run);
+    if (!ids.has(o._run) || o.parent_tool_use_id) continue;
+    if (o.type === 'system' && o.subtype === 'init') {
+      if (o.session_id !== session) { since = o._t || 0; ctx = 0; }
+      session = o.session_id; agent = runAgent[o._run] || null;
+    }
+    const u = o.type === 'assistant' && o.message?.usage;
+    if (u) ctx = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+    if (o.type === 'result' && o.result) last = String(o.result);
+  }
+  // The session id goes on the command line (shell on Windows), so only a plain UUID passes.
+  return { ids: [...ids], prompt, agent, ctx, since, last, session: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session || '') ? session : null };
+}
+
+// 스레드 세션을 계속 --resume하면 댓글마다 큰 문맥을 통째로 다시 읽는다(biz-ops 2026-11-18 점검: 60턴 넘는 PM 세션 4개가 PM 토큰의 41%).
+// 문맥이 크거나 오래된 세션은 이어 붙이지 않고 원래 지시·직전 보고만 넘긴 새 세션으로 시작한다.
+export const SESSION_MAX_CTX = 150e3, SESSION_MAX_AGE = 24 * 3600e3;
+export const staleSession = (th, now = Date.now()) => th.ctx > SESSION_MAX_CTX || (th.since > 0 && now - th.since > SESSION_MAX_AGE);
