@@ -259,10 +259,13 @@ function threadInfo(thread) {
 }
 // CEO comment on a thread: continues the thread's PM session when no run of it is still going; otherwise a fresh run quoting the instruction.
 // member = 댓글에서 멘션한 팀원. 멘션이 없으면 그 스레드를 마지막으로 이어 온 쪽(PM 또는 직접 시킨 팀원)이 받는다.
-function comment(thread, text, member) {
-  if (!Number.isInteger(thread) || !text?.trim()) throw new Error('댓글이 비어 있음');
+function comment(thread, text, member, files = []) {
+  if (!Number.isInteger(thread) || (!text?.trim() && !files.length)) throw new Error('댓글이 비어 있음');
   const th = threadInfo(thread);
   if (!th.prompt) throw new Error('스레드를 찾을 수 없음(기록이 지워졌을 수 있음)');
+  const ups = checkUploads(`thread-${thread}-${Date.now()}`, files);
+  saveUploads(ups);
+  if (ups.length) text = `${(text || '').trim()}\n\n대표 첨부 파일: ${ups.map((u) => u.rel).join(', ')}`;
   const live = th.ids.some((id) => runs.has(id)), agent = member === '' ? undefined : member || th.agent || undefined;   // '' = PM 봇을 멘션
   if (th.session && !live && agent === (th.agent || undefined)) return startRun(text.trim(), { thread, resume: th.session, shown: text.trim(), agent });
   startRun(`대표가 아래 지시의 스레드에 댓글을 달았습니다. 지시의 맥락에서 댓글을 처리해.
@@ -476,10 +479,10 @@ const slackCfg = slackConfig(root);
 if (slackCfg) try { const { missing } = writeApps(root, slackCfg.bots); if (missing.length) console.log(`슬랙: 봇이 없는 팀원 ${missing.join(', ')} — node tools/slack.mjs apps 참고`); } catch {}   // 새 팀원도 매니페스트가 생긴다
 const slack = slackCfg && createSlack({
   cfg: slackCfg, runDir, root, todos: () => todos().filter((t) => !t.done), allTodos: todos, threadPrompt: (th) => threadInfo(th).prompt,
-  onRun: (prompt, member) => startInstruction(`${prompt}\n\n(슬랙으로 받은 지시${member ? '. 대표가 PM을 거치지 않고 너에게 직접 시킨 일이다. 네 역할 밖의 일은 하지 말고 최종 보고에 "PM에게 넘길 일"로 적는다' : ''})`, [], member),
-  onComment: (thread, text, member) => comment(thread, text, member),
+  onRun: (prompt, member, files) => startInstruction(`${prompt}\n\n(슬랙으로 받은 지시${member ? '. 대표가 PM을 거치지 않고 너에게 직접 시킨 일이다. 네 역할 밖의 일은 하지 말고 최종 보고에 "PM에게 넘길 일"로 적는다' : ''})`, files, member),
+  onComment: (thread, text, member, files) => comment(thread, text, member, files),
   agents: () => agents().map((a) => a.name),
-  onAnswer: (id, answer, note) => submitTodo(id, answer, note, []),
+  onAnswer: (id, answer, note, files) => submitTodo(id, answer, note, files),
 });
 // New open TODOs (by id) since the server started. Existing ones at boot are not re-announced.
 let seenTodos = null;

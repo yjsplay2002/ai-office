@@ -251,7 +251,7 @@ Enable Slack during init (`슬랙 연동: 씀`), or follow the setup below for a
   - Channel messages without a mention go to the PM. When the PM delegates, it posts an actual mention, such as `@마케팅 톤 조사`. When the agent finishes, its bot replies with the start of the result. That bot also posts the task's TODO cards.
 - The channel's Canvas tab has a founder TODO board (`대표 TODO 판`). It shows pending items as empty checkboxes and handled items with checks and answers, up to the latest 30 items. Answer through the cards or dashboard; checking a box on the board does not answer a TODO. The app needs `canvases:write`. Add it under **OAuth & Permissions** and reinstall existing apps.
 - When a message includes a TODO number such as `T12`, Slack adds the TODO title after it. In the dashboard, hover over the number to see the title, or click it for the contents, status, and answer.
-- Socket Mode receives messages without a public URL. Receiving requires Node 22 or newer; older versions can only send. The integration does not yet receive Slack file attachments.
+- Socket Mode receives messages without a public URL. Receiving requires Node 22 or newer; older versions can only send. Files attached to Slack messages are saved in `board/uploads/` and passed to the PM with the instruction, thread comment, or TODO answer. The app needs `files:read`. Add it under **OAuth & Permissions** and reinstall existing apps.
 
 Setup:
 

@@ -35,6 +35,12 @@ assert.deepEqual(routeSlack(ev({ text: '<@UDV|dev> 이것도 고쳐 <@UMK>', thr
 assert.deepEqual(routeSlack(ev({ text: '<@UPM> <@U9> 확인', thread_ts: '100.1' }), mctx), { kind: 'comment', thread: 5, text: '<@U9> 확인', ts: '100.1', member: '' });
 assert.equal(routeSlack(ev({ text: '<@UMK>' }), mctx).kind, 'none');
 assert.equal(routeSlack(ev({ text: '<@UMK> T7 승인', thread_ts: '100.1' }), mctx).kind, 'answer');
+// 첨부 글(subtype file_share): 파일 주소가 실리고, 글 없이 파일만 와도 지시·댓글·입력 답이 된다
+const fl = { subtype: 'file_share', files: [{ name: 'a.png', url_private_download: 'https://files.slack.com/a.png' }, { id: 'F2', mode: 'external' }] };
+assert.deepEqual(routeSlack(ev({ text: '이거 봐', ...fl }), ctx), { kind: 'run', prompt: '이거 봐', ts: '200.1', files: [{ name: 'a.png', url: 'https://files.slack.com/a.png' }] });
+assert.deepEqual(routeSlack(ev({ text: '', thread_ts: '100.1', ...fl }), ctx).files.length, 1);
+assert.equal(routeSlack(ev({ text: '', thread_ts: '100.1', ...fl }), ctx).kind, 'comment');
+assert.equal(routeSlack(ev({ text: '', thread_ts: '999.1', ...fl }), ctx).files, undefined);
 // 대표가 아니거나, 다른 채널이거나, 봇·편집 글은 무시(신뢰 경계)
 for (const o of [{ user: 'U2' }, { channel: 'C2' }, { bot_id: 'B1' }, { subtype: 'message_changed' }]) assert.equal(routeSlack(ev({ text: 'rm', ...o }), ctx).kind, 'none');
 

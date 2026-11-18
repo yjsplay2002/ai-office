@@ -59,20 +59,22 @@ const unescape = (s) => String(s || '').replace(/&lt;/g, '<').replace(/&gt;/g, '
 // Pure: 슬랙 메시지 이벤트 하나가 무엇이 되는지. threadOf(ts) = 그 슬랙 스레드의 대시보드 스레드 번호(없으면 null).
 // members = { 봇 사용자 ID: 팀원 이름 }, self = PM 봇 사용자 ID. 첫 봇 멘션이 member: 팀원 이름, PM 봇이면 ''(그 스레드를 팀원이 맡고 있어도 PM에게). 멘션은 글에서 뺀다.
 export function routeSlack(ev, { owner, channel, threadOf, todos = [], members = {}, self = '' }) {
-  if (!ev || ev.type !== 'message' || ev.subtype || ev.bot_id) return { kind: 'none' };   // 편집·입장 알림·봇 글(우리 글 포함)
+  if (!ev || ev.type !== 'message' || (ev.subtype && ev.subtype !== 'file_share') || ev.bot_id) return { kind: 'none' };   // 편집·입장 알림·봇 글(우리 글 포함). 첨부 글은 받는다
   if (ev.user !== owner || ev.channel !== channel) return { kind: 'none' };   // trust boundary
   let member = null;
   const text = unescape(ev.text).replace(/<@(U[A-Z0-9]+)(?:\|[^>]*)?>/g, (m, u) => (u === self ? ((member ??= ''), '') : members[u] ? ((member ??= members[u]), '') : m)).trim();
-  if (!text) return { kind: 'none' };
-  const r = routeText(ev, text, threadOf, todos);
-  return member != null && (r.kind === 'run' || r.kind === 'comment') ? { ...r, member } : r;
+  const files = (ev.files || []).filter((f) => f.url_private_download || f.url_private).map((f) => ({ name: f.name || f.title || f.id, url: f.url_private_download || f.url_private }));
+  if (!text && !files.length) return { kind: 'none' };
+  const r = routeText(ev, text, threadOf, todos, files.length);
+  const out = member != null && (r.kind === 'run' || r.kind === 'comment') ? { ...r, member } : r;
+  return files.length && r.kind !== 'error' ? { ...out, files } : out;
 }
-function routeText(ev, text, threadOf, todos) {
+function routeText(ev, text, threadOf, todos, nfiles) {
   if (!ev.thread_ts || ev.thread_ts === ev.ts) return { kind: 'run', prompt: text, ts: ev.ts };
   const thread = threadOf(ev.thread_ts);
   if (thread == null) return { kind: 'error', ts: ev.thread_ts, text: '이 스레드는 대시보드 스레드와 이어져 있지 않아요. 채널에 새 글로 지시해 주세요.' };
   if (/^T\d+\b/i.test(text)) {   // "T12 반려 색이 어두움" = 그 TODO에 답
-    const c = parseCommand(text, { todos });
+    const c = parseCommand(text, { todos, files: nfiles });
     if (c.kind === 'answer' || c.kind === 'error') return { ...c, ts: ev.thread_ts };
   }
   return { kind: 'comment', thread, text, ts: ev.thread_ts };
@@ -303,6 +305,18 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     });
   }
 
+  // 대표가 슬랙에 올린 첨부를 받는다 → [{ name, data(base64) }]. 앱에 files:read가 없으면 슬랙이 로그인 HTML을 준다.
+  async function download(list) {
+    const out = [];
+    for (const f of list) {
+      if (!/^https:\/\/files\.slack\.com\//.test(f.url)) throw new Error(`첨부 주소가 슬랙 파일이 아님 (${f.name})`);   // 토큰은 슬랙에만
+      const r = await fetch(f.url, { headers: { authorization: `Bearer ${cfg.token}` } });
+      if (!r.ok || /text\/html/.test(r.headers.get('content-type') || '')) throw new Error(`첨부 「${f.name}」를 못 받았어요. 슬랙 앱 설정 → OAuth & Permissions에서 files:read를 더하고 다시 설치하세요`);
+      out.push({ name: f.name, data: Buffer.from(await r.arrayBuffer()).toString('base64') });
+    }
+    return out;
+  }
+
   // ---------- 받기: Socket Mode ----------
   const seen = new Set();
   async function onEvent(ev) {
@@ -311,10 +325,12 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     const say = (text) => queue(() => post({ thread_ts: c.ts, text }, c.member));
     try {
       if (c.kind === 'error') return say(c.text);
-      if (c.kind === 'answer') { const full = await onAnswer(c.id, c.answer, c.note); return say(withTodoTitles(`T${c.id} 처리: ${full}`, allTodos())); }
+      const files = c.files ? await download(c.files) : [];
+      if (c.kind === 'answer') { const full = await onAnswer(c.id, c.answer, c.note, files); return say(withTodoTitles(`T${c.id} 처리: ${full}`, allTodos())); }
       origin = c.ts;
-      try { c.kind === 'run' ? onRun(c.prompt, c.member) : onComment(c.thread, c.text, c.member); } finally { origin = null; }
-      say(c.kind === 'run' && !c.member ? '받았어요. 진행과 보고는 이 스레드에 올려요.' : '받았어요.');
+      try { c.kind === 'run' ? onRun(c.prompt, c.member, files) : onComment(c.thread, c.text, c.member, files); } finally { origin = null; }
+      const got = files.length ? ` (첨부 ${files.length}개)` : '';
+      say(c.kind === 'run' && !c.member ? `받았어요${got}. 진행과 보고는 이 스레드에 올려요.` : `받았어요${got}.`);
     } catch (err) { say(`오류: ${err.message}`); }
   }
   async function onInteractive(p, ack) {
