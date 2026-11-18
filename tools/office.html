@@ -500,7 +500,7 @@ const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(34, 1, 0.1
 composer.addPass(tsH); composer.addPass(tsV); composer.addPass(new OutputPass());
 // 하늘: 위는 하늘색, 아래로 갈수록 복숭앗빛(하늘섬 콘셉트)
 scene.background = (() => { const c = Object.assign(document.createElement('canvas'), { width: 4, height: 256 }), g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
-  gr.addColorStop(0, '#9dbdf0'); gr.addColorStop(.5, '#d9d9f4'); gr.addColorStop(1, '#fde0d2'); g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  gr.addColorStop(0, '#82a8dc'); gr.addColorStop(.42, '#aabfe3'); gr.addColorStop(.72, '#d9b7cf'); gr.addColorStop(1, '#f9b69e'); g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 scene.fog = new THREE.Fog('#f6dcd4', 62, 150);
 
@@ -550,7 +550,7 @@ const at=(x,y,z,ry=0)=>{const g=new THREE.Group();g.position.set(x,y,z);g.rotati
 const world=new THREE.Group(),sways=[];   // world = 움직이지 않는 것 전부
 // 잎·이끼 뭉치: 공 하나를 수천 번 찍는다(InstancedMesh, 그리기 1회). k는 밝기(아래쪽 뭉치를 어둡게 해 덩어리감을 낸다)
 function puffer(cap,geo,cast){const m=new THREE.InstancedMesh(geo,new THREE.MeshStandardMaterial({roughness:.9}),cap),o=new THREE.Object3D(),col=new THREE.Color();m.count=0;m.castShadow=m.receiveShadow=cast;m.frustumCulled=false;
-  m.put=(x,y,z,s,c,sy=1,k=1)=>{if(m.count>=cap)return;o.position.set(x,y,z);o.scale.set(s,s*sy,s);o.rotation.set(0,rnd(6),0);o.updateMatrix();m.setMatrixAt(m.count,o.matrix);m.setColorAt(m.count++,col.set(c).multiplyScalar(k))};return m}
+  m.put=(x,y,z,s,c,sy=1,k=1,angle=rnd(6))=>{if(m.count>=cap)return;o.position.set(x,y,z);o.scale.set(s,s*sy,s);o.rotation.set(0,angle,0);o.updateMatrix();m.setMatrixAt(m.count,o.matrix);m.setColorAt(m.count++,col.set(c).multiplyScalar(k))};return m}
 const puffs=puffer(6000,new THREE.SphereGeometry(1,8,5),false);puffs.receiveShadow=true;scene.add(puffs);
 const GR=['#6fbf45','#84cc4f','#5aa83e','#9ad65c','#78c44a'];
 // 뭉게 덤불: 큰 공 위·둘레에 작은 공을 붙인다(콜리플라워 모양)
@@ -615,28 +615,66 @@ const softK={},SOFT=(c,o)=>o?(softK[c+JSON.stringify(o)]||=M(c,{roughness:.95,..
 const IR=11.2,FALL=.95,near=(th,c,w)=>Math.abs(Math.atan2(Math.sin(th-c),Math.cos(th-c)))<w;   // 섬 반지름, 폭포 방향(오른쪽 앞)
 P(world,stadGeo(IR,.7),'#7cc24e',0,-1.35,0,-PI/2);
 // 절벽: 층마다 모서리 둥근 바윗덩이를 둘러 세운다. 아래로 갈수록 좁고 어둡다
-{const RB=new RoundedBoxGeometry(1,1,1,2,.22),TAN=['#e8caa2','#deba8e','#d4ac7e','#ecd4b2','#cda47a'];let y=-1.25,t=0;
-  for(const[a,b,h]of[[IR-.3,IR-.6,2.5],[IR-.6,IR-1.8,2.2],[IR-1.8,7.2,2.1],[7.2,4.4,2],[4.4,1.4,1.9]]){P(world,stadGeo(Math.max(.3,(a+b)/2-1),h),'#8a6244',0,y-h,0,-PI/2);
-    const n=rimN(a,Math.max(5,Math.round(a*2.2)));for(let i=0;i<n;i++){const u=(i+rnd(-.2,.2))/n,hh=h*rnd(.8,1.35),rr=(a+b)/2-rnd(.2,1.1),[cx,cz,th]=rimAt(u,rr);P(world,RB,shade(TAN[Math.floor(rnd(5))],(1-t*.05)*rnd(.86,1.04)),cx,y-hh/2+rnd(-.1,.3),cz,rnd(-.07,.07),-th+rnd(-.15,.15),rnd(-.07,.07),[rnd(1.6,2.2),hh,(2*PI*a+4*SX)/n*rnd(.9,1.08)])}
+{const RB=new RoundedBoxGeometry(1,1,1,2,.31),TAN=['#d0b2a1','#b8aaa5','#c39d84','#dac2a9','#ab9890'];
+  // A slight slant and swell break up the straight seams between strata.
+  const face=RB.attributes.position;
+  for(let i=0;i<face.count;i++){
+    const x=face.getX(i),y=face.getY(i),z=face.getZ(i);
+    face.setXYZ(i,x*(1+.09*Math.cos(5*z))+.12*y,y+.09*z-.045*Math.cos(6*z),z+.08*x*y);
+  }
+  let y=-1.25,t=0;
+  for(const[a,b,h]of[[IR-.3,IR-.6,2.5],[IR-.6,IR-1.8,2.2],[IR-1.8,7.2,2.1],[7.2,4.4,2],[4.4,1.4,1.9]]){P(world,stadGeo(Math.max(.3,(a+b)/2-1),h),'#aa9386',0,y-h,0,-PI/2);
+    const n=rimN(a,Math.max(5,Math.round(a*2.2)));for(let i=0;i<n;i++){const u=(i+.48*(t%2)+rnd(-.2,.2))/n,hh=h*rnd(.8,1.35),rr=(a+b)/2-rnd(.2,1.1),[cx,cz,th]=rimAt(u,rr);P(world,RB,shade(TAN[Math.floor(rnd(5))],(1-t*.05)*rnd(.86,1.04)),cx,y-hh/2+rnd(-.1,.3),cz,rnd(-.07,.07),-th+rnd(-.15,.15),rnd(-.07,.07),[rnd(1.6,2.2),hh,(2*PI*a+4*SX)/n*rnd(.9,1.08)])}
     y-=h;t++}
-  P(world,G.ico(1.3,1),'#b98f66',0,y-.2,0,0,0,0,[1+SX*.6,1.4,1]);
+  P(world,G.ico(1,2),'#ae9990',0,y+.68,0,0,0,0,[SX+3.1,1.42,3.05]);
   for(let i=0;i<16;i++){const th=rnd(6.28),rr=rnd(7,IR-.8),x=Math.cos(th)*rr+sgn(Math.cos(th))*SX,z=Math.sin(th)*rr,y0=-2.6-(IR-rr)*.9,l=rnd(1.2,3);limb(world,[x,y0,z],[x+rnd(-.3,.3),y0-l,z+rnd(-.3,.3)],.05,.025,i%3?'#5aa83e':'#8a5a36',4);puffs.put(x,y0-l,z,.17,GR[i%5])}}
 // 가장자리 이끼: 둥근 둔덕 위에 잔 뭉치, 절벽으로 흘러내린 이끼. 잔디엔 작은 꽃(흰·분홍·노랑)과 둥근 돌
 {const NM=rimN(IR,170);for(let i=0;i<NM;i++){const[x,z,th]=rimAt((i+rnd(-.3,.3))/NM,IR+rnd(-.35,.25));if(near(th,FALL,.12)||atBridge(x,z,1.1))continue;
     if(bushI){if(i%9===0){const big=Math.sin(th)<.3?1:.65;for(let k=0;k<2+(rnd()<.5);k++)bushI.put(x+rnd(-.7,.7),-.85,z+rnd(-.7,.7),rnd(1,1.6)*big)}}else{puffs.put(x,-.8+rnd(-.1,.1),z,rnd(.5,.8),GR[i%5],.7,.88);
     for(let k=0;k<6;k++)puffs.put(x+rnd(-.55,.55),-.5+rnd(-.14,.14),z+rnd(-.55,.55),rnd(.16,.32),GR[(i+k)%5],.8,1.02+rnd(.1))}
     if(i%2&&!bushI){const l=rnd(.2,.9),x2=x+Math.cos(th)*.3,z2=z+Math.sin(th)*.3;puffs.put(x2,-1.1-l*.5,z2,rnd(.4,.6),GR[(i+2)%5],1.3+l*.3,.84);puffs.put(x2+rnd(-.25,.25),-1.3-l,z2+rnd(-.25,.25),rnd(.25,.4),GR[i%5],1,.74)}}
-  // 덤불 모델이 있으면 공 둔덕 대신 매끈한 이끼 턱(토러스 호)으로 가장자리를 감싼다. 폭포·다리 자리는 비운다
-  if(bushI){const runs=[[]],K=720;let k0=0;for(let k=0;k<K;k++){const[x,z,th]=rimAt(k/K,IR-.1);if(near(th,FALL,.2)){k0=k;break}}   // 폭포 자리에서 시작해 한 바퀴
-    for(let k=1;k<=K;k++){const[x,z,th]=rimAt((k0+k)/K,IR-.1),ok=!near(th,FALL,.2)&&!atBridge(x,z,1.5);if(ok)runs.at(-1).push(new THREE.Vector3(x,0,z));else if(runs.at(-1).length)runs.push([])}
-    for(const r of runs)if(r.length>3){const t=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(r),r.length,.42,8,false);t.scale(1,.55,1);P(world,t,'#79bf4b',0,-.72,0)}}
+  // Overlapping cushions cover the turf seam. Smaller lobes hang down the cliff face.
+  const moss=['#62954f','#75a64d','#90b855','#a3bd62'];
+  const cushions=rimN(IR,116);
+  for(let i=0;i<cushions;i++){
+    const phase=i*2.399963, wave=Math.sin(phase), [x,z,th]=rimAt(i/cushions,IR-.08+.13*wave);
+    if(near(th,FALL,.17)||atBridge(x,z,1.65))continue;
+    const dx=Math.cos(th),dz=Math.sin(th),r=.68+.13*wave;
+    puffs.put(x,-.82,z,r,moss[i%4],.72,1,phase);
+    for(let j=0;j<5;j++){
+      const a=phase+j*2.4, dr=.52*Math.cos(a), dt=.46*Math.sin(a);
+      puffs.put(x+dx*dr-dz*dt,-.55-.44*Math.max(0,dr),z+dz*dr+dx*dt,.27+.09*Math.sin(a+2),moss[(i+j)%4],.78,1,a);
+    }
+    if(i%13===2){
+      for(let j=0;j<4;j++){
+        const side=j*.25-.4,drop=.32*Math.sin(j);
+        puffs.put(x+dx*.25-dz*side,-1.37-drop,z+dz*.25+dx*side,.28,moss[(i+j)%3],1.12,1,phase);
+      }
+    }
+    if(i%5<2)puffs.put(x+.38*dx,-1.13,z+.38*dz,.36,moss[i%2],1.45,1,phase);
+  }
   if(!bushI)for(let i=0;i<260;i++){const rr=rnd(9.95,IR-.2),[px,pz,th]=rimAt(rnd(),rr);if(near(th,FALL,.09)||atBridge(px,pz,1.1))continue;puffs.put(px,-.66,pz,rnd(.2,.42),GR[i%5],.5,1.04)}
-  for(let i=0;i<rimN(IR,80);i++){const rr=rnd(9.95,IR+.25),[px,pz,th]=rimAt(rnd(),rr),c=['#ffffff','#ffd0dc','#fff1a0','#ffffff'][i%4];if(near(th,FALL,.1)||atBridge(px,pz,1.1))continue;for(let k=0;k<4;k++)P(world,G.ico(rnd(.07,.11),0),c,px+rnd(-.25,.25),-.33+rnd(.14),pz+rnd(-.25,.25))}
+  const petals=puffer(rimN(IR,80)*24,G.ico(1),false);
+  scene.add(petals);
+  for(let i=0;i<rimN(IR,80);i++){const rr=rnd(9.95,IR+.25),[px,pz,th]=rimAt(rnd(),rr),c=['#ffffff','#ffd0dc','#fff1a0','#ffffff'][i%4];if(near(th,FALL,.1)||atBridge(px,pz,1.1))continue;for(let k=0;k<4;k++){
+      const size=rnd(.065,.087),fx=px+rnd(-.25,.25),fy=(rr>IR-.75?-.32:-.62)+rnd(.08),fz=pz+rnd(-.25,.25);
+      for(let j=0;j<5;j++){const a=j*2*PI/5+k;petals.put(fx+size*Math.cos(a),fy,fz+size*Math.sin(a),size*.84,c,.58,1,a)}
+      petals.put(fx,fy+.025,fz,size*.64,'#efc568',.65,1,k);
+    }}
   for(let i=0;i<rimN(IR,22);i++){const rr=rnd(10,IR),[px,pz]=rimAt(rnd(),rr);if(atBridge(px,pz,1.1))continue;P(world,G.ico(rnd(.2,.4),1),['#d6cfc2','#e4ddd0','#c4bdb0'][i%3],px,-.5,pz,0,rnd(3),0,[1.3,.75,1])}}
 // 가장자리 덤불·작은 나무(뒤쪽은 크게, 앞쪽은 낮게 해서 안을 가리지 않는다)
 for(let i=0,NE=rimN(IR,54);i<NE;i++){const[x,z,th]=rimAt((i+rnd(-.3,.3))/NE,rnd(10.2,IR-.4)),front=Math.sin(th)>.35;if(near(th,FALL,.16)||atBridge(x,z,1.7))continue;
   if(!front&&i%5===0){const h=rnd(2,3.2);if(saplingI)saplingI.put(x,-.75,z,h+1.6);else{limb(world,[x,-.7,z],[x+rnd(-.2,.2),-.7+h,z],.22,.13,'#a06a3c',8);for(let k=0;k<4;k++)bush(puffs,x+rnd(-.65,.65),-.4+h+rnd(.6),z+rnd(-.65,.65),rnd(.7,1),8)}}
   else if(!bushI||i%3===0)bush(puffs,x,-.55,z,rnd(.35,front?.5:.75),6)}
+for(const u of [.04,.18,.60,.72,.84]){
+  const [x,z]=rimAt(u,IR-.72),h=2.05+.38*Math.cos(u*37);
+  limb(world,[x,-.62,z],[x+.13,h,z],.17,.11,'#976744',8);
+  for(let j=0;j<19;j++){
+    const a=j*2.399963, level=j/19, spread=.81*Math.sqrt(1-level);
+    puffs.put(x+.13+spread*Math.cos(a),h-.36+level*.94,z+spread*Math.sin(a),
+      .47+.08*Math.cos(a),['#548d49','#71a54c','#91ba57'][Math.floor(level*3)],.94,1,a);
+  }
+}
 // 마루 난간에 기대 넘치는 덤불(옆·뒤쪽)
 for(let i=0;i<rimN(9.75,26);i++){const[bx,bz,th]=rimAt(rnd(),9.75);if(bushI&&i%3)continue;if(Math.sin(th)>.75||near(th,FALL,.2))continue;bush(puffs,bx,rnd(.1,.5),bz,rnd(.3,.5),5)}
 // 폭포: 잔디 위 개울 → 가장자리에서 아래로. 물줄기는 줄무늬 텍스처를 흘려 움직인다
@@ -650,14 +688,60 @@ const fallTex=(()=>{const c=Object.assign(document.createElement('canvas'),{widt
   for(let k=0;k<12;k++)puffs.put(SX+x*(IR+.4)+rnd(-1.3,1.3),-13.4+rnd(.8),z*(IR+.4)+rnd(-1.3,1.3),rnd(.5,1),'#ffffff',.8,1.1)}
 // 구름과 작은 섬들: 한 덩어리로 합쳐 아주 조금 흔들린다(돌지 않아 구도가 그대로다)
 const sky=new THREE.Group(),skyG=new THREE.Group();scene.add(sky);
-const CLOUD=[SOFT('#fffaf8',{emissive:'#ffe6e0',emissiveIntensity:.35}),SOFT('#ffe8e8',{emissive:'#ffc4cc',emissiveIntensity:.35})];
-function cloud(x,y,z,s){const g=at(x,y,z,rnd(-.5,.5));for(let k=0;k<7;k++){const px=rnd(-2.3,2.3)*s,f=1-Math.abs(px)/(3.2*s);P(g,new THREE.SphereGeometry(rnd(.8,1.3)*s*(.6+f*.5),10,7),k%3?CLOUD[0]:CLOUD[1],px,rnd(-.1,.7)*s*f,rnd(-.9,.9)*s,0,0,0,[1,.74,1])}skyG.add(g)}
+// Bake the lit surface and feathered edges of each cumulus bank into a shared atlas once.
+const cloudTile=128,cloudCols=8,cloudRows=5;
+const cloudAtlas=Object.assign(document.createElement('canvas'),{width:cloudCols*cloudTile,height:cloudRows*cloudTile});
+const cloudPaint=cloudAtlas.getContext('2d'),cloudCards=[];
+function cloud(x,y,z,s){
+  const tilt=rnd(-.5,.5),lobes=[];
+  for(let k=0;k<7;k++){
+    const px=rnd(-2.3,2.3),arch=1-Math.abs(px)/3.2,r=rnd(.8,1.3)*(.6+arch*.5);
+    lobes.push([px,arch*rnd(-.1,.7),r,rnd(-.9,.9)]);
+  }
+  const tile=cloudPaint.createImageData(cloudTile,cloudTile),depth=new Float32Array(cloudTile*cloudTile);
+  for(let j=0;j<cloudTile;j++)for(let i=0;i<cloudTile;i++){
+    const u=(i+.5)/cloudTile*8-4,v=2.25-(j+.5)/cloudTile*4;
+    let surface=-1,edge=-1;
+    for(const [cx,cy,r,d] of lobes){
+      const ripple=.042*Math.sin(8*u+cy)*Math.cos(7*v+cx);
+      const section=r*(r+ripple)-(u-cx)**2-((v-cy)*1.15)**2;
+      edge=Math.max(edge,section);
+      if(section>0)surface=Math.max(surface,d*.22+Math.sqrt(section));
+    }
+    const n=j*cloudTile+i;
+    depth[n]=surface;
+    tile.data[4*n+3]=255*THREE.MathUtils.smoothstep(edge,-.12,.20);
+  }
+  for(let j=1;j<cloudTile-1;j++)for(let i=1;i<cloudTile-1;i++){
+    const n=j*cloudTile+i;
+    const dx=(depth[n+1]-depth[n-1])*6,dy=(depth[n+cloudTile]-depth[n-cloudTile])*11;
+    const sunlit=THREE.MathUtils.clamp(.56+(.42*dx+.67*dy)/Math.hypot(dx,dy,1)+.09*depth[n],0,1);
+    tile.data[n*4]=177+78*sunlit;
+    tile.data[n*4+1]=150+85*sunlit;
+    tile.data[n*4+2]=180+31*sunlit;
+  }
+  const col=cloudCards.length%cloudCols,row=Math.floor(cloudCards.length/cloudCols);
+  cloudPaint.putImageData(tile,col*cloudTile,row*cloudTile);
+  const card=new THREE.PlaneGeometry(8*s,4*s),uv=card.attributes.uv;
+  for(let i=0;i<uv.count;i++)uv.setXY(i,(col+uv.getX(i))/cloudCols,1-(row+1-uv.getY(i))/cloudRows);
+  card.rotateX(-.63);card.rotateY(tilt*.42);card.translate(x,y,z);
+  cloudCards.push(card);
+}
 for(let i=0;i<16;i++){const th=rnd(2.6,6.8),rr=rnd(13,26);cloud(Math.cos(th)*rr,rnd(-20,-13),Math.sin(th)*rr,rnd(1.6,2.6))}   // 섬 아래
 for(let i=0;i<13;i++){const th=rnd(3.25,6.15),rr=rnd(26,52);cloud(Math.cos(th)*rr,rnd(-12,7),Math.sin(th)*rr,rnd(2,3.4))}   // 뒤쪽 하늘
 for(let i=0;i<5;i++){const sd=i%2?1:-1;cloud(sd*rnd(18,27),rnd(-12,-4),rnd(-12,1),rnd(1.6,2.6))}   // 섬 양옆
+const cloudMap=new THREE.CanvasTexture(cloudAtlas);cloudMap.colorSpace=THREE.SRGBColorSpace;
+// Draw distant cards first so their soft margins blend behind nearer banks.
+cloudCards.forEach(card=>card.computeBoundingSphere());
+const skyView=new THREE.Vector3(0,.56,.83);
+cloudCards.sort((a,b)=>a.boundingSphere.center.dot(skyView)-b.boundingSphere.center.dot(skyView));
+const cloudBank=new THREE.Mesh(mergeGeometries(cloudCards),new THREE.MeshBasicMaterial({
+  map:cloudMap,transparent:true,depthWrite:false,side:THREE.DoubleSide,forceSinglePass:true
+}));
+sky.add(cloudBank);
 const bushS=FOL&&foliage(FOL[0],80,false,sky),saplingS=FOL&&foliage(FOL[1],30,false,sky);
 const ISLE_RB=new RoundedBoxGeometry(1,1,1,2,.22);   // 작은 섬 절벽도 큰 섬처럼 모서리 둥근 바윗덩이
-function islet(x,y,z,s,o={}){const g=at(x,y,z,rnd(3));P(g,G.cyl(2*s,1.9*s,.4*s,16),'#7cc24e',0,0,0);g.updateMatrixWorld(true);const W=(a,b,c)=>g.localToWorld(new THREE.Vector3(a,b,c));
+function islet(x,y,z,s,o={}){const g=at(x,y,z,rnd(3));if(o.fall)g.rotation.y=-.6;P(g,G.cyl(2*s,1.9*s,.4*s,16),'#7cc24e',0,0,0);g.updateMatrixWorld(true);const W=(a,b,c)=>g.localToWorld(new THREE.Vector3(a,b,c));
   if(FOL)for(let k=0;k<6;k++){const a=k*1.05+rnd(.4),p=W(Math.cos(a)*1.75*s,.1*s,Math.sin(a)*1.75*s);bushS.put(p.x,p.y,p.z,rnd(.9,1.3)*s)}
   else for(let k=0;k<18;k++){const a=k*.35;P(g,G.ico(rnd(.36,.5)*s,1),GR[k%5],Math.cos(a)*1.95*s,-.08*s,Math.sin(a)*1.95*s,0,0,0,[1,.65,1]);if(k%3===0)P(g,G.ico(.3*s,1),GR[(k+2)%5],Math.cos(a)*2.05*s,-.5*s,Math.sin(a)*2.05*s,0,0,0,[.9,1.5,.8])}
   P(g,G.cone(1.8*s,3.2*s,10),'#c79f74',0,-1.8*s,0,PI);for(let k=0;k<12;k++){const a=k*.52+rnd(.3),d=k%3*.3+rnd(.1);const r=rnd(.5,.7)*s*(1-d*.5);P(g,ISLE_RB,['#e8caa2','#d4ac7e','#deba8e'][k%3],Math.cos(a)*1.6*s*(1-d),-.6*s-d*2.8*s,Math.sin(a)*1.6*s*(1-d),rnd(-.1,.1),-a,rnd(-.1,.1),[r*1.5,r*2.3,r*1.7])}
@@ -667,7 +751,7 @@ function islet(x,y,z,s,o={}){const g=at(x,y,z,rnd(3));P(g,G.cyl(2*s,1.9*s,.4*s,1
   if(o.house){P(g,G.rbox(.9*s,.7*s,.8*s,.08*s),'#f6e8d0',.9*s,.55*s,-.4*s);P(g,G.cone(.82*s,.6*s,4),'#d9805a',.9*s,1.2*s,-.4*s,0,PI/4);P(g,G.box(.2*s,.36*s,.02),'#8a5f3c',.9*s,.38*s,0);P(g,G.box(.12*s,.3*s,.12*s),'#c9744f',1.15*s,1.35*s,-.5*s)}
   skyG.add(g);
   if(o.fall){const w=new THREE.Mesh(new THREE.PlaneGeometry(.6*s,4.5*s),new THREE.MeshStandardMaterial({map:fallTex,transparent:true,opacity:.9,emissive:'#9fdcf4',emissiveIntensity:.4,side:THREE.DoubleSide}));w.position.set(0,-2.2*s,1.98*s);g.add(w);g.updateMatrixWorld(true);sky.attach(w)}}
-islet(-10.5,8,-22,1.8,{trees:3});islet(14.5,-1,-20,1.7,{house:true,fall:true});islet(-19,-4,-8,1.4,{fall:true});islet(19,-9,-4,1.3,{trees:1});islet(-9,11,-46,2.4,{trees:3});islet(-11.5,-14,-6,1.3,{house:true});islet(11.5,-13,-10,1.4,{trees:2});islet(27,-3,-38,2,{trees:2,fall:true});islet(-30,-2,-36,2,{house:true});
+islet(-21,-9,-31,1.55,{trees:3});islet(23,-8,-29,1.55,{house:true,fall:true});islet(-27,-14,-29,1.35,{fall:true});islet(26,-21,-24,1.25,{trees:1});islet(-9,11,-46,2.4,{trees:3});islet(-21,-23,-18,1.2,{house:true});islet(18,-27,-20,1.15,{trees:2});islet(37,-5,-48,1.7,{trees:2,fall:true});islet(-30,-2,-36,2,{house:true});
 {const b=bake(skyG);b.traverse(o=>{o.castShadow=o.receiveShadow=false});sky.add(b)}
 
 // ── 실내 나무: 세로로 패인 수피와 뒤틀린 뿌리, 잔잔하게 굴곡진 콜리플라워 수관 ──
@@ -687,6 +771,28 @@ const canopy=new THREE.Group();canopy.position.set(T[0],0,T[1]);scene.add(canopy
   }
   let treeGlb=null;try{treeGlb=(await new GLTFLoader().loadAsync('/chars/tree.glb')).scene}catch(e){console.warn('tree.glb',e)}
   if(treeGlb){treeGlb.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;o.material.color.setScalar(.84)}});canopy.add(treeGlb);
+    // Sample the imported crown so the rounded leaf clusters follow its irregular silhouette.
+    const tips=puffer(2048,new THREE.SphereGeometry(1,8,5),false),cells=new Set();
+    treeGlb.updateMatrixWorld(true);
+    treeGlb.traverse(mesh=>{
+      if(!mesh.isMesh)return;
+      const positions=mesh.geometry.attributes.position,point=new THREE.Vector3();
+      for(let i=0;i<positions.count;i+=3){
+        point.fromBufferAttribute(positions,i).applyMatrix4(mesh.matrixWorld);
+        const {x,y,z}=point;
+        if(y<11.6||Math.hypot(x,z)<2.8)continue;
+        const cell=[x,y,z].map(n=>Math.floor(n/1.35)).join(',');
+        if(cells.has(cell))continue;
+        cells.add(cell);
+        const light=THREE.MathUtils.clamp((y-11.6)/6-x*.025,0,1);
+        const tint=light>.56?'#98b450':'#698c43';
+        for(let j=0;j<3;j++){
+          const a=i+j*2.09,r=.39+.08*Math.sin(a);
+          tips.put(x+.25*Math.cos(a),y+.1*Math.sin(2*a),z+.25*Math.sin(a),r,tint,.84,.88+light*.16,a);
+        }
+      }
+    });
+    canopy.add(tips);
     // 뿌리 대신 바닥에 뚫린 둥근 구멍: 어두운 틈 + 나무 테두리(줄기 반지름 약 1.86)
     {const rim=new THREE.TorusGeometry(2.02,.16,10,72);rim.rotateX(PI/2);P(treeG,rim,'#a8693a',0,.06,0,0,0,0,[1,.55,1]);
       const gap=new THREE.Mesh(new THREE.RingGeometry(1.8,1.93,72),M('#3a2414'));gap.rotation.x=-PI/2;gap.position.y=.02;treeG.add(gap)}
@@ -753,8 +859,8 @@ const canopy=new THREE.Group();canopy.position.set(T[0],0,T[1]);scene.add(canopy
 function pot(g,s,c=CREAM2){P(g,G.cyl(.26*s,.19*s,.4*s,7),c,0,.2*s,0);P(g,G.cyl(.27*s,.27*s,.05*s,7),shade(c,.9),0,.4*s,0);P(g,G.cyl(.22*s,.22*s,.02,7),'#5a4030',0,.43*s,0)}
 const plants={
  snake(g,s){pot(g,s,'#d8cdb6');for(let i=0;i<8;i++)P(g,G.cone(.075*s,rnd(.8,1.3)*s,4),i%3?'#4f8a3a':'#7fae55',rnd(-.1,.1)*s,.95*s,rnd(-.1,.1)*s,rnd(-.25,.25),rnd(3),rnd(-.25,.25),[1,1,.35])},
- monstera(g,s){pot(g,s,'#b5533c');for(let i=0;i<7;i++){const a=i*.9,rr=rnd(.3,.55)*s,h=rnd(.8,1.35)*s;limb(g,[0,.4*s,0],[Math.cos(a)*rr,h,Math.sin(a)*rr],.02*s,.014*s,'#4f8a3a',4);P(g,G.cyl(.24*s,.24*s,.02,6),i%2?'#4f8a3a':'#5fa046',Math.cos(a)*rr*1.25,h+.03,Math.sin(a)*rr*1.25,rnd(-.5,.5),a,.5,[1,1,.75])}},
- ficus(g,s){pot(g,s,'#f4efe2');limb(g,[0,.4*s,0],[.05,1.5*s,0],.05*s,.035*s,BARK,5);for(let i=0;i<5;i++)P(g,G.ico(rnd(.28,.42)*s),i%2?'#6fa344':'#8bb84e',rnd(-.3,.3)*s,(1.5+rnd(.5))*s,rnd(-.3,.3)*s,rnd(3),rnd(3),0)},
+ monstera(g,s){pot(g,s,'#b5533c');for(let i=0;i<7;i++){const a=i*.9,rr=rnd(.3,.55)*s,h=rnd(.8,1.35)*s;limb(g,[0,.4*s,0],[Math.cos(a)*rr,h,Math.sin(a)*rr],.02*s,.014*s,'#4f8a3a',4);P(g,G.ico(.24*s,1),i%2?'#4f8a3a':'#5fa046',Math.cos(a)*rr*1.25,h+.03,Math.sin(a)*rr*1.25,rnd(-.5,.5),a,.5,[1,.21,.75])}},
+ ficus(g,s){pot(g,s,'#f4efe2');limb(g,[0,.4*s,0],[.05,1.5*s,0],.05*s,.035*s,BARK,5);for(let i=0;i<5;i++)P(g,G.ico(rnd(.28,.42)*s,1),i%2?'#6fa344':'#8bb84e',rnd(-.3,.3)*s,(1.5+rnd(.5))*s,rnd(-.3,.3)*s,rnd(3),rnd(3),0)},
  fern(g,s){pot(g,s,WOOD2);for(let i=0;i<11;i++){const a=i*.58;P(g,G.cone(.07*s,.85*s,4),i%2?'#4f8a3a':'#6a9c45',Math.cos(a)*.28*s,.62*s,Math.sin(a)*.28*s,Math.sin(a)*.95,0,-Math.cos(a)*.95,[1,1,.4])}}};
 const STAIR_AT=[T[0]+Math.cos(STH)*6.25,T[1]+Math.sin(STH)*6.25],clearOf=(x,z,r)=>Math.hypot(x-L[0],z-L[1])>3.6+r&&Math.hypot(x-T[0],z-T[1])>2.8+r&&Math.hypot(x-STAIR_AT[0],z-STAIR_AT[1])>1.7+r&&!atBridge(x,z-7.5,1.6)&&inStad(x,z,9.1-r);
 const plant=(kind,x0,z,s=1,y=0)=>{const x=wx(x0);if(blocked(x,z)||!clearOf(x,z,.4*s))return;block(x,z,.4*s);const g=at(x,y,z,rnd(6));world.add(g);plants[kind](g,s)};
