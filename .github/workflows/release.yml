@@ -36,6 +36,16 @@ jobs:
           git tag "$v" && git push origin "$v"
           gh release create "$v" --title "$v" --notes-file notes.md
 
+      # 마켓플레이스(yjsplay2002/claude-code-mods)의 버전 맞추기를 바로 깨운다. 비밀 MODS_DISPATCH_TOKEN
+      # (claude-code-mods에 Contents 쓰기 권한이 있는 fine-grained 토큰)이 없으면 건너뛰고, 그쪽이 매시간 스스로 맞춘다.
+      - name: 마켓플레이스 버전 갱신 알림
+        env:
+          GH_TOKEN: ${{ secrets.MODS_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "MODS_DISPATCH_TOKEN 없음: 마켓플레이스는 매시간 동기화로 따라감"; exit 0; fi
+          gh api repos/yjsplay2002/claude-code-mods/dispatches -f event_type=plugin-released \
+            || echo "알림 실패: 마켓플레이스는 매시간 동기화로 따라감"
+
       # 비밀 CLAUDE_CODE_OAUTH_TOKEN이 있을 때만: Claude Code가 README를 고쳐 readme-auto PR 하나로 올린다(사람이 합침)
       - name: README 갱신 PR
         env:
