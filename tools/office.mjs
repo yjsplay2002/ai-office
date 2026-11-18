@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, exi
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseTodos, answerTodo, dismissTodo, uploadPlan, addRunReport, followUp, SUPERSEDED } from './todos.mjs';
+import { parseTodos, answerTodo, dismissTodo, uploadPlan, addRunReport, followUp, resolvedIds, SUPERSEDED, RESOLVED } from './todos.mjs';
 import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
@@ -123,7 +123,7 @@ function startRun(prompt, { thread, resume, title, from, shown, agent } = {}) {
     { cwd: root, shell, detached: true, windowsHide: true, stdio: ['pipe', out, err], env: { ...process.env, OFFICE_RUN: '1', CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' } });   // -p는 답이 끝나면 백그라운드 팀원을 ~10분 뒤 끊는다: 팀원은 포그라운드로
   closeSync(out); closeSync(err);
   child.on('error', () => {});   // a spawn failure shows up as an already-dead pid below
-  child.stdin.end(prompt);
+  child.stdin.end(prompt + threadTodoNote(thread));   // 화면·슬랙에는 prompt만 보인다
   child.unref();
   const meta = { id, pid: child.pid, prompt, t: Date.now(), before, thread, title, from, agent };
   writeFileSync(base + '.json', JSON.stringify(meta));
@@ -314,6 +314,17 @@ function listBoard(dir = board) {
   }).sort((a, b) => b.mtime - a.mtime);
 }
 
+// 스레드에 이어 붙는 실행(댓글·TODO 답)에게: 그 스레드에서 대표 답을 기다리는 TODO. 댓글로 답이 됐거나 일이 끝났으면
+// 최종 보고에 "처리된 TODO: T12"를 적게 하고, reportTodo가 그 줄로 닫는다(PM 규칙상 todos.md의 기존 TODO는 PM이 고치지 않음).
+function threadTodoNote(thread) {
+  if (thread == null) return '';
+  let all; try { all = todos(); } catch { return ''; }
+  const open = all.filter((t) => !t.done && todoThread(t, history, all) === thread);
+  if (!open.length) return '';
+  return '\n\n[이 스레드에서 대표 답을 기다리는 TODO]\n' + open.map((t) => `- T${t.id} [${t.type} · ${t.by}] ${t.desc.split('\n')[0]}`).join('\n') + '\n' +
+    '이번 일로 위 TODO 중 처리됐거나 필요 없어진 것이 있으면(대표가 이미 답했거나 했다고 알림, 팀이 대신 끝냄, 뒤 일로 대체됨) 최종 보고 마지막 줄에 "처리된 TODO: T12, T13"처럼 적어. 아직 대표 답이 필요한 TODO는 적지 마. todos.md의 그 TODO는 직접 고치지 마(대시보드가 닫는다).';
+}
+
 const todoIds = () => { try { return todos().map((t) => t.id); } catch { return []; } };
 
 // 실행이 최종 보고로 끝나면 보고 전문을 board/reports/에 남기고, 그 실행이 올린 TODO에 붙이거나(없으면) '확인'을 올린다(addRunReport).
@@ -327,8 +338,9 @@ function reportTodo(run, prompt, obj, before = [], thread = run) {
     mkdirSync(path.join(board, 'reports'), { recursive: true });
     const ask = String(prompt || '').split('\n')[0].slice(0, 300);
     writeFileSync(path.join(root, rel), `# 최종 보고 · 대시보드 실행 ${run}\n\n- 시각: ${day} ${d.toTimeString().slice(0, 5)}\n- 결과: ${obj.is_error ? '오류' : '완료'}\n- 지시: ${ask}\n\n---\n\n${text}\n`);
-    const r = addRunReport(existsSync(todosFile) ? readFileSync(todosFile, 'utf8') : '', { summary: text, ref: rel, error: !!obj.is_error, before, today: day, same: (t, all) => todoThread(t, history, all) === thread });   // 다른 PM 세션도 쓰므로 바로 직전에 읽는다
+    const r = addRunReport(existsSync(todosFile) ? readFileSync(todosFile, 'utf8') : '', { summary: text, ref: rel, error: !!obj.is_error, before, today: day, resolved: resolvedIds(text), same: (t, all) => todoThread(t, history, all) === thread });   // 다른 PM 세션도 쓰므로 바로 직전에 읽는다
     if (r.closed.length) office({ log: `앞 보고 확인 T${r.closed.join(', T')} 닫음 (${SUPERSEDED})` });
+    if (r.settled.length) office({ log: `T${r.settled.join(', T')} 닫음 (${RESOLVED})` });
     writeFileSync(todosFile, r.text);
     office({ log: r.check ? `보고 확인 TODO T${r.ids[0]} 추가` : `보고를 T${r.ids.join(', T')}에 붙임` });
     return r.ids;
@@ -372,11 +384,19 @@ function submitTodo(id, answer, note, files) {
   // 토큰(11-06 점검): 답이 몰려 오면 PM 세션 하나로 묶는다. 마지막 답 뒤 60초 동안 새 답이 없으면 시작.
   // shortcut: 대기 중 서버가 재시작되면 묶음이 사라진다(답 자체는 todos.md에 저장됨). 자주 생기면 runDir에 대기 목록을 저장.
   const line = followUp(r.todo, r.full);
-  if (!line) return r.full;   // 확인 TODO를 '종료'로 닫음: 이어서 할 일 없음
+  if (!line) { endQuietThread(r.todo); return r.full; }   // 확인 TODO를 '종료'로 닫음: 이어서 할 일 없음
   pendingAnswers.push({ line, todo: r.todo });
   clearTimeout(answerTimer);
   answerTimer = setTimeout(flushAnswers, ANSWER_BATCH_MS);
   return r.full;
+}
+
+// 확인을 '종료'로 닫았는데 그 스레드에 열린 TODO도, 도는 실행도 없으면 스레드도 종료로 보인다(스레드 종료 → TODO 닫힘의 반대 방향)
+function endQuietThread(todo) {
+  const all = todos(), th = todoThread(todo, history, all);
+  if (th == null || all.some((t) => !t.done && todoThread(t, history, all) === th) || threadInfo(th).ids.some((id) => runs.has(id))) return;
+  office({ closed: th });
+  slack?.closed(th);
 }
 
 const ANSWER_BATCH_MS = 60e3;

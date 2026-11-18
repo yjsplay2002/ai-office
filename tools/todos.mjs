@@ -10,6 +10,9 @@
 export const TYPES = ['결정', '승인', '입력', '실행', '확인'];
 export const CHECK = ['종료', '추가 지시'];
 export const SUPERSEDED = '새 보고로 바뀜';   // 같은 스레드의 뒤 보고가 앞 '확인'을 대신함(답: "취소 (새 보고로 바뀜)")
+export const RESOLVED = '스레드에서 처리됨';   // 대표가 스레드 댓글로 답했거나 팀이 끝내서 PM이 보고에 "처리된 TODO: T12"로 적은 TODO
+// PM 최종 보고의 "처리된 TODO: T12, T13" 줄 -> [12, 13]
+export const resolvedIds = (report) => [...(String(report || '').match(/^[\s*_>#-]*처리된 TODO[\s*_]*:(.*)$/m)?.[1] || '').matchAll(/T(\d+)/g)].map((m) => Number(m[1]));
 
 export function parseTodos(text) {
   return text.split(/^### /m).slice(1).map((part) => {
@@ -57,8 +60,12 @@ export function answerTodo(text, id, answer, note, today) {
 
 // 대표가 TODO를 지운다(스레드 종료·필요 없어짐): 보기 검사 없이 '취소'로 닫고, 다음 실행은 시작하지 않는다.
 export function dismissTodo(text, id, why, today) {
+  return settleTodo(text, id, `취소 (${why})`, today);
+}
+// 보기 검사 없이 답(full)을 적어 닫는다
+export function settleTodo(text, id, full, today) {
   const { todo, nth } = findOpen(text, id);
-  return { text: closeBlock(text, id, nth, `취소 (${why})`, today), todo };
+  return { text: closeBlock(text, id, nth, full, today), todo };
 }
 
 // 같은 번호가 둘일 수 있다(PM 세션과 대시보드가 동시에 다음 번호를 매김): 열린 쪽과, 그게 같은 번호 중 몇 번째(nth)인지
@@ -85,15 +92,21 @@ function closeBlock(text, id, nth, full, today) {
 
 // 끝난 실행의 보고는 대표에게 한 번만 간다. 실행 중에 새로 올라온 미처리 TODO(결정·승인 등)가 있으면 '확인'을 따로 만들지 않고
 // 그 TODO들에 '- 보고:' 줄로 붙인다. 없거나 오류로 끝났으면 '확인' TODO 하나. before = 실행을 시작할 때 있던 TODO 번호들.
-// 새 '확인'을 만들 때, 같은 스레드(same(t, todos))에 아직 열린 앞 '확인'은 이 보고가 이어받으니 닫는다(답: 취소 (새 보고로 바뀜)). 다른 종류는 둔다.
-// -> { text, ids(보고가 실린 TODO), check(확인을 새로 만들었나), closed(닫은 앞 확인 번호) }
-export function addRunReport(text, { summary, ref, error, before = [], same, today = '' }) {
+// 같은 스레드(same(t, todos))에 아직 열린 앞 '확인'은 이 보고(새 확인이든 새 TODO에 붙든)가 이어받으니 닫는다(답: 취소 (새 보고로 바뀜)). 다른 종류는 둔다.
+// resolved = 보고가 "처리된 TODO"로 적은 번호: 실행 전부터 있던 같은 스레드의 열린 TODO만 '스레드에서 처리됨'으로 닫는다.
+// -> { text, ids(보고가 실린 TODO), check(확인을 새로 만들었나), closed(닫은 앞 확인 번호), settled(처리됨으로 닫은 번호) }
+export function addRunReport(text, { summary, ref, error, before = [], same, today = '', resolved = [] }) {
+  const all0 = parseTodos(String(text));
+  const settled = same ? [...new Set(resolved)].filter((id) => before.includes(id) && all0.some((t) => t.id === id && !t.done && same(t, all0))) : [];
+  text = settled.reduce((x, id) => settleTodo(x, id, RESOLVED, today).text, String(text));
+  const r = addRunReport0(text, { summary, ref, error, before });
+  const all = parseTodos(r.text);
+  const old = same ? all.filter((t) => !t.done && t.type === '확인' && !r.ids.includes(t.id) && same(t, all)).map((t) => t.id) : [];
+  return { ...r, text: old.reduce((x, id) => dismissTodo(x, id, SUPERSEDED, today).text, r.text), closed: old, settled };
+}
+function addRunReport0(text, { summary, ref, error, before }) {
   const fresh = error ? [] : parseTodos(String(text)).filter((t) => !t.done && t.type !== '확인' && !before.includes(t.id));
-  if (!fresh.length) {
-    const r = addCheckTodo(text, { summary, ref, error }), all = parseTodos(r.text);
-    const old = same ? all.filter((t) => !t.done && t.type === '확인' && t.id !== r.id && same(t, all)).map((t) => t.id) : [];
-    return { text: old.reduce((x, id) => dismissTodo(x, id, SUPERSEDED, today).text, r.text), ids: [r.id], check: true, closed: old };
-  }
+  if (!fresh.length) { const r = addCheckTodo(text, { summary, ref, error }); return { text: r.text, ids: [r.id], check: true }; }
   const nl = /\r\n/.test(text) ? '\r\n' : '\n', lines = String(text).split(/\r?\n/);
   for (const t of fresh) {
     const start = lines.findIndex((l) => new RegExp(`^### T${t.id}\\s*·`).test(l));
@@ -102,7 +115,7 @@ export function addRunReport(text, { summary, ref, error, before = [], same, tod
     const st = lines.findIndex((l, i) => i > start && i < end && l.startsWith('- 상태:'));
     lines.splice(st >= 0 ? st : end, 0, `- 보고: ${ref}`);
   }
-  return { text: lines.join(nl), ids: fresh.map((t) => t.id), check: false, closed: [] };
+  return { text: lines.join(nl), ids: fresh.map((t) => t.id), check: false };
 }
 
 // A finished dashboard run -> one '확인' TODO at the end of todos.md. Numbered from the text passed in, so read the file

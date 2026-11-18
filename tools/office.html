@@ -205,6 +205,14 @@
   /* 대화 내역 크게 보기 = 전체 화면 */
   #chat.full { position:fixed; inset:0; z-index:8; background:var(--side); padding:max(14px, env(safe-area-inset-top)) max(16px, calc((100vw - 760px) / 2)) 0; }
   #chat.full #log { max-height:none; height:auto; flex:1; min-height:0; }
+  #chat:not(.full) { display:none; }   /* 패널에서 뺐다: 상단 아이콘으로만 연다 */
+  #hud button.ico .lbl { display:none; }
+  #docspage { position:fixed; inset:0; z-index:9; background:rgba(40,30,15,.45); display:none; align-items:center; justify-content:center; }
+  #docspage.on { display:flex; }
+  #docspage article { width:min(720px,96vw); max-height:88vh; display:flex; flex-direction:column; background:var(--side); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; }
+  #docspage header { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 16px; border-bottom:var(--bd); font:700 17px var(--serif); }
+  #docspage header small { font:400 12px var(--font); color:var(--dim); margin-left:6px; }
+  #docs { max-height:none; overflow:auto; padding:6px 16px 14px; margin:0; }
   #chat.full .msg { font-size:15px; } #chat.full .msg.tool { font-size:13px; }
   #viewer { position:fixed; inset:0; background:rgba(40,30,15,.45); display:none; align-items:center; justify-content:center; z-index:9; }
   #viewer.on { display:flex; }
@@ -272,7 +280,11 @@
   @media (max-width: 760px) {
     /* 페이지 하나만 스크롤한다. 안쪽 스크롤 상자가 터치를 삼켜 패널이 잘려 보이던 문제 */
     body { display:block; height:auto; min-height:100svh; overflow:visible; }
-    body:has(#chat.full), body:has(#viewer.on) { overflow:hidden; }
+    body:has(#chat.full), body:has(#viewer.on), body:has(#docspage.on) { overflow:hidden; }
+    #docspage article { width:100%; max-height:none; height:100%; border-radius:0; }
+    #docspage header { padding:max(12px, env(safe-area-inset-top)) 12px 10px 16px; }
+    #dclose { min-height:40px; }
+    #docs { padding-bottom:calc(20px + env(safe-area-inset-bottom)); }
     #stage { height:46svh; }
     #shareBox { display:none; }
     /* 상단 바: 1줄 = 이름·상태·아이콘 버튼, 2줄 = 사용량 막대 두 개 */
@@ -320,7 +332,7 @@
   #tabbar .badge:empty { display:none; }
   @media (max-width: 760px) { #tabbar { display:flex; }
     #staffpage article { width:100%; max-height:none; height:100%; border-radius:0; } #staffpage header { align-items:flex-start; gap:10px; padding:max(12px, env(safe-area-inset-top)) 12px 10px 16px; } #staffpage header small { display:block; margin:2px 0 0; } #sclose { flex:none; min-height:40px; white-space:nowrap; } #scards { grid-template-columns:1fr; padding:10px; } }
-  body:has(#chat.full) #tabbar, body:has(#viewer.on) #tabbar, body:has(#staffpage.on) #tabbar, body:has(#thread.on) #tabbar { display:none; }
+  body:has(#chat.full) #tabbar, body:has(#viewer.on) #tabbar, body:has(#docspage.on) #tabbar, body:has(#staffpage.on) #tabbar, body:has(#thread.on) #tabbar { display:none; }
   /* 휴대폰: 지시하기는 패널에서 떼어 오른쪽 아래 + 버튼으로. 누르면 탭 바 위에 입력창이 뜬다 */
   #fab { display:none; }
   @media (max-width: 760px) {
@@ -330,7 +342,7 @@
     body.ordering #fab .ic { transform:rotate(45deg); }
     #sec-order { display:none; }
     body.ordering #sec-order { display:block; position:fixed; z-index:8; left:max(10px, env(safe-area-inset-left)); right:max(10px, env(safe-area-inset-right)); bottom:calc(138px + env(safe-area-inset-bottom)); background:var(--card); border:var(--bd); border-radius:16px; padding:12px 14px 14px; box-shadow:0 16px 40px -12px rgba(60,45,20,.45); }
-    body:has(#chat.full) #fab, body:has(#viewer.on) #fab, body:has(#staffpage.on) #fab, body:has(#thread.on) #fab { display:none; }
+    body:has(#chat.full) #fab, body:has(#viewer.on) #fab, body:has(#docspage.on) #fab, body:has(#staffpage.on) #fab, body:has(#thread.on) #fab { display:none; }
   }
   .todo .hd > .ty, .todo .hd > span:not(.wt) { flex:none; white-space:nowrap; }
   .todo .hd .wt { color:var(--text); font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -361,8 +373,10 @@
     <div class="gauge">5시간 <div><span id="g5"></span></div> <em id="t5">–</em></div>
     <div class="gauge">7일 <div><span id="g7"></span></div> <em id="t7">–</em></div>
     <button id="bell" title="TODO·보고 알림 소리 / 브라우저 알림"><i data-ic="belloff"></i><span class="lbl">알림 켜기</span></button>
+    <button id="docsbtn" class="ico" title="문서 (board/) — 누르면 목록이 열립니다"><i data-ic="file"></i><span class="lbl">문서</span></button>
+    <button id="chatbtn" class="ico" title="대화 내역 — PM과 직원들이 주고받은 말"><i data-ic="chat"></i><span class="lbl">대화 내역</span></button>
     <button id="staffbtn" title="직원의 이름·모델·노력 수준 보기와 바꾸기"><i data-ic="users"></i><span class="lbl">직원 관리</span></button>
-    <button id="restartbtn" title="서버를 다시 켜고 화면을 새로 고쳐 바뀐 코드를 반영합니다(진행 중인 작업은 이어집니다)"><i data-ic="restart"></i><span class="lbl">서버 재시작</span></button>
+    <button id="restartbtn" class="ico" title="서버를 다시 켜고 화면을 새로 고쳐 바뀐 코드를 반영합니다(진행 중인 작업은 이어집니다)"><i data-ic="restart"></i><span class="lbl">서버 재시작</span></button>
     <button id="viewbtn" title="3D 오피스를 끄면 렌더링을 멈추고 패널을 화면 전체로 봅니다"><i data-ic="monitor"></i><span class="lbl">오피스 끄기</span></button>
   </div>
   <div class="ov" id="shareBox">
@@ -382,9 +396,8 @@
   </section>
   <section id="sec-todo"><h2>대표 TODO <span id="ntodo">0건 대기</span></h2><div id="todos"><div class="meta">할 일 없음</div></div></section>
   <section id="threads"><h2>스레드 <span>작업 하나 = 스레드 하나 · TODO 답과 보고도 여기에</span></h2><div class="tfilter" id="tfilter" role="toolbar" aria-label="스레드 거르기"></div><ul class="list" id="tlist"><li class="meta">지시를 보내면 스레드가 생깁니다</li></ul><button class="more" data-l="tlist" hidden></button></section>
-  <section><h2>문서 (board/) <span id="ndocs">0</span></h2><ul class="list" id="docs"></ul><button class="more" data-l="docs" hidden></button></section>
-  <section id="chat"><h2>대화 내역 <button id="chatfull">크게 보기</button></h2><div id="log" aria-live="polite"><div class="empty">지시를 보내면 PM과 직원들의 대화가 여기에 쌓입니다.</div></div></section>
 </aside>
+<section id="chat" role="dialog" aria-label="대화 내역"><h2>대화 내역 <button id="chatfull">닫기</button></h2><div id="log" aria-live="polite"><div class="empty">지시를 보내면 PM과 직원들의 대화가 여기에 쌓입니다.</div></div></section>
 <nav id="tabbar" aria-label="패널 바로가기">
   <a href="#stage" data-sec="stage"><i data-ic="home"></i>오피스</a>
   <a href="#sec-todo" data-sec="sec-todo"><i data-ic="todo"></i>TODO<span class="badge" id="tabtodo"></span></a>
@@ -397,6 +410,7 @@
   <div id="ttodos" hidden></div>
   <footer><textarea id="treply" placeholder="이 스레드에 댓글 — PM이 스레드의 맥락을 이어 처리합니다 (Ctrl+Enter)"></textarea><div class="row"><span class="err" id="terr"></span><button class="primary" id="tsend">댓글</button></div></footer></div>
 <div id="staffpage" role="dialog" aria-modal="true" aria-label="직원 관리"><article><header><span>직원 관리<small>바꾼 내용은 .claude/agents/*.md · .claude/ai-office.json에 저장(모델·노력은 다음 실행부터)</small></span><button id="sclose">닫기</button></header><div id="scards"></div><section id="usagebox"><h2>직원별 토큰 <span title="입력+캐시 읽기+출력. 옆 작은 숫자는 출력">오늘 · 7일 · 누적 — 작은 숫자는 출력</span></h2><table id="usage"><tr><td class="meta">집계 중…</td></tr></table></section></article></div>
+<div id="docspage" role="dialog" aria-modal="true" aria-label="문서"><article><header><span>문서 (board/) <small id="ndocs"></small></span><button id="dclose">닫기</button></header><ul class="list open" id="docs"></ul></article></div>
 <div id="viewer" role="dialog" aria-modal="true" aria-labelledby="vtitle"><article><header><span id="vtitle"></span><button id="vclose">닫기</button></header><div id="vbody"></div></article></div>
 <dialog id="zoom" aria-labelledby="ztitle"><header><a id="ztitle" target="_blank" rel="noopener"></a><button id="zclose">닫기</button></header><div id="zbody"></div></dialog>
 
@@ -436,7 +450,7 @@ for (const el of document.querySelectorAll('i[data-ic]')) el.outerHTML = ic(el.d
 for (const b of document.querySelectorAll('#hud button')) b.setAttribute('aria-label', b.textContent.trim());
 // 휴대폰 탭 바: 누르면 그 섹션으로, 지금 보이는 섹션에 불
 { const tabs = [...document.querySelectorAll('#tabbar a')], seen = new Map();
-  for (const a of tabs) a.onclick = (e) => { e.preventDefault(); $(a.dataset.sec)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); };
+  for (const a of tabs) a.onclick = (e) => { e.preventDefault(); if (a.dataset.sec === 'chat') return setChatFull(true); $(a.dataset.sec)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); };
   const io = new IntersectionObserver((es) => { for (const x of es) seen.set(x.target.id, x.isIntersecting ? x.intersectionRect.height : 0);   // 화면에 가장 많이 보이는 섹션
     let best = null, r = 0; for (const [id, v] of seen) if (v > r) { r = v; best = id; }
     for (const a of tabs) a.classList.toggle('on', a.dataset.sec === best); }, { threshold: [0, .15, .4, .7] });
@@ -450,17 +464,23 @@ const cut = (s, n) => (s = String(s || '')).length > n ? s.slice(0, n - 1) + '�
 // kind: ceo | pm | go | tool | done | sys | bad. who = 말한 사람. Keeps the last 400 lines.
 let evTime = null;   // time of the server event being handled right now (history replays keep their real times)
 const hhmm = (t) => { const d = new Date(t), now = new Date(); return (d.toDateString() === now.toDateString() ? '' : `${d.getMonth() + 1}/${d.getDate()} `) + d.toTimeString().slice(0, 5); };
+// 대화 내역은 줄만 모아 두고, 팝업을 열었을 때만 그린다(처음 로딩 때 기록 수천 줄을 마크다운으로 그리지 않게)
+const logBuf = [], chatOpen = () => $('chat').classList.contains('full');
 function log(text, kind = 'sys', who = '', report = null) {
-  const el = $('log');
-  const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  const x = { text, kind, who, report, t: evTime ?? Date.now() };
+  logBuf.push(x); if (logBuf.length > 400) logBuf.shift();
+  if (!chatOpen()) return;
+  const el = $('log'), stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
   el.querySelector('.empty')?.remove();
-  const m = document.createElement('div');
-  m.className = 'msg ' + kind;
-  m.dataset.raw = text.trim().slice(0, 60);
-  m.innerHTML = `<time>${hhmm(evTime ?? Date.now())}</time><b>${esc(who)}</b><div class="mb${kind === 'tool' ? '' : ' mdx'}">${kind === 'tool' ? inline(text, false) : md(text)}${report != null ? ` <a data-r="${report}">전체 보기</a>` : ''}</div>`;
-  el.append(m);
+  el.append(logEl(x));
   while (el.children.length > 400) el.firstElementChild.remove();
   if (stick) el.scrollTop = el.scrollHeight;
+}
+function logEl({ text, kind, who, report, t }) {
+  const m = document.createElement('div');
+  m.className = 'msg ' + kind;
+  m.innerHTML = `<time>${hhmm(t)}</time><b>${esc(who)}</b><div class="mb${kind === 'tool' ? '' : ' mdx'}">${kind === 'tool' ? inline(text, false) : md(text)}${report != null ? ` <a data-r="${report}">전체 보기</a>` : ''}</div>`;
+  return m;
 }
 
 // ---------- 숲속 오피스 (3D). 장면은 board/design/2026-11-11-office-concepts/fable/f-forest-v3.html 시안에서 옮겼다 ----------
@@ -1427,7 +1447,7 @@ function pickPerson(e) {
 }
 document.addEventListener('click', (e) => {
   // 스레드 패널 바깥을 누르면 닫는다(목록에서 여는 클릭, 패널에서 연 문서·이미지 창, 다시 그려져 떨어진 요소는 제외)
-  if (openTh != null && e.target.isConnected && !e.target.closest('#thread, .th-row, #log a[data-r], [data-goth], #viewer, #zoom, #staffpage')) closeThread();
+  if (openTh != null && e.target.isConnected && !e.target.closest('#thread, .th-row, #log a[data-r], [data-goth], #viewer, #zoom, #staffpage, #docspage')) closeThread();
   const pp = e.target === renderer.domElement && pickPaper(e);
   if (pp) return openPaper(pp.userData);   // 책상 위 서류 → 그 문서(또는 지시·보고 내용)
   const tag = e.target.closest('.tag'), id = tag ? tag.dataset.id : e.target === renderer.domElement ? pickPerson(e) : null;
@@ -1687,16 +1707,33 @@ async function openPaper(meta) {
 const closeViewer = () => $('viewer').classList.remove('on');
 $('vclose').onclick = closeViewer;
 $('viewer').onclick = (e) => { if (e.target.id === 'viewer') closeViewer(); };
-const setChatFull = (on) => { $('chat').classList.toggle('full', on); $('chatfull').textContent = on ? '닫기' : '크게 보기'; $('log').scrollTop = $('log').scrollHeight; };
-$('chatfull').onclick = () => setChatFull(!$('chat').classList.contains('full'));
-addEventListener('keydown', (e) => { if (e.key !== 'Escape' || $('zoom').open) return; if (document.body.classList.contains('ordering')) setOrdering(false); else if ($('staffpage').classList.contains('on')) $('staffpage').classList.remove('on'); else if ($('viewer').classList.contains('on')) closeViewer(); else if (focusId) closeHist(); else if ($('thread').classList.contains('on')) closeThread(); else setChatFull(false); });
+const setChatFull = (on) => {
+  if (on === chatOpen()) return;
+  $('chat').classList.toggle('full', on);
+  if (on && logBuf.length) $('log').replaceChildren(...logBuf.map(logEl));
+  else if (!on) $('log').innerHTML = '<div class="empty">지시를 보내면 PM과 직원들의 대화가 여기에 쌓입니다.</div>';   // 닫으면 비워 둔다
+  $('log').scrollTop = $('log').scrollHeight;
+};
+$('chatfull').onclick = () => setChatFull(false);
+$('chatbtn').onclick = () => setChatFull(!chatOpen());
+// 문서 목록도 팝업을 열 때만 그린다
+const renderDocs = () => {
+  const files = lastBoard?.files || [];
+  $('ndocs').textContent = `${files.length}개`;
+  $('docs').innerHTML = files.length ? files.map((f) => `<li><a data-p="${esc(f.path)}">${docName(f.path)}</a> <span class="meta">${new Date(f.mtime).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></li>`).join('') : '<li style="color:var(--dim)">아직 문서가 없습니다</li>';
+};
+const docsOn = (on) => { $('docspage').classList.toggle('on', on); if (on) renderDocs(); };
+$('docsbtn').onclick = () => docsOn(true);
+$('dclose').onclick = () => docsOn(false);
+$('docspage').onclick = (e) => { if (e.target.id === 'docspage') docsOn(false); };
+addEventListener('keydown', (e) => { if (e.key !== 'Escape' || $('zoom').open) return; if (document.body.classList.contains('ordering')) setOrdering(false); else if ($('staffpage').classList.contains('on')) $('staffpage').classList.remove('on'); else if ($('viewer').classList.contains('on')) closeViewer(); else if ($('docspage').classList.contains('on')) docsOn(false); else if (focusId) closeHist(); else if ($('thread').classList.contains('on')) closeThread(); else setChatFull(false); });
 $('log').onclick = (e) => { const r = e.target.dataset.r; if (r != null) openThread(Number(r)); };
 
 // 최종 보고는 스레드 안에 남는다(보고함 없음). 대화 내역에는 첫 줄과 그 스레드로 가는 링크만.
 function addReport(ev, run) {
   // The result text usually repeats PM's last message.
-  const last = $('log').lastElementChild;
-  if (last?.classList.contains('pm') && last.dataset.raw === (ev.text || '').trim().slice(0, 60)) last.remove();
+  const last = logBuf.at(-1);
+  if (last?.kind === 'pm' && last.text.trim().slice(0, 60) === (ev.text || '').trim().slice(0, 60)) { logBuf.pop(); if (chatOpen()) $('log').lastElementChild?.remove(); }
   log((ev.text || '').split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').slice(0, 140) || '최종 보고', ev.error ? 'bad' : 'done', 'PM 최종 보고', hist.tasks.get(`run:${run}`)?.thread ?? run);
 }
 
@@ -1706,8 +1743,7 @@ async function refreshBoard() {
   const roster = (await (await fetch('/api/agents')).json()).map((a) => a.name).join();
   if (roster !== agents.map((a) => a.name).join() && ![...document.querySelectorAll('textarea')].some((t) => t.value.trim())) return location.reload();
   const { files, todos } = (lastBoard = await (await fetch('/api/board')).json());
-  $('ndocs').textContent = files.length;
-  $('docs').innerHTML = files.map((f) => `<li><a data-p="${esc(f.path)}">${docName(f.path)}</a> <span class="meta">${new Date(f.mtime).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></li>`).join(''); more('docs');
+  if ($('docspage').classList.contains('on')) renderDocs();
   renderTodos(todos.filter((t) => !t.done));
   refreshUsage();
 }

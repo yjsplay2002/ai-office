@@ -1,6 +1,6 @@
 // node tools/todos.test.mjs
 import assert from 'node:assert/strict';
-import { parseTodos, answerTodo, dismissTodo, uploadPlan, addCheckTodo, addRunReport, followUp } from './todos.mjs';
+import { parseTodos, answerTodo, dismissTodo, uploadPlan, addCheckTodo, addRunReport, followUp, resolvedIds } from './todos.mjs';
 
 const src = `# 대표 TODO\r\n\r\n### T1 · 결정 · plan\r\n가격을 골라 주세요\r\n- 옵션: $14.99 / $19.99\r\n- 근거: board/plans/p.md\r\n- 상태: 대기\r\n\r\n### T2 · 입력 · research\r\n서비스 아이디어를 알려 주세요\r\n\r\n### T3 · 승인 · legal\r\n약관 초안 승인\r\n### 잘못된 머리글\r\n`;
 const t = parseTodos(src);
@@ -79,6 +79,22 @@ assert.equal(addRunReport(run0, { summary: 'x', ref: 'board/r.md', error: true, 
   assert.deepEqual([sr.ids, sr.closed], [[6], [4]]);
   assert.deepEqual(parseTodos(sr.text).filter((x) => !x.done).map((x) => x.id), [1, 2, 3, 5, 6]);
   assert.equal(parseTodos(sr.text).find((x) => x.id === 4).answer, '취소 (새 보고로 바뀜)');
+}
+// 뒤 실행이 새 TODO(결정)를 올려 보고가 거기 붙어도, 같은 스레드의 열린 앞 '확인'은 닫힌다
+{
+  const t0 = run0 + '\n### T4 · 확인 · pm\n보고를 확인해 주세요: a\n- 근거: board/reports/x-run7.md\n- 상태: 대기\n';
+  const sr = addRunReport(t0, { summary: 'c', ref: 'board/reports/x-run8.md', before: [1, 4], today: 'D', same: (t) => t.id === 4 || t.id === 2 });
+  assert.deepEqual([sr.ids, sr.check, sr.closed], [[2, 3], false, [4]]);
+}
+// 스레드 댓글로 처리된 TODO: 보고의 "처리된 TODO:" 줄. 같은 스레드·실행 전부터 열린 것만 닫는다
+{
+  assert.deepEqual(resolvedIds('끝\n**처리된 TODO**: T1, T3\n'), [1, 3]);
+  assert.deepEqual(resolvedIds('T1 언급만'), []);
+  const sr = addRunReport(run0, { summary: 'x', ref: 'board/reports/x-run8.md', before: [1, 2], today: 'D', resolved: [1, 2, 3, 9], same: (t) => t.id !== 2 });
+  const all = parseTodos(sr.text);
+  assert.deepEqual(sr.settled, [1]);   // 2 = 다른 스레드, 3 = 이 실행이 올린 것, 9 = 없음
+  assert.equal(all.find((x) => x.id === 1).answer, '스레드에서 처리됨');
+  assert.deepEqual([sr.ids, sr.check], [[3], false]);
 }
 assert.equal(followUp(t[0], '$19.99'), '- T1 [결정 · plan] 가격을 골라 주세요 → $19.99');
 console.log('todos ok');
