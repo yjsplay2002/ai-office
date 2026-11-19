@@ -24,7 +24,7 @@ export function slackConfig(root, env = process.env) {
     const m = k.match(/^SLACK_BOT_TOKEN_([A-Z0-9_]+)$/);
     if (m && get(k)) bots[m[1]] = get(k);
   }
-  return { token, owner, app: get('SLACK_APP_TOKEN'), channel: get('SLACK_CHANNEL_ID'), name: channelName(get('SLACK_CHANNEL') || path.basename(root)), url: get('OFFICE_URL'), bots };
+  return { token, owner, app: get('SLACK_APP_TOKEN'), channel: get('SLACK_CHANNEL_ID'), todo: get('SLACK_TODO_CHANNEL') !== 'off', name: channelName(get('SLACK_CHANNEL') || path.basename(root)), url: get('OFFICE_URL'), bots };
 }
 export const botKey = (agent) => String(agent).toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
@@ -58,13 +58,20 @@ const unescape = (s) => String(s || '').replace(/&lt;/g, '<').replace(/&gt;/g, '
 
 // Pure: 슬랙 메시지 이벤트 하나가 무엇이 되는지. threadOf(ts) = 그 슬랙 스레드의 대시보드 스레드 번호(없으면 null).
 // members = { 봇 사용자 ID: 팀원 이름 }, self = PM 봇 사용자 ID. 첫 봇 멘션이 member: 팀원 이름, PM 봇이면 ''(그 스레드를 팀원이 맡고 있어도 PM에게). 멘션은 글에서 뺀다.
-export function routeSlack(ev, { owner, channel, threadOf, todos = [], members = {}, self = '' }) {
+// todoChannel = 대표 TODO 채널: 거기 글은 TODO 답만 된다(카드 답글이면 그 카드, 아니면 "T12 승인"). todoOf(ts) = 그 카드의 TODO 번호.
+export function routeSlack(ev, { owner, channel, threadOf, todos = [], members = {}, self = '', todoChannel = null, todoOf = () => null }) {
   if (!ev || ev.type !== 'message' || (ev.subtype && ev.subtype !== 'file_share') || ev.bot_id) return { kind: 'none' };   // 편집·입장 알림·봇 글(우리 글 포함). 첨부 글은 받는다
-  if (ev.user !== owner || ev.channel !== channel) return { kind: 'none' };   // trust boundary
+  if (ev.user !== owner || (ev.channel !== channel && (!todoChannel || ev.channel !== todoChannel))) return { kind: 'none' };   // trust boundary
   let member = null;
   const text = unescape(ev.text).replace(/<@(U[A-Z0-9]+)(?:\|[^>]*)?>/g, (m, u) => (u === self ? ((member ??= ''), '') : members[u] ? ((member ??= members[u]), '') : m)).trim();
   const files = (ev.files || []).filter((f) => f.url_private_download || f.url_private).map((f) => ({ name: f.name || f.title || f.id, url: f.url_private_download || f.url_private }));
   if (!text && !files.length) return { kind: 'none' };
+  if (todoChannel && ev.channel === todoChannel) {
+    const ts = ev.thread_ts || ev.ts, c = parseCommand(text, { replyTodo: todoOf(ev.thread_ts), todos, files: files.length });
+    if (c.kind === 'answer') return { ...c, ts, ...(files.length ? { files } : {}) };
+    if (c.kind === 'error') return { ...c, ts };
+    return { kind: 'error', ts, text: '여기는 대표 TODO 답만 받아요. 카드에 답글을 달거나 "T12 승인"처럼 번호를 붙여 주세요. 새 지시는 본 채널에 올려 주세요.' };
+  }
   const r = routeText(ev, text, threadOf, todos, files.length);
   const out = member != null && (r.kind === 'run' || r.kind === 'comment') ? { ...r, member } : r;
   return files.length && r.kind !== 'error' ? { ...out, files } : out;
@@ -81,13 +88,14 @@ function routeText(ev, text, threadOf, todos, nfiles) {
 }
 
 // TODO 카드: 보기마다 버튼. 누르면 메모 칸이 있는 창이 뜨고 보내면 답이 된다.
-export function todoCard(t, owner) {
-  // 보고 확인 TODO는 바로 위에 보고가 있으니 요약·근거 경로를 되풀이하지 않는다
-  const rep = t.ref?.startsWith('board/reports/'), desc = rep ? t.desc.replace(/^(작업이 오류로 끝났습니다\. )?보고를 확인해 주세요: [\s\S]*/, '위 보고를 확인해 주세요.') : t.desc;
-  const head = `${owner ? `<@${owner}> ` : ''}*T${t.id} ${t.type}* · ${t.by}\n${desc}${t.ref && !rep ? `\n근거: \`${t.ref}\`` : ''}`;
+// link != null = TODO 채널 카드: 보고가 바로 위에 없으니 설명을 다 쓰고 원래 스레드 링크를 붙인다.
+export function todoCard(t, owner, link) {
+  // 스레드 안 보고 확인 TODO는 바로 위에 보고가 있으니 요약·근거 경로를 되풀이하지 않는다
+  const rep = link == null && t.ref?.startsWith('board/reports/'), desc = rep ? t.desc.replace(/^(작업이 오류로 끝났습니다\. )?보고를 확인해 주세요: [\s\S]*/, '위 보고를 확인해 주세요.') : t.desc;
+  const head = `${owner ? `<@${owner}> ` : ''}*T${t.id} ${t.type}* · ${t.by}\n${desc}${t.ref && !rep ? `\n근거: \`${t.ref}\`` : ''}`, more = link ? `\n<${link}|원래 스레드 보기>` : '';
   const opts = t.options.length ? t.options : [t.type === '입력' ? '답하기' : '완료'];
   return { text: `T${t.id} ${t.type}: ${t.desc.split('\n')[0]}`.slice(0, 300),
-    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: head.slice(0, 2900) } },
+    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: head.slice(0, 2900 - more.length) + more } },
       { type: 'actions', elements: opts.slice(0, 25).map((o, i) => ({ type: 'button', action_id: `todo_${i}`, text: { type: 'plain_text', text: o.slice(0, 70) },
         value: JSON.stringify({ id: t.id, answer: t.options.length ? o : '' }), ...(o === '승인' ? { style: 'primary' } : o === '반려' ? { style: 'danger' } : {}) })) }] };
 }
@@ -126,10 +134,12 @@ const firstLine = (s, n = 200) => { const l = (String(s || '').split('\n').map((
 // agents() = 팀원 이름 목록. 토큰이 있는 팀원은 자기 봇으로 말한다.
 export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), todos, allTodos = todos, threadPrompt, onRun, onComment, onAnswer, agents = () => [], log = console.log }) {
   const stateFile = path.join(runDir, 'slack.json');
-  let st = { channel: cfg.channel || null, threads: {}, todos: {} };
+  let st = { channel: cfg.channel || null, todoChannel: null, threads: {}, todos: {} };
   try { st = { ...st, ...JSON.parse(readFileSync(stateFile, 'utf8')), ...(cfg.channel ? { channel: cfg.channel } : {}) }; } catch {}
   const save = () => { try { writeFileSync(stateFile, JSON.stringify(st)); } catch {} };
   const threadOf = (ts) => { const k = Object.keys(st.threads).find((th) => st.threads[th] === ts); return k == null ? null : Number(k); };
+  const todoOf = (ts) => { const k = ts && Object.keys(st.todos).find((id) => st.todos[id].ts === ts && st.todos[id].ch); return k == null ? null : Number(k); };
+  const todoCh = () => (cfg.todo && st.todoChannel) || null;
 
   async function api(method, body, token = cfg.token) {
     for (let i = 0; ; i++) {
@@ -151,20 +161,25 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   let chain = ready().catch((err) => log('슬랙 채널 준비 실패(보내기가 안 돼요):', err.message));
   const queue = (fn) => (chain = chain.then(fn).catch((err) => log('슬랙 보내기 실패:', err.message)));
 
-  async function ready() {
-    if (!st.channel) {
-      try { st.channel = (await api('conversations.create', { name: cfg.name, is_private: true })).channel.id; log(`슬랙: #${cfg.name} 채널을 만들었어요`); }
-      catch (err) {
-        if (err.code !== 'name_taken') throw err;
-        for (let cursor; ;) {   // 이미 있으면 봇이 들어가 있는 같은 이름 채널을 쓴다
-          const j = await api('conversations.list', { types: 'private_channel,public_channel', limit: 200, exclude_archived: true, cursor });
-          const c = j.channels.find((x) => x.name === cfg.name && x.is_member);
-          if (c) { st.channel = c.id; break; }
-          if (!(cursor = j.response_metadata?.next_cursor)) throw new Error(`#${cfg.name} 채널이 이미 있는데 봇이 들어가 있지 않아요. 봇을 그 채널에 초대하거나 .office-slack.env의 SLACK_CHANNEL로 다른 이름을 주세요`);
-        }
+  async function openChannel(name) {
+    try { const id = (await api('conversations.create', { name, is_private: true })).channel.id; log(`슬랙: #${name} 채널을 만들었어요`); return id; }
+    catch (err) {
+      if (err.code !== 'name_taken') throw err;
+      for (let cursor; ;) {   // 이미 있으면 봇이 들어가 있는 같은 이름 채널을 쓴다
+        const j = await api('conversations.list', { types: 'private_channel,public_channel', limit: 200, exclude_archived: true, cursor });
+        const c = j.channels.find((x) => x.name === name && x.is_member);
+        if (c) return c.id;
+        if (!(cursor = j.response_metadata?.next_cursor)) throw new Error(`#${name} 채널이 이미 있는데 봇이 들어가 있지 않아요. 봇을 그 채널에 초대하거나 .office-slack.env의 SLACK_CHANNEL로 다른 이름을 주세요`);
       }
-      save();
     }
+  }
+  async function ready() {
+    if (!st.channel) { st.channel = await openChannel(cfg.name); save(); }
+    if (cfg.todo && !st.todoChannel) {   // 대표 TODO 채널: 카드는 여기에만(대표는 이 채널만 보면 된다). 못 만들면 예전처럼 스레드 안에
+      try { st.todoChannel = await openChannel(`${cfg.name.slice(0, 75)}-todo`); save(); }
+      catch (err) { log('슬랙 TODO 채널 준비 실패(카드는 각 스레드에 올려요):', err.message); }
+    }
+    if (todoCh()) await api('conversations.invite', { channel: st.todoChannel, users: cfg.owner }).catch((err) => { if (err.code !== 'already_in_channel') log('슬랙 TODO 채널 초대 실패:', err.message); });
     self = (await api('auth.test', {}).catch(() => ({}))).user_id || '';
     for (const a of agents()) {
       const token = cfg.bots?.[botKey(a)];
@@ -262,21 +277,30 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   // as = 이 실행을 한 팀원(대표가 멘션으로 직접 시킨 일). 없으면 PM이 보고.
   function report(thread, obj, list, as) {
     const body = String(obj.result || '').trim() || '(보고 글 없음)';
-    md(thread, `<@${cfg.owner}> ${obj.is_error ? '**최종 보고 (오류)**' : '**최종 보고**'}\n\n${body}`, `${obj.is_error ? '최종 보고(오류)' : '최종 보고'}: ${firstLine(body, 120)}`, as);
+    md(thread, `${cfg.todo ? '' : `<@${cfg.owner}> `}${obj.is_error ? '**최종 보고 (오류)**' : '**최종 보고**'}\n\n${body}`, `${obj.is_error ? '최종 보고(오류)' : '최종 보고'}: ${firstLine(body, 120)}`, as);
     for (const t of list) notifyTodo(t, thread, true);
   }
+  // 버튼 누름은 글을 올린 앱으로 가니 카드는 늘 PM 봇이(팀원 앱은 받기가 없다). TODO 채널이 있으면 카드는 거기에만, 원래 스레드 링크를 달아.
   function notifyTodo(t, thread, quiet) {   // quiet = 바로 위 보고에서 이미 대표를 불렀다
-    if (st.todos[t.id] || thread == null) return;
+    if (st.todos[t.id] || (thread == null && !cfg.todo)) return;
     st.todos[t.id] = { thread };
-    queue(async () => { const m = await post({ thread_ts: await root(thread), ...todoCard(t, quiet ? '' : cfg.owner) }); st.todos[t.id] = { thread, ts: m.ts }; save(); });   // 버튼 누름은 글을 올린 앱으로 가니 카드는 늘 PM 봇이(팀원 앱은 받기가 없다)
+    queue(async () => {
+      const ch = todoCh();
+      if (!ch && thread == null) return void delete st.todos[t.id];   // TODO 채널을 못 만들었고 스레드도 없다
+      const r = thread == null ? null : await root(thread);
+      const link = ch ? (r ? await api('chat.getPermalink', { channel: st.channel, message_ts: r }).then((j) => j.permalink, () => '') : '') : null;
+      const m = ch ? await post({ channel: ch, ...todoCard(t, cfg.owner, link) }) : await post({ thread_ts: r, ...todoCard(t, quiet && !cfg.todo ? '' : cfg.owner) });
+      st.todos[t.id] = { thread, ts: m.ts, ...(ch ? { ch } : {}) }; save();
+    });
   }
   // 답했거나 지운 TODO 카드는 버튼을 내리고 답을 적는다(대시보드·텔레그램에서 답해도).
   function todoDone(t) {
     const c = st.todos[t.id];
     if (!c?.ts) return;
     delete st.todos[t.id]; save();
-    if (t.answer === `취소 (${SUPERSEDED})`) return queue(() => api('chat.delete', { channel: st.channel, ts: c.ts }));   // 뒤 보고 카드만 남긴다
-    queue(() => api('chat.update', { channel: st.channel, ts: c.ts, text: `T${t.id} 처리됨`,
+    const channel = c.ch || st.channel;
+    if (t.answer === `취소 (${SUPERSEDED})`) return queue(() => api('chat.delete', { channel, ts: c.ts }));   // 뒤 보고 카드만 남긴다
+    queue(() => api('chat.update', { channel, ts: c.ts, text: `T${t.id} 처리됨`,
       blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `~T${t.id} · ${t.type} · ${t.by}~ ${firstLine(t.desc, 150)}\n→ *${t.answer || '완료'}*`.slice(0, 2900) } }] }));
   }
   const closed = (thread) => st.threads[thread] && reply(thread, { text: '대표가 이 스레드를 종료했어요.' });
@@ -291,8 +315,11 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     const doc = { type: 'markdown', markdown: text };
     queue(async () => {
       try {
+        const ch = todoCh() || st.channel;
+        if (st.canvas && (st.canvasCh || st.channel) !== ch) { await api('canvases.delete', { canvas_id: st.canvas }).catch(() => {}); st.canvas = null; }   // TODO 채널로 옮김
         if (!st.canvas) {   // 새로 만든 것은 이미 이 내용. 이 앱이 만든 캔버스(slack.json에 저장한 id)만 고친다
-          st.canvas = (await api('conversations.canvases.create', { channel_id: st.channel, document_content: doc })).canvas_id;
+          st.canvas = (await api('conversations.canvases.create', { channel_id: ch, document_content: doc })).canvas_id;
+          st.canvasCh = ch;
           return save();
         }
         await api('canvases.edit', { canvas_id: st.canvas, changes: [{ operation: 'replace', document_content: doc }] });
@@ -320,9 +347,9 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   // ---------- 받기: Socket Mode ----------
   const seen = new Set();
   async function onEvent(ev) {
-    const c = routeSlack(ev, { owner: cfg.owner, channel: st.channel, threadOf, todos: todos(), self, members: Object.fromEntries(Object.entries(bots).map(([a, b]) => [b.user, a])) });
+    const c = routeSlack(ev, { owner: cfg.owner, channel: st.channel, threadOf, todos: todos(), self, todoChannel: todoCh(), todoOf, members: Object.fromEntries(Object.entries(bots).map(([a, b]) => [b.user, a])) });
     if (c.kind === 'none') return;
-    const say = (text) => queue(() => post({ thread_ts: c.ts, text }, c.member));
+    const say = (text) => queue(() => post({ channel: ev.channel, thread_ts: c.ts, text }, c.member));
     try {
       if (c.kind === 'error') return say(c.text);
       const files = c.files ? await download(c.files) : [];
@@ -339,8 +366,9 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
       ack();
       const a = p.actions?.[0]; if (!a?.action_id?.startsWith('todo_')) return;
       const { id, answer } = JSON.parse(a.value), t = todos().find((x) => x.id === id);
-      if (!t) return queue(() => post({ thread_ts: p.message?.thread_ts || p.message?.ts, text: `T${id}은 이미 처리됐어요.` }));
-      return api('views.open', { trigger_id: p.trigger_id, view: answerModal(t, answer, { id, answer, thread: p.message?.thread_ts }) }).catch((err) => log('슬랙 창 열기 실패:', err.message));
+      if (!t) return queue(() => post({ channel: p.channel?.id, thread_ts: p.message?.thread_ts || p.message?.ts, text: `T${id}은 이미 처리됐어요.` }));
+      const thread = st.threads[st.todos[id]?.thread] || p.message?.thread_ts;   // 처리 결과는 원래 스레드에(TODO 채널 카드여도)
+      return api('views.open', { trigger_id: p.trigger_id, view: answerModal(t, answer, { id, answer, thread }) }).catch((err) => log('슬랙 창 열기 실패:', err.message));
     }
     if (p.type === 'view_submission' && p.view?.callback_id === 'todo_answer') {
       const m = JSON.parse(p.view.private_metadata || '{}'), note = p.view.state?.values?.note?.v?.value || '';

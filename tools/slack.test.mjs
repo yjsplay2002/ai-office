@@ -15,7 +15,8 @@ const d = mkdtempSync(path.join(os.tmpdir(), 'slack-'));
 assert.equal(slackConfig(d, {}), null);
 assert.equal(slackConfig(d, { SLACK_BOT_TOKEN: 'x', SLACK_USER_ID: 'U' }), null);   // 셸의 다른 앱 토큰은 안 씀
 writeFileSync(path.join(d, '.office-slack.env'), 'SLACK_BOT_TOKEN=xoxb-1\nSLACK_USER_ID=U1\n');
-assert.deepEqual(slackConfig(d, {}), { token: 'xoxb-1', owner: 'U1', app: '', channel: '', name: channelName(path.basename(d)), url: '', bots: {} });
+assert.deepEqual(slackConfig(d, {}), { token: 'xoxb-1', owner: 'U1', app: '', channel: '', todo: true, name: channelName(path.basename(d)), url: '', bots: {} });
+assert.equal(slackConfig(d, { OFFICE_SLACK_TODO_CHANNEL: 'off' }).todo, false);
 writeFileSync(path.join(d, '.office-slack.env'), 'SLACK_BOT_TOKEN=xoxb-1\nSLACK_USER_ID=U1\nSLACK_BOT_TOKEN_MARKETING=xoxb-m\nSLACK_BOT_TOKEN_=x\n');
 assert.deepEqual(slackConfig(d, { OFFICE_SLACK_BOT_TOKEN_CS_BOT: 'xoxb-c', SLACK_BOT_TOKEN_DEV: 'shell' }).bots, { MARKETING: 'xoxb-m', CS_BOT: 'xoxb-c' });
 assert.equal(botKey('cs-bot'), 'CS_BOT');
@@ -63,7 +64,7 @@ globalThis.fetch = async (url, { body, headers }) => {
   calls.push({ method, tok, ...b });
   if (method === 'files.getUploadURLExternal' && tok === 'xoxb-m') return { status: 200, headers: new Map(), json: async () => ({ ok: false, error: 'missing_scope' }) };
   if (method === 'conversations.canvases.create' && canvasErr) return { status: 200, headers: new Map(), json: async () => ({ ok: false, error: canvasErr }) };
-  const res = method === 'conversations.canvases.create' ? { canvas_id: 'FCV' } : method === 'files.getUploadURLExternal' ? { upload_url: 'https://files.slack.com/up/' + b.filename, file_id: 'F' + b.filename } : method === 'chat.postMessage' ? { ts: `${++n}.0` } : method === 'conversations.create' ? { channel: { id: 'C9' } } : method === 'auth.test' ? { user_id: { t: 'UPM', 'xoxb-m': 'UMK' }[tok] } : {};
+  const res = method === 'conversations.canvases.create' ? { canvas_id: 'FCV' } : method === 'files.getUploadURLExternal' ? { upload_url: 'https://files.slack.com/up/' + b.filename, file_id: 'F' + b.filename } : method === 'chat.postMessage' ? { ts: `${++n}.0` } : method === 'conversations.create' ? { channel: { id: b.name.endsWith('-todo') ? 'CT' : 'C9' } } : method === 'chat.getPermalink' ? { permalink: 'https://x.slack.com/p' + b.message_ts } : method === 'auth.test' ? { user_id: { t: 'UPM', 'xoxb-m': 'UMK' }[tok] } : {};
   if (tok === 'xoxb-bad') return { status: 200, headers: new Map(), json: async () => ({ ok: false, error: 'invalid_auth' }) };
   return { status: 200, headers: new Map(), json: async () => ({ ok: true, ...res }) };
 };
@@ -188,4 +189,33 @@ assert.ok(logs.at(-1).includes('이미 다른 캔버스'));
 canvasErr = '';
 const bd = todoBoard(tl);
 assert.ok(bd.includes('- [ ] **T3 결정** · plan — 가격 정책을 골라 주세요') && bd.includes('- [x] **T4 승인** · dev — 배포 승인 → 승인'), bd);
+
+// 대표 TODO 채널: 카드는 거기에만(원래 스레드 링크, 늘 멘션), 보고는 멘션 없이 스레드에, 캔버스도 거기로. 그 채널 글은 TODO 답만
+const tctx = { ...ctx, todoChannel: 'CT', todoOf: (ts) => (ts === '50.0' ? 7 : null) };
+assert.deepEqual(routeSlack(ev({ channel: 'CT', text: '반려 어두움', thread_ts: '50.0' }), tctx), { kind: 'answer', id: 7, answer: '반려', note: '어두움', ts: '50.0' });
+assert.deepEqual(routeSlack(ev({ channel: 'CT', text: 'T7 승인' }), tctx), { kind: 'answer', id: 7, answer: '승인', note: '', ts: '200.1' });
+assert.equal(routeSlack(ev({ channel: 'CT', text: '새 일 해줘' }), tctx).kind, 'error');   // 지시는 안 받는다
+assert.equal(routeSlack(ev({ channel: 'CT', text: 'x' }), ctx).kind, 'none');   // TODO 채널이 꺼져 있으면 무시
+assert.equal(todoCard({ ...todos[0], type: '확인', desc: '보고를 확인해 주세요: 길게', ref: 'board/reports/r.md' }, 'U1', 'https://l').blocks[0].text.text.split('\n').slice(1).join(' | '), '보고를 확인해 주세요: 길게 | 근거: `board/reports/r.md` | <https://l|원래 스레드 보기>');   // 스레드 밖이라 설명을 다 쓴다
+calls.length = 0;
+const d5 = mkdtempSync(path.join(os.tmpdir(), 'slack5-'));
+const s5 = createSlack({ cfg: { token: 't', owner: 'U1', app: '', channel: '', todo: true, name: 'ai-office-t' }, runDir: d5, todos: () => todos,
+  threadPrompt: () => '', onRun() {}, onComment() {}, onAnswer() {}, log: (...a) => logs.push(a.join(' ')) });
+s5.runStarted({ id: 3, thread: 3, prompt: '홍보' });
+s5.report(3, { result: '끝' }, todos);
+s5.notifyTodo({ id: 9, type: '입력', by: 'pm', desc: '스레드 없는 TODO', options: [] }, null);
+s5.board(tl);
+await new Promise((ok) => setTimeout(ok, 50));
+s5.todoDone({ ...todos[0], answer: '승인' });
+await new Promise((ok) => setTimeout(ok, 20));
+const p5 = calls.filter((c) => c.method === 'chat.postMessage');
+assert.deepEqual(calls.filter((c) => c.method === 'conversations.create').map((c) => c.name), ['ai-office-t', 'ai-office-t-todo']);
+assert.doesNotMatch(p5[1].blocks[0].text, /<@U1>/);
+assert.deepEqual([p5[2].channel, p5[2].thread_ts], ['CT', undefined]);
+assert.ok(p5[2].blocks[0].text.text.startsWith("<@U1> *T7 승인*") && p5[2].blocks[0].text.text.endsWith(`<https://x.slack.com/p${p5[0].ts ?? calls.find((c) => c.method === "chat.getPermalink").message_ts}|원래 스레드 보기>`));
+assert.equal(calls.find((c) => c.method === "chat.getPermalink").message_ts, JSON.parse(readFileSync(path.join(d5, "slack.json"), "utf8")).threads["3"]);
+assert.equal(p5[3].channel, 'CT');
+assert.deepEqual([calls.at(-1).method, calls.at(-1).channel], ['chat.update', 'CT']);
+assert.equal(calls.find((c) => c.method === 'conversations.canvases.create').channel_id, 'CT');
+assert.deepEqual(logs.filter((l) => l.includes('실패')), []);
 console.log('slack ok');
