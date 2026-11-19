@@ -183,8 +183,11 @@
   span.av { visibility:hidden; height:0; }
   .badge { display:inline-block; font-size:10.5px; font-weight:700; border-radius:5px; padding:0 6px; margin-right:4px; color:#fff; background:#b9ad95; }
   .badge.run { background:var(--ok); } .badge.bad { background:var(--bad); } .badge.wait { background:var(--ceo); }
-  #thread { position:fixed; top:0; right:0; bottom:0; width:min(460px,100vw); z-index:8; background:var(--side); border-left:var(--bd); box-shadow:-10px 0 30px rgba(60,45,20,.18); display:none; flex-direction:column; }
+  #thread { position:fixed; top:0; right:0; bottom:0; width:min(var(--thw,460px),100vw); z-index:8; background:var(--side); border-left:var(--bd); box-shadow:-10px 0 30px rgba(60,45,20,.18); display:none; flex-direction:column; }
   #thread.on { display:flex; }
+  #tgrip { position:absolute; left:-4px; top:0; bottom:0; width:8px; cursor:ew-resize; touch-action:none; z-index:1; }
+  #tgrip:hover, #tgrip.drag { background:rgba(168,97,47,.25); }
+  .tm .now { list-style:none; margin:2px 0 0; padding:0; font-size:12px; color:var(--dim); } .tm .now li { overflow-wrap:anywhere; }
   #thread header { display:flex; gap:8px; align-items:center; padding:max(10px, env(safe-area-inset-top)) 12px 10px 14px; border-bottom:1px solid var(--line); }
   #thread header > div { flex:1; min-width:0; }
   #ttitle { font:700 15px var(--serif); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -384,7 +387,7 @@
     <div class="share"><div class="sh-top"><button id="shmin" title="장면 이미지 숨기고 숫자만 보기">–</button><b>오늘 우리 회사가 한 일</b><span id="shdate"></span></div><canvas class="sh-shot" id="shshot" width="580" height="236"></canvas>
       <div class="sh-grid"><div><b id="sh1">–</b><span>오늘 만든 문서</span></div><div><b id="sh2">–</b><span>쓴 토큰</span></div><div><b id="sh3">–</b><span>가장 바쁜 직원</span></div><div><b id="sh4">–</b><span>대표 결정</span></div></div>
       <div class="sh-foot" id="shfoot"></div></div>
-    <div class="sh-btns"><button class="primary" id="shsave">PNG 저장</button><button id="shcopy">복사</button></div>
+    <div class="sh-btns"><button id="shsnap">화면 찍기</button><button class="primary" id="shsave">PNG 저장</button><button id="shcopy">복사</button></div>
   </div>
   <div class="ov" id="hist" role="dialog" aria-label="태스크 히스토리"></div>
 </div>
@@ -406,7 +409,7 @@
   <a href="#chat" data-sec="chat"><i data-ic="chat"></i>대화</a>
 </nav>
 <button id="fab" aria-label="지시하기" aria-expanded="false" aria-controls="sec-order"><i data-ic="plus"></i></button>
-<div id="thread" role="dialog" aria-labelledby="ttitle"><header><div><div id="ttitle"></div><div id="tmeta"></div></div><button id="tstop" title="진행 중인 작업을 멈추고 스레드를 닫습니다">종료</button><button id="tclose">닫기</button></header>
+<div id="thread" role="dialog" aria-labelledby="ttitle"><div id="tgrip" title="끌어서 너비 조절 · 두 번 누르면 기본 너비"></div><header><div><div id="ttitle"></div><div id="tmeta"></div></div><button id="tstop" title="진행 중인 작업을 멈추고 스레드를 닫습니다">종료</button><button id="tclose">닫기</button></header>
   <div id="tmsgs" aria-live="polite"></div>
   <div id="ttodos" hidden></div>
   <footer><textarea id="treply" placeholder="이 스레드에 댓글 — PM이 스레드의 맥락을 이어 처리합니다 (Ctrl+Enter)"></textarea><div id="tfiles"><label><i data-ic="clip"></i> 파일 첨부<input type="file" multiple id="tpick"></label> <span id="tnames"></span></div><div class="row"><span class="err" id="terr"></span><button class="primary" id="tsend">댓글</button></div></footer></div>
@@ -1525,7 +1528,7 @@ function frame() {
   if (tiltShift) { renderer.setRenderTarget(msaa); renderer.render(scene, camera); renderer.setRenderTarget(null); composer.render(); } else renderer.render(scene, camera);
   gpuClock(false);
   placeLabels();
-  if (++frames % 90 === 3 && !$('shareBox').classList.contains('min')) snap();   // 최소화 중엔 스냅샷을 찍지 않는다
+  ++frames;
   requestAnimationFrame(frame);
 }
 function resize() {
@@ -1541,7 +1544,7 @@ addEventListener('resize', resize);
 const team = document.title.split(' · ')[1] || '';
 if (team) $('co').textContent = team;
 function cover(g, W, H, y0 = 0) { const s = renderer.domElement, k = Math.max(W / s.width, H / s.height), sw = W / k, sh = H / k; g.drawImage(s, (s.width - sw) / 2, (s.height - sh) * .42, sw, sh, 0, y0, W, H); }
-function snap() { const c = $('shshot'); cover(c.getContext('2d'), c.width, c.height); }
+function snap() { renderer.render(scene, camera); const c = $('shshot'); cover(c.getContext('2d'), c.width, c.height); }
 function cardBlob() {
   renderer.render(scene, camera);
   const W = 1200, H = 900, c = Object.assign(document.createElement('canvas'), { width: W, height: H }), g = c.getContext('2d');
@@ -1560,6 +1563,7 @@ function cardBlob() {
 function shMin(on) { $('shareBox').classList.toggle('min', on); $('shmin').textContent = on ? '+' : '–'; $('shmin').title = on ? '장면 이미지 보기' : '장면 이미지 숨기고 숫자만 보기'; if (!on) snap(); }
 try { shMin(localStorage.getItem('ai-office.shmin') === '1'); } catch {}
 $('shmin').onclick = () => { const on = !$('shareBox').classList.contains('min'); shMin(on); try { localStorage.setItem('ai-office.shmin', on ? '1' : '0'); } catch {} };
+$('shsnap').onclick = () => { if ($('shareBox').classList.contains('min')) shMin(false); else snap(); };
 $('shsave').onclick = async () => {
   const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(await cardBlob()), download: `ai-office-${new Date().toLocaleDateString('sv')}.png` });
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -2144,7 +2148,10 @@ function renderThreads() {
   if (!setHTML(el, cur.msgs.map((m, i) => {
     const key = `${openTh}:${i}`, prev = cur.msgs[i - 1], cont = prev && prev.who === m.who && !m.to && m.t - prev.t < 300000;
     const tx = m.text ? `<div class="tx mdx${tOpen.has(key) ? ' open more' : ''}" data-k="${key}">${md(m.kind === 'report' ? (m.who === 'pm' ? `**최종 보고**\n\n${m.text}` : `**보고** ${m.text}`) : m.text)}</div><i class="fold">${tOpen.has(key) ? '▴ 접기' : '▾ 더 보기'}</i>` : '';
-    const acts = m.acts.length ? `<details data-k="d${key}"${tOpen.has('d' + key) ? ' open' : ''}><summary>${ic('tool')} ${esc(actSum(m.acts))}</summary><ol>${m.acts.map((a) => `<li>${hhmm(a.t)} ${TACT[a.kind]} · ${esc(a.text)}${a.path ? ` <u data-p="${esc(a.path)}">${esc(a.path)}</u>` : ''}</li>`).join('')}</ol></details>` : '';
+    const act = (a) => `<li>${hhmm(a.t)} ${TACT[a.kind]} · ${esc(a.text)}${a.path ? ` <u data-p="${esc(a.path)}">${esc(a.path)}</u>` : ''}</li>`;
+    // 말 없이 도구만 쓰는 팀원(대개 dev)은 접힌 한 줄로는 뭘 하는지 안 보인다: 최근 3건은 펼쳐 둔다
+    const now = !m.text && m.acts.length ? `<ol class="now">${m.acts.slice(-3).map(act).join('')}</ol>` : '';
+    const acts = m.acts.length ? `${now}<details data-k="d${key}"${tOpen.has('d' + key) ? ' open' : ''}><summary>${ic('tool')} ${esc(actSum(m.acts))}</summary><ol>${m.acts.map(act).join('')}</ol></details>` : '';
     return (i === 1 ? `<div class="th-sep">답글 ${cur.msgs.length - 1}개</div>` : '') +
       `<div class="tm ${esc(m.who)}${cont ? ' cont' : ''}">${cont ? '<span class="av"></span>' : avatar(m.who)}<div class="tb">${cont ? '' : `<div class="who">${esc(whoName(m.who))}${m.to ? ` → ${esc(whoName(m.to))}` : ''}<time>${hhmm(m.t)}</time></div>`}${tx}${acts}</div></div>`;
   }).join(''))) return;
@@ -2156,6 +2163,15 @@ function closeThread() { openTh = null; $('thread').classList.remove('on'); rend
 $('tfilter').onclick = (e) => { const f = e.target.closest('[data-f]')?.dataset.f; if (f) { tFilter = f; renderThreads(); } };
 $('tlist').onclick = (e) => { const id = e.target.closest('[data-th]')?.dataset.th; if (id) openThread(Number(id)); };
 $('tclose').onclick = closeThread;
+// 스레드 패널 너비: 왼쪽 끝을 끌어 넓힌다(이 브라우저에만 기억)
+const thw = (w) => { if (w) $('thread').style.setProperty('--thw', Math.round(Math.min(Math.max(w, 340), innerWidth - 60)) + 'px'); else $('thread').style.removeProperty('--thw'); };
+try { thw(Number(localStorage.getItem('ai-office.thw')) || 0); } catch {}
+$('tgrip').onpointerdown = (e) => {
+  const g = e.currentTarget; g.setPointerCapture(e.pointerId); g.classList.add('drag');
+  g.onpointermove = (m) => thw(innerWidth - m.clientX);
+  g.onpointerup = () => { g.onpointermove = g.onpointerup = null; g.classList.remove('drag'); try { localStorage.setItem('ai-office.thw', parseInt($('thread').style.getPropertyValue('--thw')) || ''); } catch {} };
+};
+$('tgrip').ondblclick = () => { thw(0); try { localStorage.removeItem('ai-office.thw'); } catch {} };
 $('tmsgs').addEventListener('toggle', (e) => { const k = e.target.dataset?.k; if (k) e.target.open ? tOpen.add(k) : tOpen.delete(k); }, true);
 async function threadPost(url, body, btn) {
   btn.disabled = true; $('terr').textContent = '';
