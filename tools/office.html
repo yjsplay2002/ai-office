@@ -1656,6 +1656,7 @@ function inline(s, thumbs = true) { return esc(s)
   .replace(/`([^`]+)`/g, '<code>$1</code>')
   .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+  .replace(/(<a\b.*?<\/a>|<[^>]*>)|(?<!\w)https?:\/\/(?:(?!&(?:lt|gt|quot);)[^\s<])*[^\s<.,;:!?)\]'*&]/g, (m, tag) => tag || `<a href="${m}" target="_blank" rel="noopener">${m}</a>`)   // 맨 주소도 새 탭 링크(위 [글](url) 링크·태그 속은 그대로)
   .replace(MEDIA, (_, rel) => mediaEl(rel, thumbs))   // last, so it never rescans its own src/href
   .replace(/(<[^>]*>)|(?<![\w/.%=-])T(\d+)(?![\w/])/g, (m, tag, n) => tag || `<a class="tref" data-tid="${n}">${m}</a>`)   // TODO 번호: 올리면 제목, 누르면 내용(경로 속 T12/는 앞뒤 / 로 걸러짐)
   .replace(/<code>(<span class="media">.*?<\/span>|<details class="mdfile".*?<\/details>)<\/code>/g, '$1'); }
