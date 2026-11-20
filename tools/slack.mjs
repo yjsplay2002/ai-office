@@ -88,14 +88,15 @@ function routeText(ev, text, threadOf, todos, nfiles) {
 }
 
 // TODO 카드: 보기마다 버튼. 누르면 메모 칸이 있는 창이 뜨고 보내면 답이 된다.
-// link != null = TODO 채널 카드: 보고가 바로 위에 없으니 설명을 다 쓰고 원래 스레드 링크를 붙인다.
-export function todoCard(t, owner, link) {
+// link != null = TODO 채널 카드: 보고가 바로 위에 없으니 설명을 다 쓰고, 둘째 줄에 원래 스레드 제목(누르면 그 스레드로)을 붙인다.
+export function todoCard(t, owner, link, title = '') {
   // 스레드 안 보고 확인 TODO는 바로 위에 보고가 있으니 요약·근거 경로를 되풀이하지 않는다
   const rep = link == null && t.ref?.startsWith('board/reports/'), desc = rep ? t.desc.replace(/^(작업이 오류로 끝났습니다\. )?보고를 확인해 주세요: [\s\S]*/, '위 보고를 확인해 주세요.') : t.desc;
-  const head = `${owner ? `<@${owner}> ` : ''}*T${t.id} ${t.type}* · ${t.by}\n${desc}${t.ref && !rep ? `\n근거: \`${t.ref}\`` : ''}`, more = link ? `\n<${link}|원래 스레드 보기>` : '';
+  const name = title.replace(/[&<>|]/g, ' ').trim() || '원래 스레드 보기', from = link ? `\n💬 <${link}|${name}>` : link != null && title ? `\n💬 ${name}` : '';
+  const head = `${owner ? `<@${owner}> ` : ''}*T${t.id} ${t.type}* · ${t.by}${from}\n${desc}${t.ref && !rep ? `\n근거: \`${t.ref}\`` : ''}`;
   const opts = t.options.length ? t.options : [t.type === '입력' ? '답하기' : '완료'];
   return { text: `T${t.id} ${t.type}: ${t.desc.split('\n')[0]}`.slice(0, 300),
-    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: head.slice(0, 2900 - more.length) + more } },
+    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: head.slice(0, 2900) } },
       { type: 'actions', elements: opts.slice(0, 25).map((o, i) => ({ type: 'button', action_id: `todo_${i}`, text: { type: 'plain_text', text: o.slice(0, 70) },
         value: JSON.stringify({ id: t.id, answer: t.options.length ? o : '' }), ...(o === '승인' ? { style: 'primary' } : o === '반려' ? { style: 'danger' } : {}) })) }] };
 }
@@ -122,8 +123,10 @@ export function withTodoTitles(text, all = []) {
   });
 }
 // 채널 캔버스에 올릴 대표 TODO 판: 대기는 빈 체크박스, 처리한 것은 체크(최근 30개). all = todos.md 전체(파일 순서)
-export function todoBoard(all = []) {
-  const line = (t) => `- [${t.done ? 'x' : ' '}] **T${t.id} ${t.type}** · ${t.by} — ${firstLine(t.desc, 120)}${t.done ? ` → ${firstLine(t.answer || '완료', 80)}` : ''}`;
+// links[id] = { url, title }: 원래 스레드(누르면 그 스레드로).
+export function todoBoard(all = [], links = {}) {
+  const from = (l) => l?.url ? ` · 💬 [${(l.title || '스레드').replace(/[[\]]/g, '')}](${l.url})` : '';
+  const line = (t) => `- [${t.done ? 'x' : ' '}] **T${t.id} ${t.type}** · ${t.by} — ${firstLine(t.desc, 120)}${t.done ? ` → ${firstLine(t.answer || '완료', 80)}` : from(links[t.id])}`;
   const open = all.filter((t) => !t.done), done = all.filter((t) => t.done).slice(-30).reverse();
   return ['# 대표 TODO', '', `## 대기 ${open.length}건`, '', ...(open.length ? open.map(line) : ['할 일 없음']), '', `## 처리함 (최근 ${done.length}건)`, '', ...done.map(line), '',
     '_대시보드·슬랙 카드에서 답하면 여기 체크가 바뀌어요. 여기서 체크해도 답이 되지는 않아요._'].join('\n');
@@ -140,6 +143,8 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   const threadOf = (ts) => { const k = Object.keys(st.threads).find((th) => st.threads[th] === ts); return k == null ? null : Number(k); };
   const todoOf = (ts) => { const k = ts && Object.keys(st.todos).find((id) => st.todos[id].ts === ts && st.todos[id].ch); return k == null ? null : Number(k); };
   const todoCh = () => (cfg.todo && st.todoChannel) || null;
+  const titleOf = (thread) => (thread == null ? '' : firstLine(threadPrompt(thread), 60));
+  const perma = (thread) => (st.threads[thread] ? api('chat.getPermalink', { channel: st.channel, message_ts: st.threads[thread] }).then((j) => j.permalink, () => '') : Promise.resolve(''));
 
   async function api(method, body, token = cfg.token) {
     for (let i = 0; ; i++) {
@@ -180,6 +185,11 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
       catch (err) { log('슬랙 TODO 채널 준비 실패(카드는 각 스레드에 올려요):', err.message); }
     }
     if (todoCh()) await api('conversations.invite', { channel: st.todoChannel, users: cfg.owner }).catch((err) => { if (err.code !== 'already_in_channel') log('슬랙 TODO 채널 초대 실패:', err.message); });
+    for (const t of todoCh() ? todos() : []) {   // 링크 없이 올라간 카드(0.4.25)에 원래 스레드 링크를 단다
+      const c = st.todos[t.id];
+      if (!c?.ch || c.link || !(c.link = await perma(c.thread))) continue;
+      save(); await api('chat.update', { channel: c.ch, ts: c.ts, ...todoCard(t, cfg.owner, c.link, titleOf(c.thread)) }).catch(() => {});
+    }
     self = (await api('auth.test', {}).catch(() => ({}))).user_id || '';
     for (const a of agents()) {
       const token = cfg.bots?.[botKey(a)];
@@ -288,9 +298,9 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
       const ch = todoCh();
       if (!ch && thread == null) return void delete st.todos[t.id];   // TODO 채널을 못 만들었고 스레드도 없다
       const r = thread == null ? null : await root(thread);
-      const link = ch ? (r ? await api('chat.getPermalink', { channel: st.channel, message_ts: r }).then((j) => j.permalink, () => '') : '') : null;
-      const m = ch ? await post({ channel: ch, ...todoCard(t, cfg.owner, link) }) : await post({ thread_ts: r, ...todoCard(t, quiet && !cfg.todo ? '' : cfg.owner) });
-      st.todos[t.id] = { thread, ts: m.ts, ...(ch ? { ch } : {}) }; save();
+      const link = ch ? await perma(thread) : null;
+      const m = ch ? await post({ channel: ch, ...todoCard(t, cfg.owner, link, titleOf(thread)) }) : await post({ thread_ts: r, ...todoCard(t, quiet && !cfg.todo ? '' : cfg.owner) });
+      st.todos[t.id] = { thread, ts: m.ts, ...(ch ? { ch, link } : {}) }; save();
     });
   }
   // 답했거나 지운 TODO 카드는 버튼을 내리고 답을 적는다(대시보드·텔레그램에서 답해도).
@@ -309,7 +319,8 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   // 채널 캔버스(채널 위 탭)에 TODO 판. 내용이 바뀔 때만 고친다. 앱에 canvases:write가 없으면 한 번 알리고 끈다.
   let boardText = '', noCanvas = false;
   function board(all) {
-    const text = todoBoard(all);
+    const links = Object.fromEntries(Object.entries(st.todos).filter(([, c]) => c.link).map(([id, c]) => [id, { url: c.link, title: titleOf(c.thread) }]));
+    const text = todoBoard(all, links);
     if (text === boardText || noCanvas) return;
     boardText = text;
     const doc = { type: 'markdown', markdown: text };

@@ -188,6 +188,7 @@ assert.deepEqual(calls.filter((c) => c.method.includes('canvas')).map((c) => c.m
 assert.ok(logs.at(-1).includes('이미 다른 캔버스'));
 canvasErr = '';
 const bd = todoBoard(tl);
+assert.ok(todoBoard(tl, { 3: { url: 'https://u', title: '가격 [안]' } }).includes('- [ ] **T3 결정** · plan — 가격 정책을 골라 주세요 · 💬 [가격 안](https://u)'));   // 누르면 원래 스레드로
 assert.ok(bd.includes('- [ ] **T3 결정** · plan — 가격 정책을 골라 주세요') && bd.includes('- [x] **T4 승인** · dev — 배포 승인 → 승인'), bd);
 
 // 대표 TODO 채널: 카드는 거기에만(원래 스레드 링크, 늘 멘션), 보고는 멘션 없이 스레드에, 캔버스도 거기로. 그 채널 글은 TODO 답만
@@ -196,7 +197,7 @@ assert.deepEqual(routeSlack(ev({ channel: 'CT', text: '반려 어두움', thread
 assert.deepEqual(routeSlack(ev({ channel: 'CT', text: 'T7 승인' }), tctx), { kind: 'answer', id: 7, answer: '승인', note: '', ts: '200.1' });
 assert.equal(routeSlack(ev({ channel: 'CT', text: '새 일 해줘' }), tctx).kind, 'error');   // 지시는 안 받는다
 assert.equal(routeSlack(ev({ channel: 'CT', text: 'x' }), ctx).kind, 'none');   // TODO 채널이 꺼져 있으면 무시
-assert.equal(todoCard({ ...todos[0], type: '확인', desc: '보고를 확인해 주세요: 길게', ref: 'board/reports/r.md' }, 'U1', 'https://l').blocks[0].text.text.split('\n').slice(1).join(' | '), '보고를 확인해 주세요: 길게 | 근거: `board/reports/r.md` | <https://l|원래 스레드 보기>');   // 스레드 밖이라 설명을 다 쓴다
+assert.equal(todoCard({ ...todos[0], type: '확인', desc: '보고를 확인해 주세요: 길게', ref: 'board/reports/r.md' }, 'U1', 'https://l', '가격 <정책> | 정리').blocks[0].text.text.split('\n').slice(1).join(' | '), '💬 <https://l|가격  정책    정리> | 보고를 확인해 주세요: 길게 | 근거: `board/reports/r.md`');   // 원래 스레드 제목이 링크   // 스레드 밖이라 설명을 다 쓴다
 calls.length = 0;
 const d5 = mkdtempSync(path.join(os.tmpdir(), 'slack5-'));
 const s5 = createSlack({ cfg: { token: 't', owner: 'U1', app: '', channel: '', todo: true, name: 'ai-office-t' }, runDir: d5, todos: () => todos,
@@ -206,16 +207,28 @@ s5.report(3, { result: '끝' }, todos);
 s5.notifyTodo({ id: 9, type: '입력', by: 'pm', desc: '스레드 없는 TODO', options: [] }, null);
 s5.board(tl);
 await new Promise((ok) => setTimeout(ok, 50));
+s5.board([...tl, { ...todos[0], done: false }]); await new Promise((ok) => setTimeout(ok, 20));
+assert.match(calls.filter((c) => c.method === 'canvases.edit').at(-1).changes[0].document_content.markdown, /T7 승인\*\* · .* · 💬 \[스레드\]\(https:\/\/x\.slack\.com\/p/);   // 캔버스 항목도 원래 스레드로
 s5.todoDone({ ...todos[0], answer: '승인' });
 await new Promise((ok) => setTimeout(ok, 20));
 const p5 = calls.filter((c) => c.method === 'chat.postMessage');
 assert.deepEqual(calls.filter((c) => c.method === 'conversations.create').map((c) => c.name), ['ai-office-t', 'ai-office-t-todo']);
 assert.doesNotMatch(p5[1].blocks[0].text, /<@U1>/);
 assert.deepEqual([p5[2].channel, p5[2].thread_ts], ['CT', undefined]);
-assert.ok(p5[2].blocks[0].text.text.startsWith("<@U1> *T7 승인*") && p5[2].blocks[0].text.text.endsWith(`<https://x.slack.com/p${p5[0].ts ?? calls.find((c) => c.method === "chat.getPermalink").message_ts}|원래 스레드 보기>`));
+assert.ok(p5[2].blocks[0].text.text.startsWith("<@U1> *T7 승인*") && p5[2].blocks[0].text.text.split('\n')[1].startsWith(`💬 <https://x.slack.com/p${calls.find((c) => c.method === "chat.getPermalink").message_ts}|`));
 assert.equal(calls.find((c) => c.method === "chat.getPermalink").message_ts, JSON.parse(readFileSync(path.join(d5, "slack.json"), "utf8")).threads["3"]);
 assert.equal(p5[3].channel, 'CT');
 assert.deepEqual([calls.at(-1).method, calls.at(-1).channel], ['chat.update', 'CT']);
 assert.equal(calls.find((c) => c.method === 'conversations.canvases.create').channel_id, 'CT');
 assert.deepEqual(logs.filter((l) => l.includes('실패')), []);
+// 0.4.25에 링크 없이 올라간 카드: 서버를 켜면 링크를 달아 고친다
+const d6 = mkdtempSync(path.join(os.tmpdir(), 'slack6-'));
+writeFileSync(path.join(d6, 'slack.json'), JSON.stringify({ channel: 'C9', todoChannel: 'CT', threads: { 3: '1.5' }, todos: { 7: { thread: 3, ts: '80.0', ch: 'CT' } } }));
+calls.length = 0;
+const s6 = createSlack({ cfg: { token: 't', owner: 'U1', app: '', channel: '', todo: true, name: 'ai-office-t' }, runDir: d6, todos: () => todos,
+  threadPrompt: () => '홍보 영상', onRun() {}, onComment() {}, onAnswer() {}, log: (...a) => logs.push(a.join(' ')) });
+s6.board([]); await new Promise((ok) => setTimeout(ok, 30));
+const u6 = calls.find((c) => c.method === 'chat.update');
+assert.deepEqual([u6.channel, u6.ts, u6.blocks[0].text.text.split('\n')[1]], ['CT', '80.0', '💬 <https://x.slack.com/p1.5|홍보 영상>']);
+assert.equal(JSON.parse(readFileSync(path.join(d6, 'slack.json'), 'utf8')).todos[7].link, 'https://x.slack.com/p1.5');
 console.log('slack ok');
