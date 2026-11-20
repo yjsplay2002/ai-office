@@ -579,6 +579,7 @@ const server = http.createServer(async (req, res) => {
       const h = { 'content-type': m.type, 'x-content-type-options': 'nosniff', 'accept-ranges': 'bytes', 'cache-control': 'no-cache' };
       // HTML·SVG scripts run in an opaque origin, so they cannot read the dashboard API as this origin.
       if (/html|svg/.test(m.type)) h['content-security-policy'] = 'sandbox allow-scripts';
+      if (/^application\/(?!pdf)|csv/.test(m.type)) h['content-disposition'] = 'attachment';   // apk·zip·표: 열지 않고 내려받기
       if (range === false) { res.writeHead(416, { 'content-range': `bytes */${size}` }); return res.end(); }
       res.writeHead(range ? 206 : 200, { ...h, 'content-length': range ? range.end - range.start + 1 : size, ...(range && { 'content-range': `bytes ${range.start}-${range.end}/${size}` }) });
       return req.method === 'HEAD' ? res.end() : createReadStream(m.file, range || {}).pipe(res);

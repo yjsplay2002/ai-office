@@ -24,6 +24,10 @@ const DELEGATION = {
 사람만 할 수 있는 단계(결제·서명·본인 확인·로그인)는 \`실행\` TODO로 올린다.`,
 };
 
+// 모든 팀원 공통: 대표는 PC 경로를 열 수 없다(대시보드·슬랙은 board/ 파일만 보여 줌)
+const OUTPUT = `## 산출물
+대표에게 보여 줄 파일(사진·영상·소리·pdf·apk·zip·표 등)은 저장소 \`board/<역할>/\` 아래에 두고, 보고에는 \`board/…\` 경로로 적는다. 브라우저 임시 폴더·다운로드·다른 저장소에서 만들었으면 복사해 온다. 20MB가 넘는 파일(apk·aab·zip·영상 원본)은 git에 넣지 않는 \`board/files/\`에 둔다. 키·토큰·keystore·\`.env\` 같은 비밀 파일은 복사하지 않는다.`;
+
 export function frontmatter(text) {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!m) return { fm: {}, body: text };
@@ -53,7 +57,7 @@ export function normalize(a) {
 }
 
 export function agentFile(r) {
-  return `---\nname: ${r.name}\ndescription: ${r.description}\ntools: ${r.tools}\nmodel: ${r.model}\neffort: ${r.effort}\n---\n\n${r.body}\n\n${DELEGATION[r.level]}\n`;
+  return `---\nname: ${r.name}\ndescription: ${r.description}\ntools: ${r.tools}\nmodel: ${r.model}\neffort: ${r.effort}\n---\n\n${r.body}\n\n${DELEGATION[r.level]}\n\n${OUTPUT}\n`;
 }
 
 export function pmFile(c) {
@@ -119,7 +123,7 @@ export function scaffold(answers, target, overwrite = []) {
     // 대시보드가 플러그인 업데이트를 알아보는 기준(tools/update.mjs): 이 tools/를 받은 플러그인 버전
     put('tools/.plugin-version', JSON.parse(readFileSync(path.resolve(here, '..', '..', '.claude-plugin', 'plugin.json'), 'utf8')).version + '\n');
   }
-  const gi = path.join(target, '.gitignore'), want = ['.office-runs/', '.office-telegram.env', '.office-slack.env'];
+  const gi = path.join(target, '.gitignore'), want = ['.office-runs/', '.office-telegram.env', '.office-slack.env', 'board/files/'];
   const have = existsSync(gi) ? readFileSync(gi, 'utf8') : '';
   const miss = want.filter((w) => !have.split(/\r?\n/).includes(w));
   if (miss.length) { writeFileSync(gi, have + (have && !have.endsWith('\n') ? '\n' : '') + miss.join('\n') + '\n'); log.push(`추가 .gitignore: ${miss.join(' ')}`); }

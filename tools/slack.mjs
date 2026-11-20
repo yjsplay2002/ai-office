@@ -2,7 +2,7 @@
 // 지시는 스레드 첫 메시지, 팀원 진행·최종 보고·TODO 카드는 그 스레드 답글. 채널에 새 글 = 새 지시, 스레드 답글 = 댓글,
 // TODO 카드 버튼 = 답. 받는 쪽은 Socket Mode(공개 주소 없이 웹소켓)라 127.0.0.1 서버에서도 돈다.
 // Only the one owner (SLACK_USER_ID) in the office channel is ever acted on: a message here can start a claude run.
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync, openAsBlob } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseCommand } from './telegram.mjs';
@@ -218,14 +218,17 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   let noScope = false;
   function attach(thread, text, as) {   // md는 todos.md 같은 board/ 바로 아래 파일과 보고 전문(이미 글로 올림)은 빼고
     const files = mediaIn(text).filter((rel) => !/^board\/([^/]+|reports\/.*)\.md$/i.test(rel) && !sent.has(`${thread}:${rel}`)).map((rel) => ({ rel, m: mediaFile(repo, rel) }))
-      .filter((f) => f.m && statSync(f.m.file).size <= 100e6).slice(0, 10);
+      .filter((f) => f.m).slice(0, 10);
+    const big = files.filter((f) => statSync(f.m.file).size > 1e9);   // 슬랙 파일 한도 1GB
+    if (big.length) { big.forEach((f) => sent.add(`${thread}:${f.rel}`)); reply(thread, { text: `1GB가 넘어 슬랙에 못 올려요. 대시보드에서 받으세요: ${big.map((f) => f.rel).join(', ')}` }, as); }
+    files.splice(0, files.length, ...files.filter((f) => !big.includes(f)));
     if (!files.length || noScope) return;
     for (const f of files) sent.add(`${thread}:${f.rel}`);
     queue(async () => {
       const up = async (token) => {
         const ids = [];
         for (const f of files) {
-          const buf = readFileSync(f.m.file), u = await form('files.getUploadURLExternal', { filename: path.basename(f.rel), length: buf.length }, token);
+          const buf = await openAsBlob(f.m.file), u = await form('files.getUploadURLExternal', { filename: path.basename(f.rel), length: buf.size }, token);   // 큰 apk도 메모리에 다 올리지 않게
           const r = await fetch(u.upload_url, { method: 'POST', body: buf });
           if (!r.ok) throw new Error(`파일 올리기 ${r.status}`);
           ids.push({ id: u.file_id, title: f.rel });

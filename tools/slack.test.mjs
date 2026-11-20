@@ -58,7 +58,7 @@ const calls = [];
 let canvasErr = '';
 let n = 0;
 globalThis.fetch = async (url, { body, headers }) => {
-  if (!url.startsWith('https://slack.com/')) { calls.push({ method: 'upload', url, size: body.length }); return { ok: true, status: 200 }; }
+  if (!url.startsWith('https://slack.com/')) { calls.push({ method: 'upload', url, size: body.size ?? body.length }); return { ok: true, status: 200 }; }
   const method = url.split('/').pop(), tok = headers.authorization.slice(7);
   const b = headers['content-type'].includes('form') ? Object.fromEntries(new URLSearchParams(body)) : JSON.parse(body);
   calls.push({ method, tok, ...b });

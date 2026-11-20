@@ -1665,7 +1665,7 @@ function inline(s, thumbs = true) { return esc(s)
   .replace(/(<[^>]*>)|(?<![\w/.%=-])T(\d+)(?![\w/])/g, (m, tag, n) => tag || `<a class="tref" data-tid="${n}">${m}</a>`)   // TODO 번호: 올리면 제목, 누르면 내용(경로 속 T12/는 앞뒤 / 로 걸러짐)
   .replace(/<code>(<span class="media">.*?<\/span>|<details class="mdfile".*?<\/details>)<\/code>/g, '$1'); }
 // 저장소 상대 경로(board/a/b.png 등). 앞이 / : $ 이면 URL·절대경로라 건너뛴다. 서버(/files/)가 다시 거른다.
-const MEDIA = /(?<![\p{L}\p{N}_.\/:$~@%-])((?:[\p{L}\p{N}_.@+-]+\/)+[\p{L}\p{N}_.@+-]+\.(?:png|jpe?g|gif|webp|svg|mp4|webm|mov|mp3|wav|ogg|m4a|md|html?))(?![A-Za-z\p{N}_\/-])/giu;
+const MEDIA = /(?<![\p{L}\p{N}_.\/:$~@%-])((?:[\p{L}\p{N}_.@+-]+\/)+[\p{L}\p{N}_.@+-]+\.(?:png|jpe?g|gif|webp|svg|mp4|webm|mov|mp3|wav|ogg|m4a|md|html?|pdf|csv|zip|apk|aab|ipa|xlsx|docx|pptx))(?![A-Za-z\p{N}_\/-])/giu;
 const fileUrl = (rel) => '/files/' + rel.split('/').map(encodeURIComponent).join('/');
 function mediaEl(rel, thumbs = true) {
   const url = esc(fileUrl(rel)), r = esc(rel), ext = rel.split('.').pop().toLowerCase();
@@ -1675,6 +1675,8 @@ function mediaEl(rel, thumbs = true) {
   if (/^(mp3|wav|ogg|m4a)$/.test(ext)) return `<span class="media">${link}<audio controls preload="metadata" src="${url}"></audio></span>`;
   if (ext === 'mp4' || ext === 'webm' || ext === 'mov') return `<span class="media">${link}<video controls preload="metadata" src="${url}"></video></span>`;
   if (ext.startsWith('htm')) return `<span class="media">${link}<button data-frame="${url}" data-title="${r}">미리보기</button></span>`;
+  if (ext === 'pdf') return `<span class="media">${link}<button data-frame="${url}" data-pdf="1" data-title="${r}">미리보기</button></span>`;
+  if (!/^(png|jpe?g|gif|webp|svg)$/.test(ext)) return `<span class="media"><a href="${url}" download>${ic('file')} ${esc(rel.split('/').pop())} 받기</a></span>`;   // apk·zip·표
   return `<span class="media">${link}<img loading="lazy" alt="${r}" src="${url}" data-zoom="${url}" data-title="${r}"></span>`;
 }
 // md 문서는 펼칠 때 한 번 읽어 둔다(스레드를 다시 그려도 펼친 채로)
@@ -1692,14 +1694,14 @@ document.addEventListener('toggle', async (e) => {
 const refsEl = (refs = []) => refs.length ? `<div class="refs">${refs.map((p) => /\.md$/i.test(p)
   ? `<a data-p="${esc(p)}">${p.startsWith('board/reports/') ? `${ic('file')} 보고 보기` : esc(p.split('/').pop())}</a>` : mediaEl(p)).join(' ')}</div>` : '';
 // 썸네일 → 크게, HTML 미리보기 → sandbox iframe. 문서 뷰어 위에 겹쳐 열려서 닫으면 읽던 문서로 돌아간다.
-function zoom(title, url, frame) {
+function zoom(title, url, frame, pdf) {
   Object.assign($('ztitle'), { href: url, textContent: title + ' — 새 탭으로 열기' });
-  $('zbody').innerHTML = frame ? `<iframe sandbox="allow-scripts" src="${esc(url)}" title="${esc(title)}"></iframe>` : `<img alt="${esc(title)}" src="${esc(url)}">`;
+  $('zbody').innerHTML = frame ? `<iframe${pdf ? '' : ' sandbox="allow-scripts"'} src="${esc(url)}" title="${esc(title)}"></iframe>` : `<img alt="${esc(title)}" src="${esc(url)}">`;
   $('zoom').showModal();
 }
 document.addEventListener('click', (e) => {
   const z = e.target.closest('[data-zoom],[data-frame]'); if (!z) return;
-  e.preventDefault(); zoom(z.dataset.title, z.dataset.zoom || z.dataset.frame, !!z.dataset.frame);
+  e.preventDefault(); zoom(z.dataset.title, z.dataset.zoom || z.dataset.frame, !!z.dataset.frame, !!z.dataset.pdf);
 });
 $('zclose').onclick = () => $('zoom').close();
 // T12 같은 번호: 같은 번호가 둘이면(동시에 매겨짐) 열린 쪽

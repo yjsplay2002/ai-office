@@ -103,6 +103,7 @@ console.log('history ok:', pick('report').length, 'reports,', h.tasks.size, 'car
   assert.equal(linkMedia(t).split('\n')[0], '(모두 `board/design/d1/`)');
   assert.deepEqual(mediaIn(t), ['board/design/d1/prep-ko.png', 'board/design/d1/arena.png', 'board/sound/hit.wav', 'board/sound/boss.mp3', 'board/dev/s.mp4']);
   assert.deepEqual(mediaIn('그냥 a.png와 board/../x.png'), []);
+  assert.deepEqual(mediaIn('빌드는 `C:\\x\\board\\files\\app.apk`, 계약서 board/legal/seal.pdf, 표 board/bm/p.xlsx'), ['board/files/app.apk', 'board/legal/seal.pdf', 'board/bm/p.xlsx']);   // 내려받기 형식도
   console.log('media ok');
 }
 

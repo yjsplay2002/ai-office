@@ -6,6 +6,9 @@ export const MEDIA_TYPES = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
   '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
   '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.md': 'text/markdown; charset=utf-8', '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
+  '.pdf': 'application/pdf', '.csv': 'text/csv; charset=utf-8',   // 아래는 내려받기만(office.mjs가 attachment로 보냄)
+  '.zip': 'application/zip', '.apk': 'application/vnd.android.package-archive', '.aab': 'application/octet-stream', '.ipa': 'application/octet-stream',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
 const DENY = /^(\.env.*|\.office-telegram\.env|\.office-slack\.env|\.dev\.vars.*|\.git|node_modules|.*\.(key|pem|jks|keystore))$/i;
 
