@@ -54,7 +54,7 @@ export async function sendFiles(cfg, files, caption = '') {
 export function parseCommand(text, { replyTodo = null, todos = [], files = 0 } = {}) {
   const s = String(text || '').trim();
   const cmd = s.match(/^\/([^\s@]+)/);
-  if (cmd) return { kind: ({ start: 'help', help: 'help', todo: 'todos', todos: 'todos', status: 'status', cancel: 'cancel' })[cmd[1].toLowerCase()] || 'help' };
+  if (cmd) return { kind: ({ start: 'help', help: 'help', todo: 'todos', todos: 'todos', status: 'status', cancel: 'cancel', brief: 'brief', 현황: 'brief' })[cmd[1].toLowerCase()] || 'help' };
   let id = replyTodo, rest = s;
   const tag = s.match(/^T(\d+)\b[\s:：.\-—]*([\s\S]*)$/i);
   if (tag && todos.some((t) => t.id === Number(tag[1]))) { id = Number(tag[1]); rest = tag[2]; }
@@ -94,10 +94,10 @@ const HELP = [
   '• TODO 버튼(보기·승인/반려·완료)을 누른 뒤 보내는 글·파일은 그 TODO의 이유·메모로 함께 기록돼요. 없으면 [이대로 확정].',
   '• TODO 알림에 답장, 또는 "T12 답" → 그 TODO에 글로 답하기 (예: "반려 색이 너무 어두움"). 사진·파일 답장도 돼요.',
   '• 그 밖에 보낸 파일·사진은 지시에 첨부돼요. 설명은 캡션에 쓰거나 바로 다음 메시지로 보내세요.',
-  '• /todo 열린 TODO · /status 진행 상황 · /cancel 모든 작업 취소',
+  '• /todo 열린 TODO · /status 진행 상황 · /brief 현황 요약 · /cancel 모든 작업 취소',
 ].join('\n');
 
-export function createTelegram({ cfg, url, runDir, todos, status, onRun, onAnswer, onCancel, log = console.log }) {
+export function createTelegram({ cfg, url, runDir, todos, status, brief, onRun, onAnswer, onCancel, log = console.log }) {
   const api = async (method, body) => {
     const r = await fetch(`https://api.telegram.org/bot${cfg.token}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
@@ -181,6 +181,7 @@ export function createTelegram({ cfg, url, runDir, todos, status, onRun, onAnswe
       const c = parseCommand(text);
       if (c.kind === 'help') return send(HELP);
       if (c.kind === 'status') return send(status());
+      if (c.kind === 'brief') return send(brief());
       if (c.kind === 'cancel') return send('진행 중인 작업을 모두 취소할까요?', { reply_markup: { inline_keyboard: [[{ text: '모두 취소', callback_data: 'cancel' }, { text: '그대로 두기', callback_data: 'keep' }]] } });
       const open = todos();
       if (!open.length) return send('열린 TODO가 없어요.');

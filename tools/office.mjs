@@ -17,6 +17,7 @@ import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
 import { judgePrompt, parseVerdict } from './topic.mjs';
 import { createMapper, isResult } from './map.mjs';
+import { brief } from './brief.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -307,6 +308,19 @@ function listBoard(dir = board) {
   }).sort((a, b) => b.mtime - a.mtime);
 }
 
+const readBoard = (f) => { const p = path.join(board, f); return existsSync(p) ? readFileSync(p, 'utf8') : ''; };
+const boardBrief = () => brief({ todos: readBoard('todos.md'), log: readBoard('log.md'), files: listBoard(), now: Date.now() });
+// 텔레그램 /brief 답: 사람이 읽을 짧은 글
+function briefText() {
+  const { open, recent, stale } = boardBrief();
+  const types = Object.entries(open.byType).map(([k, n]) => `${k} ${n}`).join(' · ');
+  return [
+    `📊 현황\n열린 TODO ${open.total}건${types ? ` (${types})` : ''}`,
+    recent.length ? `\n최근 7일 로그\n${recent.map((d) => `${d.date}\n${d.items.map((i) => `• ${i}`).join('\n')}`).join('\n')}` : '\n최근 7일 로그 없음',
+    stale.length ? `\n3일 넘게 안 바뀐 파일 ${stale.length}개\n${stale.slice(0, 10).join('\n')}${stale.length > 10 ? `\n…외 ${stale.length - 10}개` : ''}` : '',
+  ].filter(Boolean).join('\n');
+}
+
 // 스레드에 이어 붙는 실행(댓글·TODO 답)에게: 그 스레드에서 대표 답을 기다리는 TODO. 댓글로 답이 됐거나 일이 끝났으면
 // 최종 보고에 "처리된 TODO: T12"를 적게 하고, reportTodo가 그 줄로 닫는다(PM 규칙상 todos.md의 기존 TODO는 PM이 고치지 않음).
 function threadTodoNote(thread) {
@@ -453,6 +467,7 @@ const tgCfg = replay ? null : telegramConfig(root);
 const officeUrl = tgCfg?.url || process.env.OFFICE_URL || `http://127.0.0.1:${port}`;
 const tg = tgCfg && createTelegram({
   cfg: tgCfg, url: officeUrl, runDir, todos: () => todos().filter((t) => !t.done),
+  brief: briefText,
   status: () => (runs.size ? `작업 ${runs.size}건 진행 중` : '진행 중인 작업 없음') + ` · 열린 TODO ${todos().filter((t) => !t.done).length}건\n${officeUrl}`,
   onRun: (prompt, files) => startInstruction(`${prompt}\n\n(텔레그램으로 받은 지시)`, files),
   onAnswer: (id, answer, note, files) => submitTodo(id, answer, note, files),
@@ -537,6 +552,7 @@ const server = http.createServer(async (req, res) => {
       return req.on('close', () => clients.delete(res));
     }
     if (p === '/api/usage') return json(res, 200, usage(root));
+    if (p === '/api/brief') return json(res, 200, boardBrief());
     if (p === '/api/agents') return json(res, 200, agents().map(({ file, ...a }) => a));
     if (p === '/api/staff' && req.method === 'GET') return json(res, 200, staff());
     if (p === '/api/board') { const all = todos(); return json(res, 200, { files: listBoard(), todos: all.map((t) => (t.done ? t : { ...t, thread: todoThread(t, history, all) })), runs: runs.size }); }

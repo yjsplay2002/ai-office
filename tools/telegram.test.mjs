@@ -14,6 +14,8 @@ const p = (text, replyTodo = null) => parseCommand(text, { replyTodo, todos });
 assert.deepEqual(p('/todo'), { kind: 'todos' });
 assert.deepEqual(p('/cancel@office_bot'), { kind: 'cancel' });
 assert.deepEqual(p('/뭐'), { kind: 'help' });
+assert.deepEqual(p('/brief'), { kind: 'brief' });
+assert.deepEqual(p('/현황'), { kind: 'brief' });
 assert.deepEqual(p('research에게 시장조사 시켜'), { kind: 'run', prompt: 'research에게 시장조사 시켜' });
 assert.deepEqual(p('T99 이건 없는 번호'), { kind: 'run', prompt: 'T99 이건 없는 번호' });
 assert.deepEqual(p('법인', 3), { kind: 'answer', id: 3, answer: '법인', note: '' });
