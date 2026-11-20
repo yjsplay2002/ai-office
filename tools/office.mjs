@@ -148,10 +148,14 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from,
   const feed = createMapper(), calls = new Map(), th = thread ?? id, me = `run:${id}`;
   const nameOf = (a) => agents().find((x) => x.name === a)?.title || a || '임시 지원';
   let pmSay = '';   // PM의 말은 다음 일이 생길 때 보낸다: 마지막 말은 최종 보고와 같아서 두 번 올리지 않게
+  // 팀원의 말도 하나씩 늦춰 보낸다: 마지막 말(결과 보고)은 '끝' 글에 첫 문단만 싣고 전문은 최종 보고 파일에(PM 보고와 겹치지 않게)
+  // shortcut: 서버가 실행 도중 재시작되면 그 전 팀원 보고는 보고 파일에 빠짐, 문제 되면 .office-runs에 적어 두기
+  const done = [];   // [{ who, text }] 이 실행의 팀원 결과 보고
+  const sayWorker = (c) => { if (c?.say) { slack?.said(th, c.say.agent, nameOf(c.say.agent), c.say.text, c.say.id); c.say = null; } };
   const sayPm = () => { if (pmSay) slack?.said(th, agent, agent ? nameOf(agent) : '', pmSay, me); pmSay = ''; };
   const progress = (obj, ts) => {
     for (const ev of feed(obj)) {
-      if (ev.kind === 'result') { if (pmSay && !String(ev.text).includes(pmSay.trim())) sayPm(); pmSay = ''; slack?.flush(me); continue; }
+      if (ev.kind === 'result') { for (const c of calls.values()) sayWorker(c); if (pmSay && !String(ev.text).includes(pmSay.trim())) sayPm(); pmSay = ''; slack?.flush(me); continue; }
       if (ev.kind === 'start' || ev.kind === 'limit') continue;
       if (!(ev.kind === 'say' && !ev.id)) sayPm();
       const c = ev.id && calls.get(ev.id);
@@ -161,13 +165,16 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from,
         slack?.delegated(th, ev.agent, nameOf(ev.agent), ev.task);
       } else if (ev.kind === 'report' && c) {
         calls.delete(ev.id);
-        const mins = Math.max(1, Math.round((ts - c.ts) / 60000));
+        const mins = Math.max(1, Math.round((ts - c.ts) / 60000)), last = c.say?.text || (c.spoke ? '' : ev.summary);
         tg?.progress(`☑️ ${nameOf(ev.agent)} 끝 (${mins}분)`);
-        slack?.returned(th, ev.agent, nameOf(ev.agent), mins, c.spoke ? '' : ev.summary, ev.id);   // 결과 글은 이미 그 팀원이 말했다
+        if (String(last || '').trim()) done.push({ who: nameOf(ev.agent), text: String(last).trim() });
+        slack?.returned(th, ev.agent, nameOf(ev.agent), mins, last, ev.id);
       } else if (ev.kind === 'say') {
         if (!ev.id) pmSay = ev.text;
-        else { if (c) c.spoke = true; slack?.said(th, ev.agent, nameOf(ev.agent), ev.text, ev.id); }
+        else if (c) { sayWorker(c); c.spoke = true; c.say = ev; }
+        else slack?.said(th, ev.agent, nameOf(ev.agent), ev.text, ev.id);
       } else if (ev.kind === 'tool') {
+        sayWorker(c);
         const a = ev.id ? ev.agent : agent;
         slack?.worked(th, ev.id || me, a, ev.id || agent ? nameOf(a) : '', ACT[ev.step] || '실행', `${ev.tool} ${ev.detail || ''}`.trim());
       }
@@ -200,7 +207,7 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from,
         // 직원별 토큰은 이 오피스가 띄운 세션만 센다(같은 폴더의 다른 Claude 작업과 섞이지 않게). tools/usage.mjs가 읽는다.
         if (fresh && obj.type === 'system' && obj.subtype === 'init' && obj.session_id) appendFileSync(path.join(runDir, 'sessions.txt'), obj.session_id + '\n');
         if (fresh && isResult(obj)) {   // 텔레그램도 한 번만: 최종 보고를 그 보고가 실린 TODO(버튼 포함)와 한 메시지로
-          const ids = reportTodo(id, prompt, obj, before, thread ?? id), msg = `${obj.is_error ? '⚠️ 최종 보고 (오류)' : '✅ 최종 보고'}\n${String(obj.result || '').trim().slice(0, 600)}`;
+          const ids = reportTodo(id, prompt, obj, before, thread ?? id, done), msg = `${obj.is_error ? '⚠️ 최종 보고 (오류)' : '✅ 최종 보고'}\n${String(obj.result || '').trim().slice(0, 600)}`;
           const list = todos().filter((t) => ids.includes(t.id));
           for (const t of list) seenTodos?.add(t.id);
           if (list.length) list.forEach((t, i) => tg?.notifyTodo(t, i ? '' : msg)); else tg?.notify(msg);
@@ -337,14 +344,15 @@ const todoIds = () => { try { return todos().map((t) => t.id); } catch { return 
 // 실행이 최종 보고로 끝나면 보고 전문을 board/reports/에 남기고, 그 실행이 올린 TODO에 붙이거나(없으면) '확인'을 올린다(addRunReport).
 // 오류로 끝나도 올린다. 취소된 실행은 결과가 없어 올리지 않음. -> 보고가 실린 TODO 번호들
 // board/가 없는 폴더(플러그인 저장소에서 리플레이 등)에는 쓰지 않는다.
-function reportTodo(run, prompt, obj, before = [], thread = run) {
+// done = [{ who, text }] 팀원 결과 보고: PM 보고 아래 '팀원 보고'로 전문을 붙인다(PM 보고는 그것을 되풀이하지 않는다)
+function reportTodo(run, prompt, obj, before = [], thread = run, done = []) {
   if (!existsSync(board)) return [];
   try {
     const d = new Date(), day = d.toLocaleDateString('sv'), hm = d.toTimeString().slice(0, 8).replace(/:/g, '');
     const rel = `board/reports/${day}-${hm}-run${run}.md`, text = String(obj.result || '').trim();
     mkdirSync(path.join(board, 'reports'), { recursive: true });
     const ask = String(prompt || '').split('\n')[0].slice(0, 300);
-    writeFileSync(path.join(root, rel), `# 최종 보고 · 대시보드 실행 ${run}\n\n- 시각: ${day} ${d.toTimeString().slice(0, 5)}\n- 결과: ${obj.is_error ? '오류' : '완료'}\n- 지시: ${ask}\n\n---\n\n${text}\n`);
+    writeFileSync(path.join(root, rel), `# 최종 보고 · 대시보드 실행 ${run}\n\n- 시각: ${day} ${d.toTimeString().slice(0, 5)}\n- 결과: ${obj.is_error ? '오류' : '완료'}\n- 지시: ${ask}\n\n---\n\n${text}\n${done.map((w) => `\n---\n\n## 팀원 보고 · ${w.who}\n\n${w.text}\n`).join('')}`);
     const r = addRunReport(existsSync(todosFile) ? readFileSync(todosFile, 'utf8') : '', { summary: text, ref: rel, error: !!obj.is_error, before, today: day, resolved: resolvedIds(text), same: (t, all) => todoThread(t, history, all) === thread });   // 다른 PM 세션도 쓰므로 바로 직전에 읽는다
     if (r.closed.length) office({ log: `앞 보고 확인 T${r.closed.join(', T')} 닫음 (${SUPERSEDED})` });
     if (r.settled.length) office({ log: `T${r.settled.join(', T')} 닫음 (${RESOLVED})` });

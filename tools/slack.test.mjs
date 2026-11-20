@@ -115,7 +115,7 @@ const s2 = createSlack({ cfg: { token: 't', owner: 'U1', app: '', channel: 'C5',
   threadPrompt: () => '', onRun() {}, onComment() {}, onAnswer() {}, agents: () => ['marketing', 'research', 'dev'], log: (...a) => logs2.push(a.join(' ')) });
 s2.runStarted({ id: 1, thread: 1, prompt: 'SNS 계획' });
 s2.delegated(1, 'marketing', '마케팅', '톤 조사');
-s2.returned(1, 'marketing', '마케팅', 3, '초안 3개');
+s2.returned(1, 'marketing', '마케팅', 3, '초안 3개\n\n## 세부\n긴 내용');   // 결과 보고는 첫 문단만(전문은 보고 파일)
 s2.delegated(1, 'research', '조사', '시장');
 s2.report(1, { result: '끝' }, mt, 'marketing');
 await new Promise((ok) => setTimeout(ok, 50));
@@ -126,7 +126,7 @@ if (process.env.DBG) console.log(p2.map((p) => [p.tok, p.text]), logs2);
 assert.deepEqual(calls.filter((c) => c.method === 'conversations.invite').map((c) => c.users), ['U1', 'UMK']);
 assert.deepEqual(p2.map((p) => p.tok), ['t', 't', 'xoxb-m', 't', 'xoxb-m', 't']);   // TODO 카드는 PM 봇(버튼이 PM 앱으로 오게)
 assert.equal(p2[1].text, '<@UMK> 톤 조사');
-assert.match(p2[2].blocks[0].text, /끝났어요 \(3분\)\n\n초안 3개/);
+assert.equal(p2[2].blocks[0].text, '끝났어요 (3분)\n\n초안 3개\n\n_(전문은 대시보드 최종 보고 파일에)_');
 assert.equal(p2[3].text, '조사에게 맡김 · 시장');
 assert.equal(calls.at(-1).method, 'chat.update');
 assert.equal(calls.at(-1).tok, 't');

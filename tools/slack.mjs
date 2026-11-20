@@ -259,7 +259,9 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   function returned(thread, a, who, mins, result, key) {
     flush(key);
     const r = String(result || '').trim(), text = `${who} 끝 (${mins}분)`;
-    queue(async () => post({ thread_ts: await root(thread), ...(bots[a] ? { text, blocks: [{ type: 'markdown', text: `끝났어요 (${mins}분)${r ? `\n\n${r.length > 1500 ? r.slice(0, 1500) + '…' : r}` : ''}` }] } : { text }) }, a));
+    // 팀원 결과 보고는 PM 최종 보고가 정리하니 첫 문단만(전문은 board/reports/의 최종 보고 파일 끝에 붙는다)
+    const p = r.split(/\n\s*\n/)[0], short = (p.length > 300 ? p.slice(0, 300) + '…' : p) + (p.length < r.length ? '\n\n_(전문은 대시보드 최종 보고 파일에)_' : '');
+    queue(async () => post({ thread_ts: await root(thread), ...(bots[a] ? { text, blocks: [{ type: 'markdown', text: `끝났어요 (${mins}분)${r ? `\n\n${short}` : ''}` }] } : { text }) }, a));
     attach(thread, r, a);
   }
   // 대시보드 스레드처럼: 팀원의 말은 그 팀원 봇 글로(봇이 없으면 PM 봇이 이름을 붙여), 도구 사용은 그 사람의 마지막 말 아래 한 줄 글 하나를 고쳐 가며.
