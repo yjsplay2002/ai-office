@@ -265,11 +265,14 @@
   .scard .stok { font-size:11px; color:var(--dim); }
   .scard .sft { display:flex; justify-content:space-between; align-items:center; }
   .scard .err { color:var(--bad); font-size:12px; } .scard .ok { color:var(--ok); font-size:12px; }
-  #viewer article { width:min(820px,94vw); max-height:88vh; display:flex; flex-direction:column; background:#fbfaf6; color:#1b2230; border-radius:6px; box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; }
+  #viewer article { width:min(820px,94vw); max-width:98vw; max-height:96vh; min-width:320px; min-height:200px; display:flex; flex-direction:column; background:#fbfaf6; color:#1b2230; border-radius:6px; box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; resize:both; }
+  #viewer article.full { width:100vw !important; height:100vh !important; max-width:none; max-height:none; border-radius:0; resize:none; }
+  #viewer .doc { max-width:none; }   /* 폭은 창 크기(드래그·전체화면)를 따른다 */
+  #vbtns { display:flex; gap:6px; flex:none; }
   #viewer header { display:flex; gap:12px; justify-content:space-between; align-items:center; padding:10px 12px 10px 20px; border-bottom:1px solid #e4e0d6; font-weight:700; }
   #vtitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
   #vtitle small { display:block; font-weight:400; color:#6b6457; font-size:11px; }
-  #vbody { overflow:auto; padding:22px clamp(18px,5vw,44px) 40px; overscroll-behavior:contain; }
+  #vbody { flex:1; min-height:0; overflow:auto; padding:22px clamp(18px,5vw,44px) 40px; overscroll-behavior:contain; }
   /* 읽기용 본문 */
   .doc { max-width:68ch; margin:0 auto; font:16px/1.75 "Pretendard","Malgun Gothic",system-ui,sans-serif; word-break:keep-all; overflow-wrap:anywhere; }
   .doc > :first-child { margin-top:0; }
@@ -355,7 +358,8 @@
     .list a { display:block; padding:11px 0; }
     .list .meta { display:none; }
     #viewer { align-items:stretch; }
-    #viewer article { width:100%; max-height:none; border-radius:0; }
+    #viewer article { width:100%; max-height:none; border-radius:0; resize:none; }
+    #vfull { display:none; }
     #viewer header { padding:max(8px, env(safe-area-inset-top)) 8px 8px 16px; }
     #vbody { flex:1; padding:18px 18px calc(40px + env(safe-area-inset-bottom)); }
     .doc { font-size:16.5px; }
@@ -454,7 +458,7 @@
   <footer><textarea id="treply" placeholder="이 스레드에 댓글 — PM이 스레드의 맥락을 이어 처리합니다 (Ctrl+Enter)"></textarea><div id="tfiles"><label><i data-ic="clip"></i> 파일 첨부<input type="file" multiple id="tpick"></label> <span id="tnames"></span></div><div class="row"><span class="err" id="terr"></span><button class="primary" id="tsend">댓글</button></div></footer></div>
 <div id="staffpage" role="dialog" aria-modal="true" aria-label="직원 관리"><article><header><span>직원 관리<small>바꾼 내용은 .claude/agents/*.md · .claude/ai-office.json에 저장(모델·노력은 다음 실행부터)</small></span><button id="sclose">닫기</button></header><div id="scards"></div><section id="usagebox"><h2>직원별 토큰 <span title="입력+캐시 읽기+출력. 옆 작은 숫자는 출력">오늘 · 7일 · 누적 — 작은 숫자는 출력</span></h2><table id="usage"><tr><td class="meta">집계 중…</td></tr></table></section></article></div>
 <div id="docspage" role="dialog" aria-modal="true" aria-label="문서"><article><header><span>문서 (board/) <small id="ndocs"></small></span><button id="dclose">닫기</button></header><ul class="list open" id="docs"></ul></article></div>
-<div id="viewer" role="dialog" aria-modal="true" aria-labelledby="vtitle"><article><header><span id="vtitle"></span><button id="vclose">닫기</button></header><div id="vbody"></div></article></div>
+<div id="viewer" role="dialog" aria-modal="true" aria-labelledby="vtitle"><article><header><span id="vtitle"></span><span id="vbtns"><button id="vfull" title="전체화면">전체화면</button><button id="vclose">닫기</button></span></header><div id="vbody"></div></article></div>
 <dialog id="zoom" aria-labelledby="ztitle"><header><a id="ztitle" target="_blank" rel="noopener"></a><button id="zclose">닫기</button></header><div id="zbody"></div></dialog>
 
 <script type="module">
@@ -1772,7 +1776,10 @@ async function openPaper(meta) {
   const text = r.ok ? await r.text() : '파일을 찾을 수 없습니다. (리플레이 모드이거나 파일이 옮겨졌을 수 있음)';
   showDoc(title, isMd ? md(text) : esc(text), !isMd);
 }
-const closeViewer = () => $('viewer').classList.remove('on');
+const closeViewer = () => { $('viewer').classList.remove('on'); setVFull(false); };
+// 전체화면은 창 안에서 꽉 채운다(닫으면 원래 크기). 드래그로 바꾼 크기는 다음에 열 때도 유지
+const setVFull = (on) => { $('viewer').querySelector('article').classList.toggle('full', on); $('vfull').textContent = on ? '원래 크기' : '전체화면'; };
+$('vfull').onclick = () => setVFull(!$('viewer').querySelector('article').classList.contains('full'));
 $('vclose').onclick = closeViewer;
 $('viewer').onclick = (e) => { if (e.target.id === 'viewer') closeViewer(); };
 const setChatFull = (on) => {
@@ -1977,6 +1984,8 @@ $('todos').onclick = $('ttodos').onclick = async (e) => {
   if (e.target.dataset.files != null) { e.target.onchange = () => { addTodoFiles(id, [...e.target.files]); e.target.value = ''; }; return; }
   if (go) return openThread(Number(go.dataset.goth));
   if (e.target.dataset.p) return openPaper({ path: e.target.dataset.p, title: e.target.dataset.p });
+  const mdf = e.target.closest('.mdfile > summary');   // 본문 속 md 문서도 카드 안에서 펼치지 않고 팝업으로
+  if (mdf) { e.preventDefault(); return openPaper({ path: mdf.parentElement.dataset.md, title: mdf.parentElement.dataset.md }); }
   if (e.target.dataset.pick != null) {
     drafts.set(id, e.target.dataset.pick);
     card.querySelectorAll('[data-pick]').forEach((b) => b.classList.toggle('sel', b === e.target));
