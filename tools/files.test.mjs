@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { mediaFile, byteRange } from './files.mjs';
+import { mediaFile, byteRange, looseMedia } from './files.mjs';
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'files-test-'));
 const root = path.join(tmp, 'repo'), outside = path.join(tmp, 'outside');
@@ -28,6 +28,15 @@ for (const bad of ['', '../outside/secret.png', 'board/../../outside/secret.png'
   'board/.env.png', '.dev.vars.png', '.git/c.png', 'node_modules/a/b.png', 'board/a.key', '.office-telegram.env', '.office-slack.env', '.env'])
   assert.equal(mediaFile(root, bad), null, bad);
 if (linked) assert.equal(mediaFile(root, 'board/link/secret.png'), null, 'junction escape');
+
+// 슬랙에 올릴 board/ 밖 사진: 절대 경로(빈칸 폴더 포함), 저장소·옆 폴더 기준, 이름만(board/에서 찾음). 비밀·문서·없는 파일은 빼고
+mkdirSync(path.join(tmp, 'with space')); writeFileSync(path.join(tmp, 'with space', 'shot.png'), 'x');
+mkdirSync(path.join(tmp, 'sib', 'qa'), { recursive: true }); writeFileSync(path.join(tmp, 'sib', 'qa', 'q.jpg'), 'x');
+mkdirSync(path.join(root, 'board', 'design', 'v2'), { recursive: true }); writeFileSync(path.join(root, 'board', 'design', 'v2', 'reopen-ko.png'), 'x');
+writeFileSync(path.join(outside, 'doc.pdf'), 'x');
+const loose = looseMedia(root, `스샷 ${path.join(tmp, 'with space', 'shot.png')}에 있고, \`game/tools/a.html\`, \`sib/qa/q.jpg\`, \`reopen-ko.png\`, ${path.join(outside, 'doc.pdf')}, ${path.join(root, '.dev.vars.png')}, board/.env.png, 없음.png`)
+  .map((f) => path.relative(tmp, f).replace(/\\/g, '/'));
+assert.deepEqual(loose.sort(), ['repo/board/design/v2/reopen-ko.png', 'sib/qa/q.jpg', 'with space/shot.png']);
 
 assert.equal(byteRange(undefined, 100), null);
 assert.equal(byteRange('bytes=-', 100), null);

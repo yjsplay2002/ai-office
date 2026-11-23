@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { parseCommand } from './telegram.mjs';
 import { readAgent } from './staff.mjs';
 import { mediaIn } from './map.mjs';
-import { mediaFile } from './files.mjs';
+import { mediaFile, looseMedia } from './files.mjs';
 import { SUPERSEDED } from './todos.mjs';
 
 export function slackConfig(root, env = process.env) {
@@ -217,13 +217,15 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   const sent = new Set();
   let noScope = false;
   function attach(thread, text, as) {   // md는 todos.md 같은 board/ 바로 아래 파일과 보고 전문(이미 글로 올림)은 빼고
-    const files = mediaIn(text).filter((rel) => !/^board\/([^/]+|reports\/.*)\.md$/i.test(rel) && !sent.has(`${thread}:${rel}`)).map((rel) => ({ rel, m: mediaFile(repo, rel) }))
-      .filter((f) => f.m).slice(0, 10);
+    // board/ 밖 경로·이름만 쓴 사진·영상·소리도 실제 파일을 찾아 올린다(슬랙에서는 로컬 경로를 못 연다). 같은 파일은 실제 경로로 한 번만.
+    const rel = (file) => { const r = path.relative(repo, file); return r.startsWith('..') || path.isAbsolute(r) ? path.basename(file) : r.replace(/\\/g, '/'); };
+    const dup = new Set(), files = [...mediaIn(text).filter((r) => !/^board\/([^/]+|reports\/.*)\.md$/i.test(r)).map((r) => mediaFile(repo, r)?.file), ...looseMedia(repo, text)]
+      .filter((file) => file && !dup.has(file) && dup.add(file) && !sent.has(`${thread}:${file}`)).slice(0, 10).map((file) => ({ rel: rel(file), m: { file } }));
     const big = files.filter((f) => statSync(f.m.file).size > 1e9);   // 슬랙 파일 한도 1GB
-    if (big.length) { big.forEach((f) => sent.add(`${thread}:${f.rel}`)); reply(thread, { text: `1GB가 넘어 슬랙에 못 올려요. 대시보드에서 받으세요: ${big.map((f) => f.rel).join(', ')}` }, as); }
+    if (big.length) { big.forEach((f) => sent.add(`${thread}:${f.m.file}`)); reply(thread, { text: `1GB가 넘어 슬랙에 못 올려요. 대시보드에서 받으세요: ${big.map((f) => f.rel).join(', ')}` }, as); }
     files.splice(0, files.length, ...files.filter((f) => !big.includes(f)));
     if (!files.length || noScope) return;
-    for (const f of files) sent.add(`${thread}:${f.rel}`);
+    for (const f of files) sent.add(`${thread}:${f.m.file}`);
     queue(async () => {
       const up = async (token) => {
         const ids = [];
