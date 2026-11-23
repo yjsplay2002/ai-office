@@ -49,6 +49,7 @@
   /* 태스크 히스토리 카드 */
   #hist { right:16px; top:14px; width:336px; max-height:calc(100% - 28px); overflow:auto; display:none; padding:12px 14px; }
   #hist.open { display:block; }
+  #stage:has(#hist.open) #shareBox { display:none; }   /* 기록 패널이 오른쪽을 다 차지하는 동안 */
   #hist .hh { display:flex; gap:8px; align-items:flex-start; } #hist .hh b { font:700 17px var(--serif); flex:1; overflow-wrap:anywhere; }
   #hist .meta { font-size:12px; color:var(--dim); margin:3px 0 10px; }
   #hist ol { list-style:none; margin:0 0 2px 5px; padding:0 0 0 14px; border-left:2px solid var(--line); }
@@ -70,7 +71,7 @@
   .tref { color:var(--link); cursor:pointer; text-decoration:underline dotted; }
   .todo.t-확인 { --t1:#c9a46a; } .todo .rep { margin-top:5px; font-size:12.5px; color:var(--text); } .todo .rep:empty { display:none; }
   /* 공유 카드: 오늘 우리 회사가 한 일 */
-  #shareBox { left:16px; top:70px; width:290px; }
+  #shareBox { right:16px; bottom:16px; width:290px; }   /* 위쪽 도구 줄(#hud)과 겹치지 않게 오른쪽 아래 */
   .tag.rest .bub { display:none; }   /* 라운지에서 쉬는 사람은 이름표만(말풍선이 겹치지 않게) */
   .share { border-radius:12px; overflow:hidden; background:var(--card); border:var(--bd); }
   .sh-top { padding:7px 10px 5px; } .sh-top b, .sh-top span { display:block; } .sh-top b { font:700 15px var(--serif); } .sh-top span { font-size:10px; opacity:.8; }
@@ -546,9 +547,11 @@ tsH.uniforms.r.value = tsV.uniforms.r.value = .5; tsH.textureID = null; tsH.unif
 const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(34, 1, 0.1, 200);
 composer.addPass(tsH); composer.addPass(tsV); composer.addPass(new OutputPass());
 // 하늘: 위는 하늘색, 아래로 갈수록 복숭앗빛(하늘섬 콘셉트)
-scene.background = (() => { const c = Object.assign(document.createElement('canvas'), { width: 4, height: 256 }), g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
-  gr.addColorStop(0, '#9dbdf0'); gr.addColorStop(.5, '#d9d9f4'); gr.addColorStop(1, '#fde0d2'); g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+const skyCv = Object.assign(document.createElement('canvas'), { width: 4, height: 256 });   // 색은 시간·날씨에 따라 paintSky()가 다시 칠한다
+function paintSky(top, mid, bot) { const g = skyCv.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, top); gr.addColorStop(.5, mid); gr.addColorStop(1, bot); g.fillStyle = gr; g.fillRect(0, 0, 4, 256); scene.background.needsUpdate = true; }
+scene.background = new THREE.CanvasTexture(skyCv); scene.background.colorSpace = THREE.SRGBColorSpace;
+paintSky('#9dbdf0', '#d9d9f4', '#fde0d2');
 scene.fog = new THREE.Fog('#f6dcd4', 62, 150);
 
 // 직원 명단 = .claude/agents/*.md + pm. 알려진 역할은 시안 자리, 나머지는 빈 책상(EXTRA), 그것도 다 차면 라운지 소파.
@@ -613,7 +616,7 @@ function bush(m,x,y,z,s,n=7){if(bushI)return bushI.put(x,y-.7*s,z,s*2.2);m.put(x
 
 const SUN=new THREE.Vector3(-12,17,8),AIM=new THREE.Vector3(1,0,1),sun=new THREE.DirectionalLight('#ffd9a6',3.3);
 sun.position.copy(SUN);sun.target.position.copy(AIM);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-19,right:19,top:19,bottom:-19,near:1,far:70});sun.shadow.radius=2;sun.shadow.bias=-.0006;sun.shadow.normalBias=.05;
-scene.add(new THREE.HemisphereLight('#ffeedd','#e2a877',1.25),sun,sun.target);
+const hemi=new THREE.HemisphereLight('#ffeedd','#e2a877',1.25);scene.add(hemi,sun,sun.target);
 
 // ── 바닥: 원형 마루(널 하나하나 길이·색을 달리해 나무결 느낌) + 한 단 내려간 라운지 ──
 // 1층은 원을 반으로 갈라 좌우로 SX씩 벌린 경기장 모양(앞뒤는 곧은 변). th = 그 점의 바깥쪽 방향 각도
@@ -1496,10 +1499,10 @@ function openHist(name, keep) {
   if (!keep) unfolded.clear();
   focusId = name;
   const key = (t, kind, text) => esc(`${t}|${kind}|${String(text).slice(0, 80)}`);
-  el.innerHTML = `<div class="hh"><b>${esc(k ? plain(k.title) : '대기')}</b><button data-x>닫기</button></div>
+  setHTML(el, `<div class="hh"><b>${esc(k ? plain(k.title) : '대기')}</b><button data-x>닫기</button></div>
     <div class="meta"><i class="dot" style="background:${q.c}"></i>${esc(q.label)}${k ? ` · 시작 ${hhmm(k.start)} · ${esc(k.state)} · 이벤트 ${k.ev.length}건` : ''}</div>` +
     (k ? `<ol>${k.ev.map(([t, kind, text, path]) => `<li style="--k:${(KIND[kind] || KIND.run)[1]}"><time>${hhmm(t)}</time><em>${(KIND[kind] || KIND.run)[0]}</em><div class="tx mdx${unfolded.has(key(t, kind, text)) ? ' open more' : ''}" data-k="${key(t, kind, text)}">${md(text)}</div><i class="fold">${unfolded.has(key(t, kind, text)) ? '▴ 접기' : '▾ 더 보기'}</i>${path ? `<u data-p="${esc(path)}">${esc(path)}</u>` : ''}</li>`).join('')}</ol>`
-      : '<div class="empty">최근 작업 기록이 없습니다. 오피스가 쉬다가 새 지시를 받으면 기록을 새로 모읍니다.</div>');
+      : '<div class="empty">최근 작업 기록이 없습니다. 오피스가 쉬다가 새 지시를 받으면 기록을 새로 모읍니다.</div>'));   // 다시 그려도 보던 영상은 이어서
   el.classList.add('open');
   for (const x of el.querySelectorAll('.tx:not(.open)')) x.classList.toggle('more', x.scrollHeight > x.clientHeight + 1);
   if (keep) el.scrollTop = top;
@@ -1536,9 +1539,57 @@ document.addEventListener('click', (e) => {
 });
 renderer.domElement.addEventListener('mousemove', (e) => { renderer.domElement.style.cursor = pickPaper(e) || pickPerson(e) ? 'pointer' : ''; });
 
+// ---------- 시간·날씨: 이 컴퓨터 시계로 낮·노을·밤, 날씨는 Open-Meteo(키 없음)에서 15분마다. ?hour=21&wx=rain 으로 미리 보기 ----------
+// [시각, 하늘 위·가운데·아래, 안개, 햇빛 색·세기, 반구광 위·아래·세기, 노출, 램프 빛]
+const SKYS = [[0, '#0e1838', '#26315e', '#4a4670', '#2a2f52', '#9fb4ff', .6, '#6f7fc0', '#3a3050', .55, 1.1, 2.6],
+  [6.5, '#7f8fc9', '#f0b9a8', '#ffc58f', '#f3c3a4', '#ff9e5e', 2, '#ffd0b0', '#b98060', 1, 1.2, 1.6],
+  [9, '#9dbdf0', '#d9d9f4', '#fde0d2', '#f6dcd4', '#ffd9a6', 3.3, '#ffeedd', '#e2a877', 1.25, 1.25, .8],
+  [16.5, '#9dbdf0', '#d9d9f4', '#fde0d2', '#f6dcd4', '#ffd9a6', 3.3, '#ffeedd', '#e2a877', 1.25, 1.25, .8],
+  [18.5, '#7f8fc9', '#f0b9a8', '#ffc58f', '#f3c3a4', '#ff9e5e', 2, '#ffd0b0', '#b98060', 1, 1.2, 1.6],
+  [20, '#0e1838', '#26315e', '#4a4670', '#2a2f52', '#9fb4ff', .6, '#6f7fc0', '#3a3050', .55, 1.1, 2.6]];
+SKYS.splice(1, 0, [5, ...SKYS[0].slice(1)]); SKYS.push([24, ...SKYS[0].slice(1)]);   // 밤은 20시~5시
+// c: 흐린 정도(색을 잿빛으로·햇빛을 약하게), fog: 짙은 안개, drop: 내리는 것
+const WX = { clear: { c: 0 }, cloudy: { c: .5 }, fog: { c: .6, fog: 1 }, rain: { c: .8, drop: 'rain' }, snow: { c: .6, drop: 'snow' }, storm: { c: 1, drop: 'rain' } };
+const wxOf = (code) => code <= 1 ? 'clear' : code <= 3 ? 'cloudy' : code <= 48 ? 'fog' : code >= 95 ? 'storm' : (code >= 71 && code <= 77) || code === 85 || code === 86 ? 'snow' : 'rain';
+const qs = new URLSearchParams(location.search);
+let weather = WX[qs.get('wx')] ? qs.get('wx') : 'clear';
+const drops = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 1500 * 3 }, (_, i) => Math.random() * (i % 3 === 1 ? 30 : 44) - (i % 3 === 1 ? 8 : 22)), 3)),   // rnd()는 장면 배치용 고정 시드라 쓰지 않는다
+  new THREE.PointsMaterial({ color: '#cfe0f5', size: .08, transparent: true, opacity: .7, depthWrite: false }));
+drops.visible = false; scene.add(drops);
+const CLOUD0 = CLOUD.map((m) => m.color.getHex());
+function applySky() {
+  const d = new Date(), h = qs.has('hour') ? +qs.get('hour') : d.getHours() + d.getMinutes() / 60;
+  const i = SKYS.findIndex((k) => k[0] > h), a = SKYS[i - 1], b = SKYS[i], f = (h - a[0]) / (b[0] - a[0]), w = WX[weather];
+  const col = (k) => { const c = new THREE.Color(a[k]).lerp(new THREE.Color(b[k]), f), l = (c.r + c.g + c.b) / 3 * .85; return c.lerp(new THREE.Color(l, l, l), w.c * .7); };
+  const num = (k) => a[k] + (b[k] - a[k]) * f;
+  paintSky(...[1, 2, 3].map((k) => '#' + col(k).getHexString()));
+  scene.fog.color.copy(col(4)); scene.fog.near = w.fog ? 18 : 62; scene.fog.far = w.fog ? 70 : 150;
+  sun.color.copy(col(5)); sun.intensity = num(6) * (1 - .65 * w.c);
+  hemi.color.copy(col(7)); hemi.groundColor.copy(col(8)); hemi.intensity = num(9) * (1 - .3 * w.c);
+  renderer.toneMappingExposure = num(10) * (1 - .12 * w.c); lampM.emissiveIntensity = num(11) + w.c;   // 흐리면 낮에도 등을 조금 더 밝힌다
+  CLOUD.forEach((m, k) => { m.color.set(CLOUD0[k]).lerp(new THREE.Color('#9aa1ab'), w.c * .6); m.emissiveIntensity = .35 * Math.min(1, num(6) / 3.3) * (1 - w.c * .7); });   // 밤·흐린 날엔 구름이 분홍빛으로 빛나지 않게
+  drops.visible = !!w.drop; Object.assign(drops.material, w.drop === 'snow' ? { size: .22, color: new THREE.Color('#ffffff') } : { size: .12, color: new THREE.Color('#7f9cc4') });
+}
+// 위치는 브라우저가 물어보고 허락할 때만. 좌표는 소수 한 자리(약 10km)로 줄여 보낸다. 거절·실패하면 시간만 반영
+async function fetchWx() {
+  if (qs.has('wx')) return;
+  try {
+    const p = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { maximumAge: 36e5, timeout: 2e4 }));
+    const r = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p.coords.latitude.toFixed(1)}&longitude=${p.coords.longitude.toFixed(1)}&current=weather_code`)).json();
+    weather = wxOf(r.current.weather_code); applySky();
+  } catch {}
+}
+applySky(); fetchWx(); setInterval(applySky, 6e4); setInterval(fetchWx, 9e5);
+function fall(dt) {
+  if (!drops.visible) return;
+  const p = drops.geometry.attributes.position, snow = weather === 'snow', v = (snow ? 1.2 : 14) * dt;
+  for (let i = 0; i < p.count; i++) { let y = p.getY(i) - v; if (y < -8) y += 30; p.setY(i, y); if (snow) p.setX(i, p.getX(i) + Math.sin(y + i) * dt * .3); }
+  p.needsUpdate = true;
+}
+
 // ---------- 화면 루프 ----------
-const clock = new THREE.Clock(), FH = new THREE.Vector3(), LK = new THREE.Vector3();
-let looping = false, frames = 0, fitK = 1, lastT = 0, lastDraw = 0;
+const clock = new THREE.Clock(), FH = new THREE.Vector3(), FS = new THREE.Vector3(), LK = new THREE.Vector3();
+let looping = false, frames = 0, fitK = 1, stageW = 0, lastT = 0, lastDraw = 0;
 // 카메라: 드래그로 돌리고(좌우·위아래) 휠로 당기고 민다. 더블클릭하면 처음 구도로. 손대기 전에는 아주 천천히 좌우로 흔든다
 const CAM0 = { yaw: 0, pitch: .6, zoom: .98 }, cam = { ...CAM0, moved: false }, R0 = Math.hypot(31, 19.5);
 { const el = renderer.domElement; let drag = null, dragged = false; el.style.touchAction = 'none';
@@ -1579,14 +1630,17 @@ function frame() {
   sun.position.set(SUN.x + Math.sin(t * .09) * 5, SUN.y, SUN.z + Math.cos(t * .09) * 2);
   canopy.rotation.z = Math.sin(t * .7) * .016; canopy.rotation.x = Math.cos(t * .5) * .012;
   for (const f of sways) f.rotation.z = Math.sin(t * 1.3 + f.userData.p) * .07;
-  fallTex.offset.y = t * 1.6; sky.rotation.y = Math.sin(t * .02) * .1;
+  fall(dt); fallTex.offset.y = t * 1.6; sky.rotation.y = Math.sin(t * .02) * .1;
   for (const l of leaves) { const u = l.userData, y = 6 - ((t * u.v + u.p) % 6.6); l.position.set(u.x + Math.sin(t * .9 + u.p) * .5, y, u.z + Math.cos(t * .7 + u.p) * .3); l.rotation.set(t * 1.2 + u.p, t * .8, u.p); }
-  const a = cam.yaw + (cam.moved ? 0 : Math.sin(t * .12) * .1), d = R0 * fitK * cam.zoom;
-  LK.set(0, .2, .3);   // 1층 바닥 가운데(대표 자리)
-  camera.position.set(LK.x + Math.sin(a) * Math.cos(cam.pitch) * d, LK.y + Math.sin(cam.pitch) * d, LK.z + Math.cos(a) * Math.cos(cam.pitch) * d);
-  fk += ((focusId ? 1 : 0) - fk) * .08;
-  if (focusId) people.get(focusId)?.p.head.getWorldPosition(FH);
-  if (fk > .001) { camera.position.lerp(FH, .3 * fk); LK.lerp(FH, .55 * fk); }
+  // 고른 사람이 있으면 그 사람을 중심으로 돈다: 가까이 다가가 천천히 좌우로 흔들며, 걸어가면 따라간다. 없으면 방 가운데
+  fk += ((focusId ? 1 : 0) - fk) * .06;
+  if (focusId) { people.get(focusId)?.p.head.getWorldPosition(FH); FS.lerp(FH, fk < .05 ? 1 : .12); }   // FS: 걸을 때 머리 흔들림을 덜어낸 중심
+  const a = cam.yaw + (cam.moved ? 0 : Math.sin(t * .12) * .1) * (1 - fk) + Math.sin(t * .22) * .32 * fk,
+    pitch = cam.pitch, d = (R0 * fitK * (1 - fk) + 10 * fk) * cam.zoom;
+  LK.set(0, .2, .3).lerp(FS, fk);   // 1층 바닥 가운데(대표 자리) -> 고른 사람 머리
+  camera.position.set(LK.x + Math.sin(a) * Math.cos(pitch) * d, LK.y + Math.sin(pitch) * d, LK.z + Math.cos(a) * Math.cos(pitch) * d);
+  if (stageW > 700) { const s = 176 / (stageW / 2) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect * d * fk;   // 오른쪽 기록 패널(352px)에 가리지 않게 사람을 왼쪽 빈 곳 가운데로
+    LK.x += Math.cos(a) * s; LK.z -= Math.sin(a) * s; camera.position.x += Math.cos(a) * s; camera.position.z -= Math.sin(a) * s; }
   camera.lookAt(LK);
   renderer.shadowMap.needsUpdate = walking || !(frames & 1);   // 걷는 사람이 있으면 매 프레임(그림자가 발을 따라오게)
   gpuClock(true);
@@ -1600,7 +1654,7 @@ function frame() {
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   if (!w || !h) return;
-  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  stageW = w; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
   composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); msaa.setSize(w * renderer.getPixelRatio(), h * renderer.getPixelRatio()); tsH.uniforms.h.value = 2 / w; tsV.uniforms.v.value = 2 / h;
   fitK = Math.max(1, 1.16 / camera.aspect);   // 시안(1040x900 장면) 기준. 더 좁은 화면이면 뒤로 물러나 방 전체가 들어오게
 }
@@ -1918,7 +1972,9 @@ function todoCard(t) {
       <div class="files"><label>${ic('clip')} 파일 첨부<input type="file" multiple data-files></label> ${(picked.get(t.id) || []).map((f) => esc(f.name)).join(', ')}</div>
       <div class="ft"><span class="err"></span><span><button data-dismiss title="필요 없어진 TODO를 답 없이 닫습니다(PM에게 넘기지 않음)">지우기</button> <button class="primary" data-submit>${t.type === '실행' ? '했어요' : '제출'}</button></span></div></div>`;
 }
-const editing = (box) => box.contains(document.activeElement) && document.activeElement.matches('textarea,input');
+const editing = (box) => (box.contains(document.activeElement) && document.activeElement.matches('textarea,input'))
+  || [...box.querySelectorAll('video,audio')].some((m) => !m.paused);   // 보던 영상·소리가 끊기지 않게
+const paintBox = (box, html) => editing(box) || setHTML(box, html);   // 입력·재생 중이 아니고 내용이 바뀌었을 때만 다시 그린다
 function renderTodos(open) {
   const nAct = open.filter((t) => t.type !== '확인').length;
   $('ntodo').textContent = nAct === open.length ? `${open.length}건 대기` : `할 일 ${nAct} · 보고 ${open.length - nAct}`; $('tabtodo').textContent = open.length || '';
@@ -1929,9 +1985,9 @@ function renderTodos(open) {
   paintAll(); tsched();
   // 대표가 답·실행할 TODO를 먼저, 끝난 실행의 보고 확인은 아래에 접어서(같은 무게로 섞여 보이지 않게)
   const act = open.filter((t) => t.type !== '확인'), reps = open.filter((t) => t.type === '확인');
-  if (!editing($('todos'))) $('todos').innerHTML = !open.length ? '<div class="meta">할 일 없음</div>'
+  paintBox($('todos'), !open.length ? '<div class="meta">할 일 없음</div>'
     : (act.length ? act.map(todoCard).join('') : '<div class="meta">답할 일 없음</div>') +
-      (reps.length ? `<details class="reps"${repsOpen ? ' open' : ''}><summary>읽을 보고 ${reps.length}건</summary>${reps.map(todoCard).join('')}</details>` : '');   // 입력 중에는 다시 그리지 않음
+      (reps.length ? `<details class="reps"${repsOpen ? ' open' : ''}><summary>읽을 보고 ${reps.length}건</summary>${reps.map(todoCard).join('')}</details>` : ''));
   renderThreadTodos();
 }
 // 열린 스레드에서 나온 대기 TODO를 스레드 안에서 바로 답하게(슬랙의 승인 요청처럼)
@@ -1939,7 +1995,7 @@ $('todos').addEventListener('toggle', (e) => { if (e.target.matches?.('details.r
 function renderThreadTodos() {
   const box = $('ttodos'), mine = openTh == null ? [] : openTodos.filter((t) => t.thread === openTh);
   box.hidden = !mine.length;
-  if (!editing(box)) box.innerHTML = mine.length ? `<h3>대표 답을 기다리는 TODO ${mine.length}건</h3>${mine.map(todoCard).join('')}` : '';
+  paintBox(box, mine.length ? `<h3>대표 답을 기다리는 TODO ${mine.length}건</h3>${mine.map(todoCard).join('')}` : '');
   loadReps();
 }
 // 확인 TODO 카드의 보고 전문(board/reports/…md의 --- 아래). 한 번 받은 글은 기억해 둔다
@@ -1947,8 +2003,8 @@ const repText = new Map(), repOpen = new Set();
 function loadReps() {
   for (const el of document.querySelectorAll('.todo .rep[data-rep]')) {
     const ref = el.dataset.rep;
-    const show = () => { el.innerHTML = md(repText.get(ref) || ''); if (!el.classList.contains('open')) el.classList.toggle('more', el.scrollHeight > el.clientHeight + 1); };
-    if (!ref) continue;
+    const show = () => { el.dataset.shown = 1; el.innerHTML = md(repText.get(ref) || ''); if (!el.classList.contains('open')) el.classList.toggle('more', el.scrollHeight > el.clientHeight + 1); };
+    if (!ref || el.dataset.shown) continue;   // 이미 채운 본문은 다시 넣지 않는다(안의 영상이 끊긴다)
     if (repText.has(ref)) { show(); continue; }
     fetch('/api/file?path=' + encodeURIComponent(ref)).then((r) => (r.ok ? r.text() : '')).then((txt) => { repText.set(ref, txt.split(/\n---\n/).slice(1).join('\n---\n').trim() || txt.trim()); show(); }).catch(() => {});
   }
@@ -2151,7 +2207,12 @@ let openTh = null, tTimer = 0, tFilter = 'all';
 const seen = (() => { try { return JSON.parse(localStorage.getItem('office-seen')) || {}; } catch { return {}; } })();
 const saveSeen = () => { try { localStorage.setItem('office-seen', JSON.stringify(seen)); } catch {} };
 if (seen._base == null) { seen._base = Date.now(); saveSeen(); }
-const setHTML = (el, h) => { if (el._h === h) return false; el._h = h; el.innerHTML = h; return true; };   // 같은 내용이면 DOM을 다시 만들지 않는다(사진 다시 풀기·레이아웃 줄임)
+const setHTML = (el, h) => { if (el._h === h) return false; el._h = h;
+  // 다시 그려도 보던 영상·소리는 그대로: 같은 src의 옛 요소를 새 자리에 옮겨 끼운다(같은 작업 안에서 다시 붙이면 재생이 멈추지 않는다)
+  const old = new Map([...el.querySelectorAll('video,audio')].map((m) => [m.getAttribute('src'), m]));
+  el.innerHTML = h;
+  for (const m of el.querySelectorAll('video,audio')) { const o = old.get(m.getAttribute('src')); if (o) { m.replaceWith(o); old.delete(m.getAttribute('src')); } }
+  return true; };   // 같은 내용이면 DOM을 다시 만들지 않는다(사진 다시 풀기·레이아웃 줄임)
 const tsched = () => { tTimer ||= setTimeout(() => { tTimer = 0; renderThreads(); }, 150); };
 const whoName = (n) => n === 'ceo' ? '대표' : people.get(n)?.label || n;
 const avatar = (n) => { const q = people.get(n), src = portraits.get(n), bg = q?.c || '#b9ad95'; return src ? `<img class="av" alt="" src="${src}" style="background:${bg}">` : `<i class="av" style="background:${bg}"></i>`; };
@@ -2245,7 +2306,7 @@ function renderThreads() {
   for (const x of el.querySelectorAll('.tx:not(.open)')) x.classList.toggle('more', x.scrollHeight > x.clientHeight + 1);
   el.scrollTop = stick ? el.scrollHeight : top;
 }
-function openThread(id) { openTh = id; $('terr').textContent = ''; setHTML($('tmsgs'), ''); $('ttodos').innerHTML = ''; $('thread').classList.add('on'); renderThreads(); renderThreadTodos(); $('tmsgs').scrollTop = $('tmsgs').scrollHeight; }
+function openThread(id) { openTh = id; $('terr').textContent = ''; setHTML($('tmsgs'), ''); setHTML($('ttodos'), ''); $('thread').classList.add('on'); renderThreads(); renderThreadTodos(); $('tmsgs').scrollTop = $('tmsgs').scrollHeight; }
 function closeThread() { openTh = null; $('thread').classList.remove('on'); renderThreads(); }
 $('tfilter').onclick = (e) => { const f = e.target.closest('[data-f]')?.dataset.f; if (f) { tFilter = f; renderThreads(); } };
 $('tlist').onclick = (e) => { const id = e.target.closest('[data-th]')?.dataset.th; if (id) openThread(Number(id)); };
