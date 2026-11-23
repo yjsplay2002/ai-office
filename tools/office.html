@@ -2421,7 +2421,7 @@ function onEvent(e) {
     if (e.closed != null && !e._history) refreshBoard();   // 종료하며 지운 TODO를 목록에서 뺀다
     tsched();
     if (e.log) log(e.log);
-    if (e.ended && !e._history) refreshBoard();
+    if ((e.ended || e.todos) && !e._history) refreshBoard();
     return;
   }
   for (const ev of feedOf(e._run)(e)) { hist.feed(ev, t, e._run); handle(ev, !e._history, e._run); }

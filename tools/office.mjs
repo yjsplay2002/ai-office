@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, exi
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseTodos, answerTodo, dismissTodo, uploadPlan, addRunReport, followUp, resolvedIds, SUPERSEDED, RESOLVED } from './todos.mjs';
+import { parseTodos, answerTodo, dismissTodo, settleTodo, uploadPlan, addRunReport, followUp, resolvedIds, SUPERSEDED, RESOLVED } from './todos.mjs';
 import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
@@ -260,9 +260,11 @@ function comment(thread, text, member, files = []) {
   const ups = checkUploads(`thread-${thread}-${Date.now()}`, files);
   saveUploads(ups);
   if (ups.length) text = `${(text || '').trim()}\n\n대표 첨부 파일: ${ups.map((u) => u.rel).join(', ')}`;
+  const shown = text.trim();
+  text = shown + answerByComment(thread, shown);
   const live = th.ids.some((id) => runs.has(id)), agent = member === '' ? undefined : member || th.agent || undefined;   // '' = PM 봇을 멘션
   if (th.session && !live && agent === (th.agent || undefined)) {
-    if (!staleSession(th)) return startRun(text.trim(), { thread, resume: th.session, shown: text.trim(), agent });
+    if (!staleSession(th)) return startRun(text, { thread, resume: th.session, shown, agent });
     office({ log: `스레드 세션이 길어져(문맥 ${Math.round(th.ctx / 1e3)}k) 새 세션으로 이어 감` });
   }
   startRun(`대표가 아래 지시의 스레드에 댓글을 달았습니다. 지시의 맥락에서 댓글을 처리해.
@@ -270,7 +272,20 @@ function comment(thread, text, member, files = []) {
 ${threadContext(th)}
 
 [대표 댓글]
-${text.trim()}`, { thread, shown: text.trim(), agent });
+${text}`, { thread, shown, agent });
+}
+// 대표 답을 기다리는 TODO가 있는 스레드에 단 댓글 = 그 TODO의 답: 바로 닫아 대시보드·슬랙 카드에서 내린다(PM 보고의 "처리된 TODO"를 기다리지 않음).
+// PM에게는 어떤 TODO의 답인지 알린다. 댓글이 답이 아니었으면 PM이 새 TODO로 다시 묻는다. -> 프롬프트에 덧붙일 글
+function answerByComment(thread, text) {
+  let all; try { all = todos(); } catch { return ''; }
+  const open = all.filter((t) => !t.done && todoThread(t, history, all) === thread);
+  if (!open.length) return '';
+  const day = new Date().toLocaleDateString('sv'), full = `스레드 댓글로 답함: ${text.split('\n')[0].slice(0, 200)}`;
+  writeFileSync(todosFile, open.reduce((x, t) => settleTodo(x, t.id, full, day).text, readFileSync(todosFile, 'utf8')));
+  for (const t of open) if (t.type === '결정' || t.type === '승인') appendFileSync(path.join(board, 'decisions.md'), `${day} — T${t.id} ${t.desc.split('\n')[0]} — ${full}\n`);
+  office({ log: `T${open.map((t) => t.id).join(', T')} 닫음 (스레드 댓글로 답함)` });
+  return '\n\n[이 댓글로 답한 TODO]\n' + open.map((t) => `- T${t.id} [${t.type} · ${t.by}] ${t.desc.split('\n')[0]}${t.options.length ? ` (보기: ${t.options.join(' / ')})` : ''}`).join('\n') +
+    '\n위 TODO는 이 댓글을 답으로 보고 닫았다. 댓글대로 처리해. 댓글이 답이 아니어서 아직 대표 답이 필요하면 새 TODO로 다시 올려.';
 }
 // 이어 붙이지 않는 새 세션에 넘기는 스레드 맥락: 원래 지시 + 직전 보고 앞부분(자세한 것은 board/에 있다)
 const threadContext = (th) => `[원래 지시]\n${th.prompt}` + (th.last ? `\n\n[이 스레드의 직전 보고(앞부분)]\n${th.last.slice(0, 2000)}` : '');
@@ -498,10 +513,13 @@ const slack = slackCfg && createSlack({
   onAnswer: (id, answer, note, files) => submitTodo(id, answer, note, files),
 });
 // New open TODOs (by id) since the server started. Existing ones at boot are not re-announced.
-let seenTodos = null;
+let seenTodos = null, openKey = null;
 function checkTodos() {
   let open;
   try { open = todos().filter((t) => !t.done); } catch { return; }
+  const key = open.map((t) => t.id).join();
+  if (openKey != null && key !== openKey) office({ todos: true });   // 슬랙·텔레그램 답, PM이 올린 TODO도 대시보드가 바로 다시 받게
+  openKey = key;
   const fresh = seenTodos ? open.filter((t) => !seenTodos.has(t.id)) : [];
   seenTodos = new Set([...(seenTodos || []), ...open.map((t) => t.id)]);
   for (const t of fresh) tg?.notifyTodo(t);
