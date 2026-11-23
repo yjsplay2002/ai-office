@@ -562,7 +562,7 @@ const ALIAS = { research: 'scout' };   // 플러그인 기본 팀의 research = 
 // 1층: 대표는 한가운데, 왼쪽은 책상 격자(업무 공간), 오른쪽은 나무·라운지
 const SPOT = { ceo: [0, -.6, 0, 'ceo'], pm: [-3.4, -2.6, .3], scout: [-6.5, -5.6, .3, 'map'], plan: [-3.4, -5.6, .3, 'board'], dev: [-6.5, -2.6, .3, 'dual'], console: [-9.6, -2.6, .3, 'triple'], bm: [-6.5, .4, .3, 'ledger'], design: [-9.6, .4, .3, 'tablet'] };   // [x, z, 회전, 책상 종류]
 const EXTRA = [[-3.4, .4, .3], [-9.6, -5.6, .3], [-3.4, 3.4, .3], [-6.5, 3.4, .3], [-9.6, 3.4, .3]];
-const SOFA = [4, 2, 6, 0, 8, 3, 5, 1, 7];   // 소파 9칸을 가운데부터
+const SOFA = [4, 2, 6, 0, 8, 3, 5, 1, 7], SOFA_R = 1.72;   // 앉는 자리: 방석(반지름 1.56~2.14) 앞쪽. 가운데(1.88)면 짧은 정강이가 방석 앞면을 뚫는다   // 소파 9칸을 가운데부터
 const roleOf = (name) => ALIAS[name] || name;
 const deskUsed = new Set(), seatOf = new Map();
 let extraNext = 0, sofaNext = 0;
@@ -679,7 +679,7 @@ P(world,stadGeo(IR,.7),'#7cc24e',0,-1.35,0,-PI/2);
     const n=rimN(a,Math.max(5,Math.round(a*2.2)));for(let i=0;i<n;i++){const u=(i+rnd(-.2,.2))/n,hh=h*rnd(.8,1.35),rr=(a+b)/2-rnd(.2,1.1),[cx,cz,th]=rimAt(u,rr);P(world,RB,shade(TAN[Math.floor(rnd(5))],(1-t*.05)*rnd(.86,1.04)),cx,y-hh/2+rnd(-.1,.3),cz,rnd(-.07,.07),-th+rnd(-.15,.15),rnd(-.07,.07),[rnd(1.6,2.2),hh,(2*PI*a+4*SX)/n*rnd(.9,1.08)])}
     y-=h;t++}
   if(!ISLE)P(world,G.ico(1.3,1),'#b98f66',0,y-.2,0,0,0,0,[1+SX*.6,1.4,1]);
-  for(let i=0;i<16;i++){const th=rnd(6.28),rr=rnd(7,IR-.8),x=Math.cos(th)*rr+sgn(Math.cos(th))*SX,z=Math.sin(th)*rr,y0=-2.6-(IR-rr)*.9,l=rnd(1.2,3);limb(world,[x,y0,z],[x+rnd(-.3,.3),y0-l,z+rnd(-.3,.3)],.05,.025,i%3?'#5aa83e':'#8a5a36',4);puffs.put(x,y0-l,z,.17,GR[i%5])}}
+  if(!ISLE)for(let i=0;i<16;i++){const th=rnd(6.28),rr=rnd(7,IR-.8),x=Math.cos(th)*rr+sgn(Math.cos(th))*SX,z=Math.sin(th)*rr,y0=-2.6-(IR-rr)*.9,l=rnd(1.2,3);limb(world,[x,y0,z],[x+rnd(-.3,.3),y0-l,z+rnd(-.3,.3)],.05,.025,i%3?'#5aa83e':'#8a5a36',4);puffs.put(x,y0-l,z,.17,GR[i%5])}}
 // 가장자리 이끼: 둥근 둔덕 위에 잔 뭉치, 절벽으로 흘러내린 이끼. 잔디엔 작은 꽃(흰·분홍·노랑)과 둥근 돌
 {const NM=rimN(IR,170);for(let i=0;i<NM;i++){const[x,z,th]=rimAt((i+rnd(-.3,.3))/NM,IR+rnd(-.35,.25));if(near(th,FALL,.12)||atBridge(x,z,1.1))continue;
     if(bushI){if(i%9===0){const big=Math.sin(th)<.3?1:.65;for(let k=0;k<2+(rnd()<.5);k++)bushI.put(x+rnd(-.7,.7),-.85,z+rnd(-.7,.7),rnd(1,1.6)*big)}}else{puffs.put(x,-.8+rnd(-.1,.1),z,rnd(.5,.8),GR[i%5],.7,.88);
@@ -1133,7 +1133,7 @@ const SPOTS = [];
 {
   const tea = [L[0], L[1] + .25], toTea = (x, z) => Math.atan2(tea[0] - x, tea[1] - z);
   for (const i of SOFA) { const th = (195 + i * 18.75) * PI / 180, c = Math.cos(th), n = Math.sin(th);
-    SPOTS.push({ sofa: i, sit: true, x: L[0] + c * 1.88, y: .1, z: L[1] + n * 1.88, ry: Math.atan2(-c, -n), walk: [L[0] + c * 1.25, L[1] + n * 1.25] }); }
+    SPOTS.push({ sofa: i, sit: true, x: L[0] + c * SOFA_R, y: .1, z: L[1] + n * SOFA_R, ry: Math.atan2(-c, -n), walk: [L[0] + c * 1.25, L[1] + n * 1.25] }); }
   SPOTS.push({ sit: true, x: L[0] - 1.3, y: .12, z: L[1] + 1.55, ry: toTea(L[0] - 1.3, L[1] + 1.55), walk: [L[0] - .6, L[1] + 1.9] });
   SPOTS.push({ sit: true, x: L[0] + 1.5, y: -.04, z: L[1] + 1.2, ry: toTea(L[0] + 1.5, L[1] + 1.2), walk: [L[0] + .9, L[1] + 1.6] });
   for (const a of [90, 15, 165]) { const x = tea[0] + Math.cos(a * PI / 180) * 1.35, z = tea[1] + Math.sin(a * PI / 180) * 1.35; SPOTS.push({ sit: false, x, y: .4, z, ry: toTea(x, z), walk: [x, z] }); }
@@ -1202,7 +1202,7 @@ function addPerson(info) {
     if (built) { scene.add(bake(w)); buildNav(); } else world.add(w);
   } else {
     const th = (195 + seat.sofa * 18.75) * PI / 180;
-    p.g.position.set(L[0] + Math.cos(th) * 1.88, .1, L[1] + Math.sin(th) * 1.88);   // 방석 윗면(-.07)보다 .17 위 = 책상 의자와 같은 앉은 높이 p.g.rotation.y = Math.atan2(-Math.cos(th), -Math.sin(th));
+    p.g.position.set(L[0] + Math.cos(th) * SOFA_R, .1, L[1] + Math.sin(th) * SOFA_R);   // 방석 윗면(-.07)보다 .17 위 = 책상 의자와 같은 앉은 높이 p.g.rotation.y = Math.atan2(-Math.cos(th), -Math.sin(th));
     sit(p); laptop(p); scene.add(p.g);
     const sp = SPOTS.find((x) => x.sofa === seat.sofa); if (sp) sp.who = info.name;   // 이 소파 칸은 이 사람 자리
   }
