@@ -1539,7 +1539,7 @@ document.addEventListener('click', (e) => {
 });
 renderer.domElement.addEventListener('mousemove', (e) => { renderer.domElement.style.cursor = pickPaper(e) || pickPerson(e) ? 'pointer' : ''; });
 
-// ---------- 시간·날씨: 이 컴퓨터 시계로 낮·노을·밤, 날씨는 Open-Meteo(키 없음)에서 15분마다. ?hour=21&wx=rain 으로 미리 보기 ----------
+// ---------- 시간·날씨: 이 컴퓨터 시계로 낮·노을·밤, 날씨는 시간대 도시 기준 Open-Meteo(키 없음)에서 15분마다. ?hour=21&wx=rain 으로 미리 보기 ----------
 // [시각, 하늘 위·가운데·아래, 안개, 햇빛 색·세기, 반구광 위·아래·세기, 노출, 램프 빛]
 const SKYS = [[0, '#0e1838', '#26315e', '#4a4670', '#2a2f52', '#9fb4ff', .6, '#6f7fc0', '#3a3050', .55, 1.1, 2.6],
   [6.5, '#7f8fc9', '#f0b9a8', '#ffc58f', '#f3c3a4', '#ff9e5e', 2, '#ffd0b0', '#b98060', 1, 1.2, 1.6],
@@ -1570,12 +1570,15 @@ function applySky() {
   CLOUD.forEach((m, k) => { m.color.set(CLOUD0[k]).lerp(new THREE.Color('#9aa1ab'), w.c * .6); m.emissiveIntensity = .35 * Math.min(1, num(6) / 3.3) * (1 - w.c * .7); });   // 밤·흐린 날엔 구름이 분홍빛으로 빛나지 않게
   drops.visible = !!w.drop; Object.assign(drops.material, w.drop === 'snow' ? { size: .22, color: new THREE.Color('#ffffff') } : { size: .12, color: new THREE.Color('#7f9cc4') });
 }
-// 위치는 브라우저가 물어보고 허락할 때만. 좌표는 소수 한 자리(약 10km)로 줄여 보낸다. 거절·실패하면 시간만 반영
+// 위치 권한은 묻지 않는다: 브라우저 시간대의 도시(Asia/Seoul → Seoul)를 Open-Meteo 지명 검색으로 좌표로 바꿔 그 도시 날씨를 쓴다. 실패하면 시간만 반영
+// shortcut: 시간대 도시 단위라 넓은 나라(미국 등)는 멀리 떨어진 도시 날씨일 수 있다. 정확해야 하면 설정에 도시를 받는다
+let wxAt = null;
 async function fetchWx() {
   if (qs.has('wx')) return;
   try {
-    const p = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { maximumAge: 36e5, timeout: 2e4 }));
-    const r = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p.coords.latitude.toFixed(1)}&longitude=${p.coords.longitude.toFixed(1)}&current=weather_code`)).json();
+    const city = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace(/_/g, ' ');
+    wxAt ||= (await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(city)}`)).json()).results[0];
+    const r = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${wxAt.latitude}&longitude=${wxAt.longitude}&current=weather_code`)).json();
     weather = wxOf(r.current.weather_code); applySky();
   } catch {}
 }
