@@ -231,4 +231,19 @@ s6.board([]); await new Promise((ok) => setTimeout(ok, 30));
 const u6 = calls.find((c) => c.method === 'chat.update');
 assert.deepEqual([u6.channel, u6.ts, u6.blocks[0].text.text.split('\n')[1]], ['CT', '80.0', '💬 <https://x.slack.com/p1.5|홍보 영상>']);
 assert.equal(JSON.parse(readFileSync(path.join(d6, 'slack.json'), 'utf8')).todos[7].link, 'https://x.slack.com/p1.5');
+// TODO 채널 카드에 적힌 사진(설명·근거)은 그 카드의 스레드에 파일로
+{
+  const d7 = mkdtempSync(path.join(os.tmpdir(), 'slack7-')), r7 = path.join(d7, '.office-runs');
+  mkdirSync(path.join(d7, 'board', 'dev'), { recursive: true }); mkdirSync(r7);
+  writeFileSync(path.join(d7, 'board', 'dev', 'shot.png'), 'png');
+  writeFileSync(path.join(r7, 'slack.json'), JSON.stringify({ channel: 'C9', todoChannel: 'CT', threads: { 3: '1.5' }, todos: {} }));
+  calls.length = 0;
+  const s7 = createSlack({ cfg: { token: 't', owner: 'U1', app: '', channel: '', todo: true, name: 'ai-office-t' }, runDir: r7, todos: () => [],
+    threadPrompt: () => '코옵', onRun() {}, onComment() {}, onAnswer() {}, log: (...a) => logs.push(a.join(' ')) });
+  s7.notifyTodo({ id: 75, type: '승인', by: 'dev', desc: '사거리 넣었어요', ref: 'board/dev/shot.png', options: ['승인', '반려'] }, 3);
+  await new Promise((ok) => setTimeout(ok, 50));
+  const card = calls.find((c) => c.method === 'chat.postMessage' && c.channel === 'CT'), done = calls.find((c) => c.method === 'files.completeUploadExternal');
+  assert.deepEqual([done.channel_id, JSON.parse(done.files)[0].title], ['CT', 'board/dev/shot.png']);
+  assert.ok(done.thread_ts && calls.indexOf(card) < calls.indexOf(done));
+}
 console.log('slack ok');

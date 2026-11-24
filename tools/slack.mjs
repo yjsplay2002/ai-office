@@ -216,13 +216,15 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
   // 글에 나온 board/ 사진·영상·소리를 그 글 바로 아래에 파일로 올린다(슬랙에서 바로 보고 듣게). 같은 파일은 스레드에 한 번만.
   const sent = new Set();
   let noScope = false;
-  function attach(thread, text, as) {   // md는 todos.md 같은 board/ 바로 아래 파일과 보고 전문(이미 글로 올림)은 빼고
+  // to = 올릴 곳(기본: 그 대시보드 스레드). TODO 채널 카드는 { key, channel, ts } 로 그 카드의 스레드에.
+  function attach(thread, text, as, to = { key: thread, channel: st.channel, ts: () => root(thread) }) {   // md는 todos.md 같은 board/ 바로 아래 파일과 보고 전문(이미 글로 올림)은 빼고
+    thread = to.key;
     // board/ 밖 경로·이름만 쓴 사진·영상·소리도 실제 파일을 찾아 올린다(슬랙에서는 로컬 경로를 못 연다). 같은 파일은 실제 경로로 한 번만.
     const rel = (file) => { const r = path.relative(repo, file); return r.startsWith('..') || path.isAbsolute(r) ? path.basename(file) : r.replace(/\\/g, '/'); };
     const dup = new Set(), files = [...mediaIn(text).filter((r) => !/^board\/([^/]+|reports\/.*)\.md$/i.test(r)).map((r) => mediaFile(repo, r)?.file), ...looseMedia(repo, text)]
       .filter((file) => file && !dup.has(file) && dup.add(file) && !sent.has(`${thread}:${file}`)).slice(0, 10).map((file) => ({ rel: rel(file), m: { file } }));
     const big = files.filter((f) => statSync(f.m.file).size > 1e9);   // 슬랙 파일 한도 1GB
-    if (big.length) { big.forEach((f) => sent.add(`${thread}:${f.m.file}`)); reply(thread, { text: `1GB가 넘어 슬랙에 못 올려요. 대시보드에서 받으세요: ${big.map((f) => f.rel).join(', ')}` }, as); }
+    if (big.length) { big.forEach((f) => sent.add(`${thread}:${f.m.file}`)); queue(async () => post({ channel: to.channel, thread_ts: await to.ts(), text: `1GB가 넘어 슬랙에 못 올려요. 대시보드에서 받으세요: ${big.map((f) => f.rel).join(', ')}` }, as)); }
     files.splice(0, files.length, ...files.filter((f) => !big.includes(f)));
     if (!files.length || noScope) return;
     for (const f of files) sent.add(`${thread}:${f.m.file}`);
@@ -235,7 +237,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
           if (!r.ok) throw new Error(`파일 올리기 ${r.status}`);
           ids.push({ id: u.file_id, title: f.rel });
         }
-        await form('files.completeUploadExternal', { files: JSON.stringify(ids), channel_id: st.channel, thread_ts: await root(thread) }, token);
+        await form('files.completeUploadExternal', { files: JSON.stringify(ids), channel_id: to.channel, thread_ts: await to.ts() }, token);
       };
       try { await up(bots[as]?.token); }
       catch (err) {
@@ -308,6 +310,9 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
       const link = ch ? await perma(thread) : null;
       const m = ch ? await post({ channel: ch, ...todoCard(t, cfg.owner, link, titleOf(thread)) }) : await post({ thread_ts: r, ...todoCard(t, quiet && !cfg.todo ? '' : cfg.owner) });
       st.todos[t.id] = { thread, ts: m.ts, ...(ch ? { ch, link } : {}) }; save();
+      // 카드에 적힌 사진·영상·소리도 파일로(TODO 채널이면 그 카드의 스레드에, 아니면 원래 스레드에 — 보고에서 이미 올린 건 다시 안 올림)
+      const what = [t.desc, t.ref, ...(t.options || [])].filter(Boolean).join('\n');
+      if (ch) attach(null, what, undefined, { key: `todo:${t.id}`, channel: ch, ts: async () => m.ts }); else attach(thread, what);
     });
   }
   // 답했거나 지운 TODO 카드는 버튼을 내리고 답을 적는다(대시보드·텔레그램에서 답해도).
