@@ -323,12 +323,16 @@ function agents() {
   });
 }
 
+// 한 폴더에 파일이 BOARD_DIR_MAX개 넘으면(영상 프레임·캐시) 목록에서 뺀다: biz-ops board/의 프레임 2만여 장을 15초마다 훑어 /api/board가 5초 걸렸다.
+// shortcut: 그 폴더 안의 보고용 파일도 목록에 안 보인다. 보고에 경로로 적힌 파일은 /files/로 그대로 열린다
+const BOARD_DIR_MAX = 300;
 function listBoard(dir = board) {
-  if (!existsSync(dir)) return [];   // board/가 아직 없는 새 팀
-  return readdirSync(dir).flatMap((f) => {
-    const p = path.join(dir, f);
-    if (statSync(p).isDirectory()) return listBoard(p);
-    return [{ path: path.relative(root, p).replace(/\\/g, '/'), mtime: statSync(p).mtimeMs }];
+  let es; try { es = readdirSync(dir, { withFileTypes: true }); } catch { return []; }   // board/가 아직 없는 새 팀
+  if (dir !== board && es.length > BOARD_DIR_MAX) return [];
+  return es.flatMap((e) => {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) return e.name === 'node_modules' || e.name === '.git' ? [] : listBoard(p);
+    try { return [{ path: path.relative(root, p).replace(/\\/g, '/'), mtime: statSync(p).mtimeMs }]; } catch { return []; }   // 훑는 사이 지워진 파일
   }).sort((a, b) => b.mtime - a.mtime);
 }
 
