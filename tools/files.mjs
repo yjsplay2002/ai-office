@@ -32,7 +32,7 @@ export function mediaFile(root, rel) {
 const VIEW = 'png|jpe?g|gif|webp|mp4|webm|mov|mp3|wav|ogg|m4a', SEGC = String.raw`[\p{L}\p{N}_.@+~-]`;
 const LOOSE = [
   new RegExp(String.raw`[A-Za-z]:[\\/][^\n\x60'"<>|*?]*?\.(?:${VIEW})(?![A-Za-z0-9_])`, 'giu'),                          // 윈도 절대 경로(빈칸 허용)
-  new RegExp(String.raw`(?<![\p{L}\p{N}_.~-])\/(?:${SEGC}+\/)*${SEGC}+\.(?:${VIEW})(?![A-Za-z0-9_])`, 'giu'),            // 맥·리눅스 절대 경로
+  new RegExp(String.raw`(?<=^|[\s\x60(（"'*])\/[^\n\x60'"<>|*?]*?\.(?:${VIEW})(?![A-Za-z0-9_])`, 'giu'),               // 맥·리눅스 절대 경로(빈칸 허용)
   new RegExp(String.raw`(?<![\p{L}\p{N}_.\/\\:~@-])(?:${SEGC}+[\\/])*${SEGC}+\.(?:${VIEW})(?![A-Za-z0-9_\/\\])`, 'giu'),   // 상대 경로·이름만
 ];
 export function looseMedia(root, text) {
@@ -52,7 +52,9 @@ export function looseMedia(root, text) {
     return names.get(name.toLowerCase());
   };
   for (const re of LOOSE) for (const [m] of s.matchAll(re)) {
-    const tries = path.isAbsolute(m) ? [m] : /[\\/]/.test(m) ? [path.resolve(root, m), path.resolve(root, '..', m)] : [inBoard(m)];
+    // 빈칸을 허용하니 "/api 호출 뒤 /tmp/x.png"처럼 앞의 다른 / 부터 잡힐 수 있다: 빈칸 뒤 절대 경로로 다시 시도
+    const abs = /^([A-Za-z]:)?[\\/]/.test(m);
+    const tries = abs ? [m, ...[...m.matchAll(/\s(?=\/|[A-Za-z]:[\\/])/g)].map((x) => m.slice(x.index + 1))] : /[\\/]/.test(m) ? [path.resolve(root, m), path.resolve(root, '..', m)] : [inBoard(m)];
     for (const f of tries) {
       if (!f || f.split(/[\\/]/).some((x) => DENY.test(x))) continue;
       try { const real = realpathSync(f); if (statSync(real).isFile() && !real.split(/[\\/]/).some((x) => DENY.test(x))) { out.add(real); break; } } catch {}

@@ -37,6 +37,8 @@ writeFileSync(path.join(outside, 'doc.pdf'), 'x');
 const loose = looseMedia(root, `스샷 ${path.join(tmp, 'with space', 'shot.png')}에 있고, \`game/tools/a.html\`, \`sib/qa/q.jpg\`, \`reopen-ko.png\`, ${path.join(outside, 'doc.pdf')}, ${path.join(root, '.dev.vars.png')}, board/.env.png, 없음.png`)
   .map((f) => path.relative(tmp, f).replace(/\\/g, '/'));
 assert.deepEqual(loose.sort(), ['repo/board/design/v2/reopen-ko.png', 'sib/qa/q.jpg', 'with space/shot.png']);
+// 앞에 다른 절대 경로 조각이 있어도(빈칸 허용이라 거기서부터 잡힘) 뒤의 실제 경로를 찾는다
+assert.equal(looseMedia(root, `${path.sep === '/' ? '/api' : 'C:\\api'} 호출 뒤 ${path.join(tmp, 'with space', 'shot.png')}`).length, 1);
 
 assert.equal(byteRange(undefined, 100), null);
 assert.equal(byteRange('bytes=-', 100), null);
