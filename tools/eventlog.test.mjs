@@ -1,4 +1,4 @@
-// node tools/eventlog.test.mjs — the saved dashboard log: trim by age and size, drop re-attached runs, next run id.
+// node tools/eventlog.test.mjs — the saved dashboard log: trim by age and size, drop re-attached runs and noise lines, next run id.
 import assert from 'node:assert/strict';
 import { slimLine, loadLog, lastRun, todoThread, linkAnswers, keepRuns, tail } from './eventlog.mjs';
 
@@ -21,6 +21,10 @@ assert.deepEqual(loadLog(text, { now, max: 2 }).map((l) => JSON.parse(l)._t), [n
 assert.equal(lastRun(loadLog(text, { now, days: 30 })), 3);
 assert.equal(lastRun([]), 0);
 assert.deepEqual(loadLog(''), []);
+// 화면이 안 읽는 줄(팀원 도구 결과 원문, 진행 표시)은 기록에서 뺀다. PM 도구 결과·팀원 말은 남긴다
+const noisy = [L({ _t: now, _run: 4, type: 'user', parent_tool_use_id: 'a', message: { content: [] } }), L({ _t: now, _run: 4, type: 'system', subtype: 'task_progress' }),
+  L({ _t: now, _run: 4, type: 'tool_progress' }), L({ _t: now, _run: 4, type: 'user', message: { content: [] } }), L({ _t: now, _run: 4, type: 'assistant', parent_tool_use_id: 'a' }), L({ _t: now, _run: 4, type: 'system', subtype: 'init' })].join('\n');
+assert.deepEqual(loadLog(noisy, { now }).map((l) => JSON.parse(l).type), ['user', 'assistant', 'system']);
 console.log('eventlog ok:', kept.length, 'kept');
 
 // TODO 답 실행은 그 TODO를 올린 작업의 스레드에 붙는다(보고·근거 줄의 -run<N>.md = 올린 실행)

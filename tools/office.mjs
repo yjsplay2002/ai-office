@@ -12,7 +12,7 @@ import { usage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
 import { slackConfig, createSlack, writeApps } from './slack.mjs';
-import { loadLog, lastRun, KEEP_LINES, SEND_LINES, slimLine, todoThread, linkAnswers, ANSWER_HEAD, keepRuns, tail, threadInfo as threadOf, staleSession } from './eventlog.mjs';
+import { loadLog, lastRun, noise, KEEP_LINES, SEND_LINES, slimLine, todoThread, linkAnswers, ANSWER_HEAD, keepRuns, tail, threadInfo as threadOf, staleSession } from './eventlog.mjs';
 import { readAgent, editAgent, readPm, editPm, pmArgs } from './staff.mjs';
 import { updateTools } from './update.mjs';
 import { judgePrompt, parseVerdict } from './topic.mjs';
@@ -75,9 +75,11 @@ const clients = new Set();
 
 function broadcast(obj) {
   const line = slimLine(JSON.stringify({ _t: Date.now(), ...obj }));   // _t = when it happened, so replayed history keeps real times
-  history.push(line);
-  if (history.length > KEEP_LINES * 1.2) history = tail(history, KEEP_LINES, keep);   // 파일은 다음 부팅 때 줄인다
-  try { appendFileSync(histFile, line + '\n'); } catch {}
+  if (!noise(obj)) {
+    history.push(line);
+    if (history.length > KEEP_LINES * 1.2) history = tail(history, KEEP_LINES, keep);   // 파일은 다음 부팅 때 줄인다
+    try { appendFileSync(histFile, line + '\n'); } catch {}
+  }
   for (const res of clients) res.write(`data: ${line}\n\n`);
 }
 const office = (o) => broadcast({ type: '_office', ...o });

@@ -6,14 +6,19 @@ export const KEEP_DAYS = 7, KEEP_LINES = 5000, SEND_LINES = 3000;
 // 팀원 도구 결과의 스크린샷(base64)·생각 서명은 화면에 안 쓰는데 한 줄이 수백 KB라, 기록·전송 전에 비운다(기록 52MB → 새 화면이 멈춤)
 export const slimLine = (l) => /"(base64|signature)"/.test(l) ? l.replace(/"(data|base64|signature)":"[A-Za-z0-9+/=]{200,}"/g, '"$1":""') : l;
 
-// File text -> lines to keep: parseable, newer than `days`, not from a run in `drop` (runs re-attached on boot re-send
+// 화면·스레드 계산이 안 읽는 줄: 팀원(하위 에이전트)의 도구 결과 원문, 진행 표시·훅·생각 토큰 알림. 실시간으로는 보내되 기록에는 안 남긴다
+// (biz-ops 2026-11-24 기록 29MB 중 15MB가 이것. map.mjs는 하위 에이전트의 user 줄과 이 system 줄들을 안 본다)
+const NOISE = new Set(['ui_status', 'task_progress', 'task_started', 'hook_response', 'hook_started', 'thinking_tokens']);
+export const noise = (o) => (o.type === 'user' && !!o.parent_tool_use_id) || o.type === 'tool_progress' || (o.type === 'system' && NOISE.has(o.subtype));
+
+// File text -> lines to keep: parseable, not noise, newer than `days`, not from a run in `drop` (runs re-attached on boot re-send
 // all their lines, so their old copies go), at most `max` (newest kept). Lines of runs in `keep` stay however old.
 export function loadLog(text, { now = Date.now(), days = KEEP_DAYS, max = KEEP_LINES, drop = new Set(), keep = new Set() } = {}) {
   const since = now - days * 864e5, out = [];
   for (const l of String(text || '').split('\n')) {
     if (!l.trim()) continue;
     let o; try { o = JSON.parse(l); } catch { continue; }
-    if (drop.has(o._run) || !(o._t >= since || (o._t != null && keep.has(o._run)))) continue;
+    if (noise(o) || drop.has(o._run) || !(o._t >= since || (o._t != null && keep.has(o._run)))) continue;
     out.push(slimLine(l.trim()));
   }
   return tail(out, max, keep);
@@ -31,6 +36,7 @@ export const tail = (lines, n, keep = new Set()) => lines.length <= n ? lines : 
 export function keepRuns(lines, todos) {
   const threads = new Set(todos.filter((t) => !t.done).map((t) => todoThread(t, lines, todos)).filter((x) => x != null)), out = new Set();
   for (const l of lines) {
+    if (!l.includes('"_office"')) continue;
     let o; try { o = JSON.parse(l); } catch { continue; }
     if (o.type === '_office' && o.prompt && (threads.has(o._run) || threads.has(o.thread))) out.add(o._run);
   }
@@ -54,6 +60,7 @@ export function todoThread(todo, lines, todos = [], seen = new Set()) {
     if (o.type === 'assistant' && o._run && o.message?.content?.some((c) => c.type === 'tool_use' && head.test(JSON.stringify(c.input)))) { run = o._run; break; }
   }
   if (run) for (const l of lines) {
+    if (!l.includes('"_office"')) continue;   // 2만 줄을 다 JSON.parse하면 TODO 하나에 0.1초 → /api/board가 서버를 3초씩 멈췄다
     let o; try { o = JSON.parse(l); } catch { continue; }
     if (o.type === '_office' && o.prompt && o._run === run) return o.thread ?? run;
   }
