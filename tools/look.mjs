@@ -1,7 +1,7 @@
 // node tools/look.mjs a.png [b.png …] "질문" — 화면 사진을 작은 모델(haiku)에게 보여 주고 글 답만 stdout으로 낸다.
 // 팀원이 PNG를 Read로 직접 열면 이미지가 그 세션 문맥에 계속 남아 매 턴 토큰을 먹는다. 이 도구는 별도 짧은 세션에서 보고 글만 돌려준다.
 // 여러 장이면 한 번에 묻는다. 실패하면 이유 한 줄을 stderr에 쓰고 1로 끝난다.
-import { readFileSync, existsSync, statSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
@@ -35,15 +35,16 @@ export function userMessage(files, question, read = readFileSync) {
 
 function ask(files, question) {
   return new Promise((resolve, reject) => {
-    const cwd = mkdtempSync(path.join(os.tmpdir(), 'look-'));   // 프로젝트 CLAUDE.md를 싣지 않게 빈 폴더에서
-    const c = spawn('claude', ['-p', '--model', 'haiku', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--tools', '', '--no-session-persistence', '--setting-sources', 'project'],
+    const cwd = path.join(os.tmpdir(), 'office-look');   // 프로젝트 CLAUDE.md를 싣지 않게 빈 폴더에서(늘 같은 폴더: ~/.claude/projects에 폴더가 쌓이지 않게)
+    mkdirSync(cwd, { recursive: true });
+    // shell(윈도 claude.cmd)은 빈 인자를 지우니 '""'로 넘긴다
+    const c = spawn('claude', ['-p', '--model', 'haiku', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--tools', process.platform === 'win32' ? '""' : '', '--no-session-persistence', '--setting-sources', 'project'],
       { cwd, shell: process.platform === 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '', err = '';
     c.stdout.on('data', (d) => (out += d));
     c.stderr.on('data', (d) => (err += d));
     c.on('error', (e) => reject(new Error(`claude 실행 실패: ${e.message}`)));
     c.on('close', (code) => {
-      rmSync(cwd, { recursive: true, force: true });
       const r = out.split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).findLast((o) => o?.type === 'result');
       if (r && !r.is_error && r.result) return resolve(String(r.result).trim());
       reject(new Error(r?.result || err.trim().split('\n').at(-1) || `claude가 답 없이 끝남(코드 ${code})`));
