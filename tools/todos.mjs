@@ -93,11 +93,11 @@ function closeBlock(text, id, nth, full, today) {
 // 끝난 실행의 보고는 대표에게 한 번만 간다. 실행 중에 새로 올라온 미처리 TODO(결정·승인 등)가 있으면 '확인'을 따로 만들지 않고
 // 그 TODO들에 '- 보고:' 줄로 붙인다. 없거나 오류로 끝났으면 '확인' TODO 하나. before = 실행을 시작할 때 있던 TODO 번호들.
 // 같은 스레드(same(t, todos))에 아직 열린 앞 '확인'은 이 보고(새 확인이든 새 TODO에 붙든)가 이어받으니 닫는다(답: 취소 (새 보고로 바뀜)). 다른 종류는 둔다.
-// resolved = 보고가 "처리된 TODO"로 적은 번호: 실행 전부터 있던 같은 스레드의 열린 TODO만 '스레드에서 처리됨'으로 닫는다.
+// resolved = 보고가 "처리된 TODO"로 적은 번호: 실행 전부터 있던 열린 TODO만 '스레드에서 처리됨'으로 닫는다. 다른 스레드 것도(대표가 일을 다른 스레드에서 이어 가 처리함, biz-ops T595~597).
 // -> { text, ids(보고가 실린 TODO), check(확인을 새로 만들었나), closed(닫은 앞 확인 번호), settled(처리됨으로 닫은 번호) }
 export function addRunReport(text, { summary, ref, error, before = [], same, today = '', resolved = [] }) {
   const all0 = parseTodos(String(text));
-  const settled = same ? [...new Set(resolved)].filter((id) => before.includes(id) && all0.some((t) => t.id === id && !t.done && same(t, all0))) : [];
+  const settled = [...new Set(resolved)].filter((id) => before.includes(id) && all0.some((t) => t.id === id && !t.done));
   text = settled.reduce((x, id) => settleTodo(x, id, RESOLVED, today).text, String(text));
   const r = addRunReport0(text, { summary, ref, error, before });
   const all = parseTodos(r.text);

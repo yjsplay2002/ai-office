@@ -135,7 +135,7 @@ export function todoBoard(all = [], links = {}) {
 const firstLine = (s, n = 200) => { const l = (String(s || '').split('\n').map((x) => x.trim()).find(Boolean) || '').replace(/^#+\s*/, ''); return l.length > n ? l.slice(0, n - 1) + '…' : l; };
 
 // agents() = 팀원 이름 목록. 토큰이 있는 팀원은 자기 봇으로 말한다.
-export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), todos, allTodos = todos, threadPrompt, onRun, onComment, onAnswer, agents = () => [], log = console.log }) {
+export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), todos, allTodos = todos, threadPrompt, onRun, onComment, onAnswer, onSeen = () => {}, agents = () => [], log = console.log }) {
   const stateFile = path.join(runDir, 'slack.json');
   let st = { channel: cfg.channel || null, todoChannel: null, threads: {}, todos: {} };
   try { st = { ...st, ...JSON.parse(readFileSync(stateFile, 'utf8')), ...(cfg.channel ? { channel: cfg.channel } : {}) }; } catch {}
@@ -369,6 +369,12 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
 
   // ---------- 받기: Socket Mode ----------
   const seen = new Set();
+  // 대표가 슬랙에서 무엇이든 했으면(지시·댓글·답) 그 전에 카드가 올라간 '확인'(보고)은 읽고 넘어간 것 → onSeen이 종료로 닫는다.
+  // 이 일로 이미 닫힌 것(그 카드에 답, 그 스레드 댓글)은 todos()에 없어 빠진다. at = 슬랙 시각(초)
+  function seenBefore(at) {
+    const ids = todos().filter((t) => t.type === '확인' && st.todos[t.id]?.ts && Number(st.todos[t.id].ts) < at).map((t) => t.id);
+    if (ids.length) onSeen(ids);
+  }
   async function onEvent(ev) {
     const c = routeSlack(ev, { owner: cfg.owner, channel: st.channel, threadOf, todos: todos(), self, todoChannel: todoCh(), todoOf, members: Object.fromEntries(Object.entries(bots).map(([a, b]) => [b.user, a])) });
     if (c.kind === 'none') return;
@@ -376,9 +382,10 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
     try {
       if (c.kind === 'error') return say(c.text);
       const files = c.files ? await download(c.files) : [];
-      if (c.kind === 'answer') { const full = await onAnswer(c.id, c.answer, c.note, files); return say(withTodoTitles(`T${c.id} 처리: ${full}`, allTodos())); }
+      if (c.kind === 'answer') { const full = await onAnswer(c.id, c.answer, c.note, files); seenBefore(Number(ev.ts)); return say(withTodoTitles(`T${c.id} 처리: ${full}`, allTodos())); }
       origin = c.ts;
       try { c.kind === 'run' ? onRun(c.prompt, c.member, files) : onComment(c.thread, c.text, c.member, files); } finally { origin = null; }
+      seenBefore(Number(ev.ts));
       const got = files.length ? ` (첨부 ${files.length}개)` : '';
       say(c.kind === 'run' && !c.member ? `받았어요${got}. 진행과 보고는 이 스레드에 올려요.` : `받았어요${got}.`);
     } catch (err) { say(`오류: ${err.message}`); }
@@ -398,6 +405,7 @@ export function createSlack({ cfg, runDir, root: repo = path.dirname(runDir), to
       try {
         const full = await onAnswer(m.id, m.answer, note);
         ack();
+        seenBefore(Date.now() / 1e3);
         if (m.thread) queue(() => post({ thread_ts: m.thread, text: withTodoTitles(`T${m.id} 처리: ${full}`, allTodos()) }));
       } catch (err) { ack({ response_action: 'errors', errors: { note: err.message.slice(0, 150) } }); }
       return;

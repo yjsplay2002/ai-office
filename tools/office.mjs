@@ -351,13 +351,15 @@ function briefText() {
 
 // 스레드에 이어 붙는 실행(댓글·TODO 답)에게: 그 스레드에서 대표 답을 기다리는 TODO. 댓글로 답이 됐거나 일이 끝났으면
 // 최종 보고에 "처리된 TODO: T12"를 적게 하고, reportTodo가 그 줄로 닫는다(PM 규칙상 todos.md의 기존 TODO는 PM이 고치지 않음).
+// 다른 스레드의 열린 TODO도 짧게 싣는다: 대표가 일을 다른 스레드(또는 새 지시)에서 이어 가 처리하면 원래 스레드 TODO가 남았다(biz-ops T595~597).
 function threadTodoNote(thread) {
-  if (thread == null) return '';
   let all; try { all = todos(); } catch { return ''; }
-  const open = all.filter((t) => !t.done && todoThread(t, history, all) === thread);
+  const open = all.filter((t) => !t.done), here = thread == null ? [] : open.filter((t) => todoThread(t, history, all) === thread), other = open.filter((t) => !here.includes(t));
   if (!open.length) return '';
-  return '\n\n[이 스레드에서 대표 답을 기다리는 TODO]\n' + open.map((t) => `- T${t.id} [${t.type} · ${t.by}] ${t.desc.split('\n')[0]}`).join('\n') + '\n' +
-    '이번 일로 위 TODO 중 처리됐거나 필요 없어진 것이 있으면(대표가 이미 답했거나 했다고 알림, 팀이 대신 끝냄, 뒤 일로 대체됨) 최종 보고 마지막 줄에 "처리된 TODO: T12, T13"처럼 적어. 아직 대표 답이 필요한 TODO는 적지 마. todos.md의 그 TODO는 직접 고치지 마(대시보드가 닫는다).';
+  const row = (t, n) => `- T${t.id} [${t.type} · ${t.by}] ${t.desc.split('\n')[0].slice(0, n)}`;
+  return (here.length ? '\n\n[이 스레드에서 대표 답을 기다리는 TODO]\n' + here.map((t) => row(t)).join('\n') : '') +
+    (other.length ? '\n\n[다른 스레드의 열린 TODO]\n' + other.map((t) => row(t, 80)).join('\n') : '') + '\n' +
+    '이번 일로 위 TODO 중 처리됐거나 필요 없어진 것이 있으면(대표가 이미 답했거나 했다고 알림, 팀이 대신 끝냄, 뒤 일로 대체됨, 다른 스레드 것도) 최종 보고 마지막 줄에 "처리된 TODO: T12, T13"처럼 적어. 아직 대표 답이 필요한 TODO는 적지 마. todos.md의 그 TODO는 직접 고치지 마(대시보드가 닫는다).';
 }
 
 const todoIds = () => { try { return todos().map((t) => t.id); } catch { return []; } };
@@ -383,6 +385,15 @@ function reportTodo(run, prompt, obj, before = [], thread = run, done = []) {
   } catch (err) { office({ log: '보고 TODO 추가 실패: ' + err.message }); return []; }
 }
 
+// 슬랙 카드가 올라간 뒤 대표가 슬랙에서 다른 일을 했으면 그 '확인'(보고)은 읽고 넘어간 것: 종료로 닫는다(다음 실행 없음)
+function seenChecks(ids) {
+  const today = new Date().toLocaleDateString('sv'), done = [];
+  let text = readFileSync(todosFile, 'utf8');
+  for (const id of ids) try { text = settleTodo(text, id, '종료 (슬랙에서 읽고 넘어감)', today).text; done.push(id); } catch {}   // 그사이 닫힘
+  if (!done.length) return;
+  writeFileSync(todosFile, text);
+  office({ log: `확인 T${done.join(', T')} 종료 (슬랙에서 읽고 넘어감)` });
+}
 // 대표가 TODO를 지운다(답 없이 닫음, 다음 실행 없음). why = 지운 까닭(todos.md의 답 줄에 남는다)
 function dismiss(ids, why) {
   if (!ids.length) return;
@@ -517,6 +528,7 @@ const slack = slackCfg && createSlack({
   onComment: (thread, text, member, files) => comment(thread, text, member, files),
   agents: () => agents().map((a) => a.name),
   onAnswer: (id, answer, note, files) => submitTodo(id, answer, note, files),
+  onSeen: seenChecks,
 });
 // New open TODOs (by id) since the server started. Existing ones at boot are not re-announced.
 let seenTodos = null, openKey = null;

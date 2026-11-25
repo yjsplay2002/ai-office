@@ -86,13 +86,13 @@ assert.equal(addRunReport(run0, { summary: 'x', ref: 'board/r.md', error: true, 
   const sr = addRunReport(t0, { summary: 'c', ref: 'board/reports/x-run8.md', before: [1, 4], today: 'D', same: (t) => t.id === 4 || t.id === 2 });
   assert.deepEqual([sr.ids, sr.check, sr.closed], [[2, 3], false, [4]]);
 }
-// 스레드 댓글로 처리된 TODO: 보고의 "처리된 TODO:" 줄. 같은 스레드·실행 전부터 열린 것만 닫는다
+// 스레드 댓글로 처리된 TODO: 보고의 "처리된 TODO:" 줄. 실행 전부터 열린 것만 닫는다(다른 스레드 것도)
 {
   assert.deepEqual(resolvedIds('끝\n**처리된 TODO**: T1, T3\n'), [1, 3]);
   assert.deepEqual(resolvedIds('T1 언급만'), []);
   const sr = addRunReport(run0, { summary: 'x', ref: 'board/reports/x-run8.md', before: [1, 2], today: 'D', resolved: [1, 2, 3, 9], same: (t) => t.id !== 2 });
   const all = parseTodos(sr.text);
-  assert.deepEqual(sr.settled, [1]);   // 2 = 다른 스레드, 3 = 이 실행이 올린 것, 9 = 없음
+  assert.deepEqual(sr.settled, [1, 2]);   // 2 = 다른 스레드여도 닫음, 3 = 이 실행이 올린 것, 9 = 없음
   assert.equal(all.find((x) => x.id === 1).answer, '스레드에서 처리됨');
   assert.deepEqual([sr.ids, sr.check], [[3], false]);
 }
