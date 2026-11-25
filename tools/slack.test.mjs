@@ -197,7 +197,8 @@ assert.deepEqual(routeSlack(ev({ channel: 'CT', text: '반려 어두움', thread
 assert.deepEqual(routeSlack(ev({ channel: 'CT', text: 'T7 승인' }), tctx), { kind: 'answer', id: 7, answer: '승인', note: '', ts: '200.1' });
 assert.equal(routeSlack(ev({ channel: 'CT', text: '새 일 해줘' }), tctx).kind, 'error');   // 지시는 안 받는다
 assert.equal(routeSlack(ev({ channel: 'CT', text: 'x' }), ctx).kind, 'none');   // TODO 채널이 꺼져 있으면 무시
-assert.equal(todoCard({ ...todos[0], type: '확인', desc: '보고를 확인해 주세요: 길게', ref: 'board/reports/r.md' }, 'U1', 'https://l', '가격 <정책> | 정리').blocks[0].text.text.split('\n').slice(1).join(' | '), '💬 <https://l|가격  정책    정리> | 보고를 확인해 주세요: 길게 | 근거: `board/reports/r.md`');   // 원래 스레드 제목이 링크   // 스레드 밖이라 설명을 다 쓴다
+assert.equal(todoCard({ ...todos[0], type: '확인', desc: '보고를 확인해 주세요: 길게', ref: 'board/reports/r.md' }, 'U1', 'https://l', '가격 <정책> | 정리').blocks[0].text.text.split('\n').slice(1).join(' | '), '💬 <https://l|가격  정책    정리> | 스레드의 보고를 확인해 주세요.');   // 원래 스레드 제목이 링크. 보고 첫 줄·근거는 링크의 스레드에 있으니 되풀이하지 않는다
+assert.match(todoCard({ ...todos[0], type: '확인', desc: '작업이 오류로 끝났습니다. 보고를 확인해 주세요: 길게', ref: 'board/reports/r.md' }, '', 'https://l').blocks[0].text.text, /\n작업이 오류로 끝났습니다\. 스레드의 보고를 확인해 주세요\.$/);
 calls.length = 0;
 const d5 = mkdtempSync(path.join(os.tmpdir(), 'slack5-'));
 const s5 = createSlack({ cfg: { token: 't', owner: 'U1', app: '', channel: '', todo: true, name: 'ai-office-t' }, runDir: d5, todos: () => todos,

@@ -97,6 +97,13 @@ const HELP = [
   '• /todo 열린 TODO · /status 진행 상황 · /brief 현황 요약 · /cancel 모든 작업 취소',
 ].join('\n');
 
+// 최종 보고 알림: 아직 안 보낸 TODO(새 확인 등)는 보고와 한 메시지로(버튼 포함), 이미 보낸 TODO는 본문을 다시 보내지 않고 번호만 적는다
+// (biz-ops 11-25 점검: 실행 중 올라온 TODO가 보고마다 다시 가 TODO당 2.4통). -> 보낼 메시지들 [{ todo?, pre }]
+export function reportPlan(msg, list = [], fresh = list) {
+  const old = list.filter((t) => !fresh.includes(t)), pre = msg + (old.length ? `\n\n(T${old.map((t) => t.id).join(', T')}에 붙은 보고예요. 답은 앞서 보낸 그 TODO 메시지에 답장해 주세요.)` : '');
+  return fresh.length ? fresh.map((t, i) => ({ todo: t, pre: i ? '' : pre })) : [{ pre }];
+}
+
 export function createTelegram({ cfg, url, runDir, todos, status, brief, onRun, onAnswer, onCancel, log = console.log }) {
   const api = async (method, body) => {
     const r = await fetch(`https://api.telegram.org/bot${cfg.token}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -121,6 +128,7 @@ export function createTelegram({ cfg, url, runDir, todos, status, brief, onRun, 
   async function notifyTodo(t, pre = '') { const m = await send(`${pre ? pre + '\n\n' : ''}${todoText(t)}\n${url}`, buttons(t)); if (m) remember(m.message_id, t.id); }   // pre: 함께 보낼 최종 보고
   const notify = (text) => send(`${text}\n\n${url}`);
   const progress = (text) => send(text, { disable_notification: true });   // 중간 보고는 무음
+  const report = (msg, list, fresh) => { for (const m of reportPlan(msg, list, fresh)) if (m.todo) notifyTodo(m.todo, m.pre); else notify(m.pre); };
 
   async function download(list) {
     const out = [];
@@ -245,5 +253,5 @@ export function createTelegram({ cfg, url, runDir, todos, status, brief, onRun, 
     }
   }
   if (cfg.inbound) poll();
-  return { notify, notifyTodo, progress };
+  return { notify, notifyTodo, report, progress };
 }

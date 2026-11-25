@@ -1,6 +1,6 @@
 // node tools/todos.test.mjs
 import assert from 'node:assert/strict';
-import { parseTodos, answerTodo, dismissTodo, uploadPlan, addCheckTodo, addRunReport, followUp, resolvedIds } from './todos.mjs';
+import { parseTodos, answerTodo, dismissTodo, uploadPlan, addCheckTodo, addRunReport, followUp, resolvedIds, byComment, staleChecks } from './todos.mjs';
 
 const src = `# 대표 TODO\r\n\r\n### T1 · 결정 · plan\r\n가격을 골라 주세요\r\n- 옵션: $14.99 / $19.99\r\n- 근거: board/plans/p.md\r\n- 상태: 대기\r\n\r\n### T2 · 입력 · research\r\n서비스 아이디어를 알려 주세요\r\n\r\n### T3 · 승인 · legal\r\n약관 초안 승인\r\n### 잘못된 머리글\r\n`;
 const t = parseTodos(src);
@@ -111,3 +111,19 @@ console.log('upload ok');
   assert.deepEqual(parseTodos(dismissTodo(dup, 5, 'x', 'E').text).map((t) => t.answer), ['종료', '취소 (x)', '']);
 }
 console.log('dup ok');
+
+// 스레드 댓글은 '확인'만 닫고, 다른 대기 TODO는 열어 둔 채 PM에게 "처리된 TODO"로 닫으라고 넘긴다(biz-ops T631)
+{
+  const open = parseTodos('### T5 · 결정 · plan\n가격?\n- 옵션: A / B\n- 상태: 대기\n### T6 · 확인 · pm\n보고를 확인해 주세요: x\n- 근거: board/reports/2026-11-25-101500-run9.md\n- 상태: 대기\n');
+  const r = byComment(open);
+  assert.deepEqual(r.close, [6]);
+  assert.match(r.note, /\[이 댓글로 닫은 확인 TODO\]\n- T6 /);
+  assert.match(r.note, /\[대기 중 TODO\]\n- T5 \[결정 · plan\] 가격\? \(보기: A \/ B\)\n.*처리된 TODO: T12.*다시 올리지 마/);
+  assert.deepEqual(byComment([]), { close: [], note: '' });
+  // 24시간: 보고 파일 이름의 시각(로컬)으로 잰다. 닫힌 것·시각 없는 것·확인이 아닌 것은 빼고
+  const now = new Date('2026-11-26T10:16:00').getTime();
+  const all = [...open, ...parseTodos('### T7 · 확인 · pm\nx\n- 근거: board/reports/2026-11-25-102000-run10.md\n- 상태: 대기\n### T8 · 확인 · pm\nx\n- 근거: board/x.md\n- 상태: 대기\n')];
+  assert.deepEqual(staleChecks(all, now), [6]);
+  assert.deepEqual(staleChecks(all, now + 5 * 60e3), [6, 7]);
+}
+console.log('comment ok');

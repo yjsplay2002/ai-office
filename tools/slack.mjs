@@ -90,8 +90,8 @@ function routeText(ev, text, threadOf, todos, nfiles) {
 // TODO 카드: 보기마다 버튼. 누르면 메모 칸이 있는 창이 뜨고 보내면 답이 된다.
 // link != null = TODO 채널 카드: 보고가 바로 위에 없으니 설명을 다 쓰고, 둘째 줄에 원래 스레드 제목(누르면 그 스레드로)을 붙인다.
 export function todoCard(t, owner, link, title = '') {
-  // 스레드 안 보고 확인 TODO는 바로 위에 보고가 있으니 요약·근거 경로를 되풀이하지 않는다
-  const rep = link == null && t.ref?.startsWith('board/reports/'), desc = rep ? t.desc.replace(/^(작업이 오류로 끝났습니다\. )?보고를 확인해 주세요: [\s\S]*/, '위 보고를 확인해 주세요.') : t.desc;
+  // 보고 확인 TODO는 보고가 스레드 안 바로 위(또는 TODO 채널이면 💬 링크의 스레드)에 있으니 요약·근거 경로를 되풀이하지 않는다
+  const rep = t.ref?.startsWith('board/reports/'), desc = rep ? t.desc.replace(/^(작업이 오류로 끝났습니다\. )?보고를 확인해 주세요: [\s\S]*/, link == null ? '위 보고를 확인해 주세요.' : '$1스레드의 보고를 확인해 주세요.') : t.desc;
   const name = title.replace(/[&<>|]/g, ' ').trim() || '원래 스레드 보기', from = link ? `\n💬 <${link}|${name}>` : link != null && title ? `\n💬 ${name}` : '';
   const head = `${owner ? `<@${owner}> ` : ''}*T${t.id} ${t.type}* · ${t.by}${from}\n${desc}${t.ref && !rep ? `\n근거: \`${t.ref}\`` : ''}`;
   const opts = t.options.length ? t.options : [t.type === '입력' ? '답하기' : '완료'];

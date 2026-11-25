@@ -130,6 +130,24 @@ export function addCheckTodo(text, { summary, ref, error }) {
   return { id, text: [head, '', `### T${id} · 확인 · pm`, desc, `- 근거: ${ref}`, '- 상태: 대기', ''].join(nl) };
 }
 
+// 스레드 댓글(open = 그 스레드의 열린 TODO): '확인'만 댓글을 답으로 보고 닫는다. 다른 TODO는 댓글이 답인지 PM이 판단해 보고의 "처리된 TODO" 줄로 닫는다
+// (댓글이 전부 닫던 때 1/3이 답이 아니라 PM이 다시 올림, biz-ops 11-25 점검). -> { close: 닫을 확인 번호, note: PM 프롬프트에 덧붙일 글 }
+export function byComment(open) {
+  const row = (t) => `- T${t.id} [${t.type} · ${t.by}] ${t.desc.split('\n')[0]}${t.type !== '확인' && t.options.length ? ` (보기: ${t.options.join(' / ')})` : ''}`;
+  const close = open.filter((t) => t.type === '확인'), wait = open.filter((t) => t.type !== '확인');
+  return { close: close.map((t) => t.id),
+    note: (close.length ? '\n\n[이 댓글로 닫은 확인 TODO]\n' + close.map(row).join('\n') + '\n위 보고에 대표가 댓글로 이어 말한 것으로 보고 닫았다. 댓글대로 처리해.' : '') +
+      (wait.length ? '\n\n[대기 중 TODO]\n' + wait.map(row).join('\n') + '\n위 TODO는 아직 열려 있다. 이 댓글이 그 답이면 댓글대로 처리하고 최종 보고 마지막 줄 "처리된 TODO: T12"에 번호를 적어. 답이 아니면 그대로 둬(열려 있으니 다시 올리지 마).' : '') };
+}
+
+// 열린 '확인' 중 보고(근거: board/reports/YYYY-MM-DD-HHMMSS-runN.md, 로컬 시각)가 ms보다 오래된 것의 번호. TODO에는 시각이 없어 보고 파일 이름으로 잰다.
+export function staleChecks(todos, now = Date.now(), ms = 24 * 3600e3) {
+  return todos.filter((t) => {
+    const m = !t.done && t.type === '확인' && t.ref.match(/reports\/(\d{4}-\d{2}-\d{2})-(\d{2})(\d{2})(\d{2})/);
+    return m && now - new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}`).getTime() > ms;
+  }).map((t) => t.id);
+}
+
 // What an answered TODO hands to the next PM run: one line, or null when nothing should start ('확인' closed with 종료).
 export function followUp(todo, full, ref = todo.ref) {
   if (todo.type === '확인' && !full.startsWith('추가 지시')) return null;

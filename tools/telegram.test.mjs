@@ -69,3 +69,14 @@ console.log('telegram ok');
   assert.equal(telegramConfig(d, {}).url, 'https://a.example');
   assert.equal(telegramConfig(d, { OFFICE_URL: 'https://b' }).url, 'https://b');
 }
+
+// 최종 보고: 이미 보낸 TODO 본문은 다시 보내지 않고 번호만, 새 TODO는 보고와 한 메시지로(biz-ops T631)
+{
+  const { reportPlan } = await import('./telegram.mjs');
+  const a = { id: 5 }, b = { id: 6 };
+  assert.deepEqual(reportPlan('보고', [a], []), [{ pre: '보고\n\n(T5에 붙은 보고예요. 답은 앞서 보낸 그 TODO 메시지에 답장해 주세요.)' }]);
+  assert.deepEqual(reportPlan('보고', [a, b], [b]).map((m) => [m.todo?.id, m.pre.split('\n')[0]]), [[6, '보고']]);
+  assert.deepEqual(reportPlan('보고', [b], [b]), [{ todo: b, pre: '보고' }]);
+  assert.deepEqual(reportPlan('보고', []), [{ pre: '보고' }]);
+}
+console.log('telegram report ok');
