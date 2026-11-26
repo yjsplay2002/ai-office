@@ -26,8 +26,9 @@ export function parseTranscript(text) {
   const days = {};
   for (const { t, u } of byId.values()) {
     const d = t ? new Date(t).toLocaleDateString('sv') : 'unknown'; // sv locale = YYYY-MM-DD in local time
-    const s = (days[d] ||= { in: 0, cache: 0, out: 0 });
-    s.in += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+    const s = (days[d] ||= { in: 0, write: 0, cache: 0, out: 0 });
+    s.in += u.input_tokens || 0;
+    s.write += u.cache_creation_input_tokens || 0;
     s.cache += u.cache_read_input_tokens || 0;
     s.out += u.output_tokens || 0;
   }
@@ -49,11 +50,11 @@ export const officeSessions = (root) => { try { return new Set(readFileSync(path
 function files(dir, ids) {
   if (!existsSync(dir)) return [];
   const out = [];
-  for (const f of readdirSync(dir)) {
-    if (!ids.has(f.replace(/\.jsonl$/, ''))) continue;
-    const p = path.join(dir, f);
-    if (f.endsWith('.jsonl')) { out.push({ file: p, agent: 'pm' }); continue; }
-    const sub = path.join(p, 'subagents');
+  for (const session of ids) {
+    if (!/^[a-z0-9_-]+$/i.test(session)) continue;
+    const main = path.join(dir, session + '.jsonl');
+    if (existsSync(main)) out.push({ file: main, agent: 'pm' });
+    const sub = path.join(dir, session, 'subagents');
     if (!existsSync(sub)) continue;
     for (const a of readdirSync(sub)) {
       if (!a.endsWith('.jsonl')) continue;
@@ -70,9 +71,9 @@ export function usage(root, now = new Date()) {
   const today = now.toLocaleDateString('sv');
   const weekAgo = new Date(now - 6 * 864e5).toLocaleDateString('sv');
   const per = {};
-  const add = (s, d) => { s.in += d.in; s.cache += d.cache; s.out += d.out; };
+  const add = (s, d) => { s.in += d.in; s.write += d.write; s.cache += d.cache; s.out += d.out; };
   for (const { file, agent } of files(projectDir(root), officeSessions(root))) {
-    const a = (per[agent] ||= { agent, today: { in: 0, cache: 0, out: 0 }, week: { in: 0, cache: 0, out: 0 }, total: { in: 0, cache: 0, out: 0 } });
+    const a = (per[agent] ||= { agent, today: { in: 0, write: 0, cache: 0, out: 0 }, week: { in: 0, write: 0, cache: 0, out: 0 }, total: { in: 0, write: 0, cache: 0, out: 0 } });
     const { days, last } = parsedOf(file);
     if (last && last.t >= (a.t || '')) { a.model = last.model; a.t = last.t; }
     for (const [d, s] of Object.entries(days)) {
@@ -81,6 +82,43 @@ export function usage(root, now = new Date()) {
       if (d === today) add(a.today, s);
     }
   }
-  const sum = (s) => s.in + s.cache + s.out;
+  const sum = (s) => s.in + s.write + s.cache + s.out;
   return Object.values(per).map(({ t, ...r }) => ({ model: '', ...r })).sort((x, y) => sum(y.total) - sum(x.total));
+}
+
+/** Count each main/worker transcript once across all resumes in a thread. */
+export function threadUsage(root, records, now = Date.now(), live = records.some((r) => !r.end)) {
+  if (!records.length) return null;
+  const tokens = { in: 0, write: 0, cache: 0, out: 0 };
+  const add = (s) => { for (const k of Object.keys(tokens)) tokens[k] += s[k]; };
+  const sessions = new Map();
+  for (const r of records) {
+    if (!sessions.has(r.session)) sessions.set(r.session, []);
+    sessions.get(r.session).push(r);
+  }
+  let dev = 0, partial = false;
+  for (const [session, runs] of sessions) {
+    const transcripts = session ? files(projectDir(root), new Set([session])) : [];
+    const hasMain = transcripts.some((r) => r.agent === 'pm');
+    if (hasMain || (transcripts.length && runs.every((r) => !r.tokens))) {
+      if (!hasMain) partial = true;
+      for (const { file, agent } of transcripts) {
+        for (const day of Object.values(parsedOf(file).days)) add(day);
+        if (agent === 'dev') dev++;
+      }
+    } else {
+      // After transcript rotation the CLI's per-run deltas remain available.
+      // Never add a delta to transcript totals for the same resumed session.
+      for (const r of runs) {
+        if (r.tokens) add(r.tokens);
+        dev += r.dev || 0;
+        if (!r.tokens || r.dev == null) partial = true;
+      }
+    }
+    if (session && runs.some((r) => r.agent === 'dev')) dev++;
+  }
+  const ends = records.map((r) => r.end || r.resultTime);
+  const last = live ? now : ends.every(Boolean) ? Math.max(...ends) : null;
+  const elapsed = last == null ? null : Math.max(0, last - Math.min(...records.map((r) => r.start)));
+  return { ...tokens, dev, elapsed, ended: !live, partial: partial || elapsed == null };
 }

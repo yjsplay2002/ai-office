@@ -1,13 +1,13 @@
 // node tools/usage.test.mjs
 import assert from 'node:assert/strict';
-import { parseTranscript, usage } from './usage.mjs';
+import { parseTranscript, usage, threadUsage } from './usage.mjs';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 
 const u = (o) => JSON.stringify({ type: 'assistant', timestamp: '2026-11-05T03:00:00Z', message: { id: 'm1', model: 'claude-opus-5-5', usage: { input_tokens: 2, cache_creation_input_tokens: 10, cache_read_input_tokens: 100, output_tokens: o } } });
 const { days, last } = parseTranscript([u(5), u(40), '{"type":"user"}', 'broken'].join('\n'));
-assert.deepEqual(Object.values(days), [{ in: 12, cache: 100, out: 40 }]); // repeated id counted once, last copy wins
+assert.deepEqual(Object.values(days), [{ in: 2, write: 10, cache: 100, out: 40 }]); // repeated id counted once, last copy wins
 assert.equal(last.model, 'claude-opus-5-5');
 
 // Synthetic transcripts under a temp home: main session = pm, subagents/<x>.meta.json names the agent.
@@ -26,6 +26,11 @@ writeFileSync(path.join(dir, 's2', 'subagents', 'agent-b.jsonl'), u(1000));
 mkdirSync(path.join(root, '.office-runs'), { recursive: true });
 writeFileSync(path.join(root, '.office-runs', 'sessions.txt'), 's1\n');
 const rows = usage(root);
+const legacy = threadUsage(root, [
+  { start: 100, end: 160, session: 's1', agent: 'dev' },
+  { start: 200, end: 300, session: 's1', agent: 'dev' },
+]);
+assert.deepEqual(legacy, { in: 4, write: 20, cache: 200, out: 10, dev: 1, elapsed: 200, ended: true, partial: false });
 rmSync(home, { recursive: true, force: true });
 assert.deepEqual(rows.map((r) => [r.agent, r.total.out, r.model]), [['pm', 7, 'claude-opus-5-5'], ['research', 3, 'claude-opus-5-5']]);
-console.log('usage ok:', rows.map((r) => `${r.agent} ${r.total.in + r.total.cache + r.total.out}`).join(', '));
+console.log('usage ok:', rows.map((r) => `${r.agent} ${r.total.in + r.total.write + r.total.cache + r.total.out}`).join(', '));

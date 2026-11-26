@@ -8,7 +8,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseTodos, answerTodo, dismissTodo, settleTodo, uploadPlan, addRunReport, followUp, resolvedIds, byComment, staleChecks, SUPERSEDED, RESOLVED } from './todos.mjs';
-import { usage } from './usage.mjs';
+import { threadStore } from './threads.mjs';
+import { usage, threadUsage } from './usage.mjs';
 import { mediaFile, byteRange } from './files.mjs';
 import { telegramConfig, createTelegram } from './telegram.mjs';
 import { slackConfig, createSlack, writeApps } from './slack.mjs';
@@ -66,15 +67,20 @@ const todos = () => (existsSync(todosFile) ? parseTodos(readFileSync(todosFile, 
 // shortcut: keep은 부팅 때만 계산. 서버를 며칠씩 켜 두면 그사이 생긴 TODO의 스레드는 다음 부팅 때부터 지켜진다.
 let history = loadLog(existsSync(histFile) ? readFileSync(histFile, 'utf8') : '', { drop: new Set(reattach.map((m) => m.id)), days: Infinity, max: Infinity });
 try { history = linkAnswers(history, todos()); } catch {}
+const threads = threadStore(path.join(runDir, 'threads.json'));
+for (const line of history) threads.record(JSON.parse(line), false);
+threads.save();
 let keep = new Set();
 try { keep = keepRuns(history, todos()); } catch {}
 history = loadLog(history.join('\n'), { keep });
 writeFileSync(histFile, history.length ? history.join('\n') + '\n' : '');
-let nextRun = Math.max(lastRun(history), ...reattach.map((m) => m.id)) + 1;   // 옛 기록의 실행 번호와 겹치지 않게
+let nextRun = Math.max(lastRun(history), ...Object.keys(threads.state.runs).map(Number), ...reattach.map((m) => m.id)) + 1;   // 옛 기록의 실행 번호와 겹치지 않게
 const clients = new Set();
 
 function broadcast(obj) {
-  const line = slimLine(JSON.stringify({ _t: Date.now(), ...obj }));   // _t = when it happened, so replayed history keeps real times
+  obj = { _t: Date.now(), ...obj };
+  threads.record(obj);
+  const line = slimLine(JSON.stringify(obj));   // _t = when it happened, so replayed history keeps real times
   if (!noise(obj)) {
     history.push(line);
     if (history.length > KEEP_LINES * 1.2) history = tail(history, KEEP_LINES, keep);   // 파일은 다음 부팅 때 줄인다
@@ -85,24 +91,24 @@ function broadcast(obj) {
 const office = (o) => broadcast({ type: '_office', ...o });
 const busy = () => runs.size > 0;
 
-// Every instruction / TODO answer starts its own PM run immediately — no queue.
+// Independent instructions start immediately. Same-thread comments drain after the active run.
 // thread = the run that started the dashboard thread this run belongs to (a CEO comment); resume = that thread's PM session.
 // title: 목록에 보일 작업 제목(없으면 프롬프트에서), from: 새 주제로 갈라져 나온 원래 스레드, shown: 슬랙에 보일 짧은 글(댓글)
 // agent: 이 실행을 PM 대신 그 팀원으로 돌린다(슬랙에서 팀원 봇을 멘션해 직접 시킨 일).
-function startRun(prompt, { thread, resume, title, from, shown, agent } = {}) {
+function startRun(prompt, { thread, resume, title, from, shown, agent, comments, slackShown } = {}) {
   if (agent && !agents().some((a) => a.name === agent && /^[\w-]+$/.test(a.name))) agent = undefined;   // 명령줄에 실리니 아는 팀원 이름만
   if (thread != null && !replay) try { const all = todos(); seenChecks(all.filter((t) => !t.done && t.type === '확인' && todoThread(t, history, all) === thread).map((t) => t.id), '스레드에서 이어 감'); } catch {}
   const id = nextRun++, before = todoIds();
-  slack?.runStarted({ id, thread: thread ?? id, prompt, title, from, shown });
+  if (slackShown !== '') slack?.runStarted({ id, thread: thread ?? id, prompt, title, from, shown: slackShown ?? shown });
   if (replay) {
     const send = (obj) => broadcast({ ...obj, _run: id });
     runs.set(id, null);
-    send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from, agent });
+    send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from, agent, comments });
     const lines = readFileSync(path.resolve(root, replay), 'utf8').split('\n').filter(Boolean);
     let i = 0;
     const tick = () => {
       if (!runs.has(id)) return;
-      if (i >= lines.length) { runs.delete(id); return send({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, ended: true }); }
+      if (i >= lines.length) { runs.delete(id); send({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, ended: true }); return drainComments(thread ?? id); }
       const obj = JSON.parse(lines[i++]);
       send(obj);
       if (isResult(obj)) reportTodo(id, prompt, obj, before, thread ?? id);
@@ -127,9 +133,11 @@ function startRun(prompt, { thread, resume, title, from, shown, agent } = {}) {
     { cwd: root, shell, detached: true, windowsHide: true, stdio: ['pipe', out, err], env: { ...process.env, OFFICE_RUN: '1', CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' } });   // -p는 답이 끝나면 백그라운드 팀원을 ~10분 뒤 끊는다: 팀원은 포그라운드로
   closeSync(out); closeSync(err);
   child.on('error', () => {});   // a spawn failure shows up as an already-dead pid below
-  child.stdin.end(prompt + threadTodoNote(thread));   // 화면·슬랙에는 prompt만 보인다
+  const lastDev = resume && !agent && threads.lastDev(resume);
+  const reuseDev = resume && !agent ? '\n\n같은 기능의 작은 후속 수정이면 이 PM 세션의 직전 dev' + (lastDev ? ' (agentId ' + lastDev + ')' : '') + '에게 SendMessage해 이어 간다. 인계 기록을 남기고 끝낸 단계거나 재개할 수 없으면 board/dev/ 기록으로 새 dev를 부른다.' : '';
+  child.stdin.end(prompt + threadTodoNote(thread) + reuseDev);   // 화면·슬랙에는 prompt만 보인다
   child.unref();
-  const meta = { id, pid: child.pid, prompt, t: Date.now(), before, thread, title, from, agent };
+  const meta = { id, pid: child.pid, prompt, t: Date.now(), before, thread, title, from, agent, comments };
   writeFileSync(base + '.json', JSON.stringify(meta));
   attach(meta);
 }
@@ -143,7 +151,7 @@ const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); ret
 
 // Follow a run's output files until its process is gone, then finish it and delete the files.
 // shortcut: liveness is by pid only; a pid reused while the server was down would look alive until it exits.
-function attach({ id, pid, prompt, t: started, before = [], thread, title, from, agent }) {
+function attach({ id, pid, prompt, t: started, before = [], thread, title, from, agent, comments }) {
   const base = path.join(runDir, String(id));
   const send = (obj) => broadcast({ ...obj, _run: id });
   // 중간 보고: 대시보드와 같은 이벤트(map.mjs)로. 텔레그램엔 팀원 시작·끝만 무음으로, 슬랙엔 대시보드 스레드처럼
@@ -220,7 +228,7 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from,
     }
   };
   runs.set(id, { pid });
-  send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from, agent, _t: started });
+  send({ type: '_office', state: 'running', runs: runs.size, prompt, thread, title, from, agent, comments, _t: started });
   const poll = setInterval(() => {
     const live = alive(pid);   // checked before reading, so everything written before exit is read
     pump();
@@ -230,12 +238,14 @@ function attach({ id, pid, prompt, t: started, before = [], thread, title, from,
     runs.delete(id);
     send({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, ended: true });
     for (const ext of RUN_FILES) rmSync(base + ext, { force: true });
+    drainComments(th);
   }, 500);
   runs.get(id).poll = poll;
 }
 
 // only = run ids to stop (one dashboard thread); none = every run.
 function cancel(only) {
+  if (!only) threads.discard();
   const ids = [...runs.keys()].filter((id) => !only || only.includes(id));
   for (const id of ids) {
     const c = runs.get(id);
@@ -254,28 +264,74 @@ function cancel(only) {
 }
 
 const threadInfo = (thread) => threadOf(history, thread);
-// CEO comment on a thread: continues the thread's PM session when no run of it is still going; otherwise a fresh run quoting the instruction.
+// Same-thread follow-ups resume the last eligible session; busy threads collect comments.
 // member = 댓글에서 멘션한 팀원. 멘션이 없으면 그 스레드를 마지막으로 이어 온 쪽(PM 또는 직접 시킨 팀원)이 받는다.
-function comment(thread, text, member, files = []) {
+function comment(thread, text, member, files = [], fromSlack = false) {
   if (!Number.isInteger(thread) || (!text?.trim() && !files.length)) throw new Error('댓글이 비어 있음');
   const th = threadInfo(thread);
   if (!th.prompt) throw new Error('스레드를 찾을 수 없음(기록이 지워졌을 수 있음)');
-  const ups = checkUploads(`thread-${thread}-${Date.now()}`, files);
+  if (text.trim() === '/취소') { stopThread(thread); return; }
+  const urgent = /^\/(?:긴급|urgent)\s+/i.test(text.trim());
+  if (urgent) text = text.trim().replace(/^\/(?:긴급|urgent)\s+/i, '');
+  const ups = checkUploads('thread-' + thread + '-' + Date.now(), files);
   saveUploads(ups);
-  if (ups.length) text = `${(text || '').trim()}\n\n대표 첨부 파일: ${ups.map((u) => u.rel).join(', ')}`;
-  const shown = text.trim();
-  text = shown + answerByComment(thread, shown);
-  const live = th.ids.some((id) => runs.has(id)), agent = member === '' ? undefined : member || th.agent || undefined;   // '' = PM 봇을 멘션
-  if (th.session && !live && agent === (th.agent || undefined)) {
-    if (!staleSession(th)) return startRun(text, { thread, resume: th.session, shown, agent });
-    office({ log: `스레드 세션이 길어져(문맥 ${Math.round(th.ctx / 1e3)}k) 새 세션으로 이어 감` });
+  if (ups.length) text = (text || '').trim() + '\n\n대표 첨부 파일: ' + ups.map((u) => u.rel).join(', ');
+  const active = th.ids.some((id) => runs.has(id));
+  const latest = threads.state.runs[th.ids.at(-1)];
+  const current = latest?.agent === 'pm' ? undefined : latest?.agent;
+  const agent = member === '' ? undefined : member || current || undefined;
+  if (!urgent && (active || threads.pending(thread).length)) {
+    threads.enqueue(thread, agent, text.trim(), fromSlack);
+    office({ log: '스레드 ' + thread + ' 댓글 대기', pendingThread: thread });
+    if (!active) drainComments(thread);
+    return;
   }
-  startRun(`대표가 아래 지시의 스레드에 댓글을 달았습니다. 지시의 맥락에서 댓글을 처리해.
+  if (urgent && active) {
+    threads.enqueue(thread, agent, text.trim(), fromSlack, true);
+    if (replay) { cancel(th.ids); drainComments(thread); }
+    else for (const id of th.ids) {
+      const run = runs.get(id);
+      if (!run?.pid || !alive(run.pid)) continue;
+      // attach() drains the urgent instruction only after the old writer exits.
+      if (process.platform === 'win32') execFile('taskkill', ['/pid', String(run.pid), '/T', '/F']);
+      else try { process.kill(-run.pid); } catch (e) { if (e.code !== 'ESRCH') throw e; }
+    }
+    return;
+  }
+  runComment(thread, text.trim(), agent);
+}
 
-${threadContext(th)}
+function runComment(thread, shown, agent, delivery = {}) {
+  const th = threadInfo(thread);
+  const text = shown + answerByComment(thread, shown);
+  const options = { thread, shown, agent, ...delivery };
+  if (th.session && agent === (th.agent || undefined) && !staleSession(th)) {
+    return startRun(text, { ...options, resume: th.session });
+  }
+  startRun('대표가 아래 지시의 스레드에 댓글을 달았습니다.\n\n' + threadContext(th) + '\n\n[대표 댓글]\n' + text, options);
+}
 
-[대표 댓글]
-${text}`, { thread, shown, agent });
+// Preserve arrival order across different recipients. The run-start receipt
+// removes exactly these IDs, including when a detached run reattaches on boot.
+function drainComments(thread) {
+  const batch = threads.batch(thread);
+  if (!batch.length || threadInfo(thread).ids.some((id) => runs.has(id))) return;
+  const joined = (items) => items.map((c) => c.text).join('\n\n');
+  try {
+    runComment(thread, joined(batch), batch[0].agent, {
+      comments: batch.map((c) => c.id), slackShown: joined(batch.filter((c) => !c.slack)),
+    });
+  } catch (err) {
+    office({ log: '대기 댓글 실행 실패: ' + err.message });
+  }
+}
+
+function stopThread(thread) {
+  threads.discard(thread);
+  cancel(threadInfo(thread).ids);
+  office({ closed: thread });
+  slack?.closed(thread);
+  closeThreadTodos(thread);
 }
 // 스레드 댓글: 그 스레드의 '확인'은 바로 닫고(대시보드·슬랙 카드에서 내림), 다른 대기 TODO는 열어 둔 채 PM에게 넘긴다(byComment). -> 프롬프트에 덧붙일 글
 function answerByComment(thread, text) {
@@ -525,7 +581,7 @@ if (slackCfg) try { const { missing } = writeApps(root, slackCfg.bots); if (miss
 const slack = slackCfg && createSlack({
   cfg: slackCfg, runDir, root, todos: () => todos().filter((t) => !t.done), allTodos: todos, threadPrompt: (th) => threadInfo(th).prompt,
   onRun: (prompt, member, files) => startInstruction(`${prompt}\n\n(슬랙으로 받은 지시${member ? '. 대표가 PM을 거치지 않고 너에게 직접 시킨 일이다. 네 역할 밖의 일은 하지 말고 최종 보고에 "PM에게 넘길 일"로 적는다' : ''})`, files, member),
-  onComment: (thread, text, member, files) => comment(thread, text, member, files),
+  onComment: (thread, text, member, files) => comment(thread, text, member, files, true),
   agents: () => agents().map((a) => a.name),
   onAnswer: (id, answer, note, files) => submitTodo(id, answer, note, files),
   onSeen: seenChecks,
@@ -558,6 +614,9 @@ console.log(slack ? '슬랙: 연결 중…' : '슬랙: 꺼짐 (.office-slack.env
 
 // Re-attach to runs that kept going while this server was down (finished ones are read to the end, then closed).
 for (const meta of reattach) attach(meta);
+const retryComments = () => { for (const thread of new Set(threads.state.pending.map((e) => e.thread))) drainComments(thread); };
+retryComments();
+setInterval(retryComments, 5000);
 
 // 대시보드의 재시작 버튼: 포트를 비우고 종료 코드 75로 끝나면 감독 프로세스가 (플러그인 tools/를 맞춘 뒤) 다시 띄운다.
 // 실행 중인 claude는 분리된 프로세스라 계속 돌고, 새 서버가 부팅 때 다시 붙는다.
@@ -594,6 +653,12 @@ const server = http.createServer(async (req, res) => {
       res.write(`data: ${JSON.stringify({ type: '_office', state: busy() ? 'running' : 'idle', runs: runs.size, live: [...runs.keys()], _history: true })}\n\n`);
       clients.add(res);
       return req.on('close', () => clients.delete(res));
+    }
+    if (p === '/api/thread-usage') {
+      const thread = Number(url.searchParams.get('thread'));
+      const records = Object.entries(threads.state.runs).filter(([, r]) => r.thread === thread);
+      const live = records.some(([id]) => runs.has(Number(id)));
+      return json(res, 200, { usage: threadUsage(root, records.map(([, r]) => r), Date.now(), live), pending: threads.pending(thread).length });
     }
     if (p === '/api/usage') return json(res, 200, usage(root));
     if (p === '/api/brief') return json(res, 200, boardBrief());
@@ -632,10 +697,7 @@ const server = http.createServer(async (req, res) => {
       const { thread } = await body(req);
       if (thread == null) { cancel(); return json(res, 200, { ok: true }); }
       if (!Number.isInteger(thread)) return json(res, 400, { error: 'thread' });
-      cancel(threadInfo(thread).ids);
-      office({ closed: thread });   // the thread shows as 종료 from now on (kept in the event log)
-      slack?.closed(thread);
-      try { closeThreadTodos(thread); } catch (err) { office({ log: 'TODO 정리 실패: ' + err.message }); }
+      stopThread(thread);
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/reopen') {   // 종료한 스레드 다시 열기: 표시만 바꾼다(지운 TODO는 그대로). 댓글을 달면 PM이 이어 간다
